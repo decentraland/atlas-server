@@ -2,25 +2,10 @@ import future from 'fp-future'
 import fetch from 'isomorphic-fetch'
 
 import specialTilesJson from '../data/specialTiles.json'
-import { TileType } from '../types'
+import { Tile, TileType } from '../types'
 import { coordsToId, idToCoords } from '../utils'
 
 const specialTiles = specialTilesJson as Record<string, SpecialTile>
-
-export type SubgraphTile = {
-  id: string
-  x: number
-  y: number
-  owner: string | null
-  estateId: string | null
-  type: TileType
-  name: string
-  top: boolean
-  left: boolean
-  topLeft: boolean
-  tokenId: string | null
-  updatedAt: number
-}
 
 const fields = `{ 
   name,
@@ -61,10 +46,10 @@ export class Subgraph {
 
   // returns all the parcels in the map
   async fetchTiles(onProgress?: (progress: number) => void) {
-    const tiles: Record<string, SubgraphTile> = {}
+    const tiles: Record<string, Tile> = {}
 
     // auxiliars for fetching in batches
-    let batches: Promise<SubgraphTile[]>[] = []
+    let batches: Promise<Tile[]>[] = []
     let total = 0
     let complete = false
     let lastTokenId = ''
@@ -165,7 +150,7 @@ export class Subgraph {
     return nfts.map(this.fromFragment)
   }
 
-  private fromFragment(fragment: Fragment): SubgraphTile {
+  private fromFragment(fragment: Fragment): Tile {
     const {
       owner,
       name,
@@ -202,10 +187,11 @@ export class Subgraph {
       top: specialTile ? specialTile.top : false,
       left: specialTile ? specialTile.left : false,
       topLeft: specialTile ? specialTile.topLeft : false,
+      price: null,
     }
   }
 
-  private fromSpecialTile(i_d: string, specialTile: SpecialTile): SubgraphTile {
+  private fromSpecialTile(i_d: string, specialTile: SpecialTile): Tile {
     if (!specialTile.id) {
       console.log(i_d)
     }
@@ -219,12 +205,13 @@ export class Subgraph {
       owner: null,
       estateId: null,
       tokenId: null,
+      price: null,
       updatedAt: Date.now(),
     }
   }
 
   // watch out! this method performs mutations
-  computeEstates(tiles: Record<string, SubgraphTile>) {
+  computeEstates(tiles: Record<string, Tile>) {
     // get bounds
     const keys = Object.keys(tiles)
     const bounds = keys.reduce(

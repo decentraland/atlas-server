@@ -2,7 +2,9 @@ import express, { Application, Request, Response } from 'express'
 import future from 'fp-future'
 import cors from 'cors'
 import { SingleBar } from 'cli-progress'
-import { Subgraph, SubgraphTile } from './api/subgraph'
+import { Subgraph } from './api/subgraph'
+import { Tile } from './types'
+import { LegacyTile, toLegacyTile } from './legacy'
 
 export type ServerOptions = {
   host: string
@@ -41,9 +43,11 @@ export class Server {
   public port: number
   public app: Application = express()
 
+  // data
+  public tiles = future<Record<string, Tile>>()
+
   // subgraph
   public subgraph: Subgraph
-  public subgraphTiles = future<Record<string, SubgraphTile>>()
   public subgraphRefreshInterval: number
   public subgraphTimeout: NodeJS.Timeout | null = null
   public subgraphLastUpdatedAt: number = 0
@@ -93,8 +97,12 @@ export class Server {
 
     // routes
     this.app.get(
-      '/tiles',
-      this.handle<Record<string, SubgraphTile>>(() => this.subgraphTiles)
+      '/v1/tiles',
+      this.handle<Record<string, LegacyTile>>(() => this.getLegacyTiles())
+    )
+    this.app.get(
+      '/v2/tiles',
+      this.handle<Record<string, Tile>>(() => this.tiles)
     )
 
     // bind it
@@ -109,8 +117,8 @@ export class Server {
   private handle<T>(handler: (req: Request, res: Response) => Promise<T>) {
     return (req: Request, res: Response) => {
       handler(req, res)
-        .then((result) => res.json(result))
-        .catch((error) => res.status(500).send({ error }))
+        .then((data) => res.json({ ok: true, data }))
+        .catch((error) => res.status(500).send({ ok: false, error }))
     }
   }
 
@@ -126,12 +134,12 @@ export class Server {
         bar.update(progress)
       )
       bar.stop()
-      this.subgraphTiles.resolve(tiles)
+      this.tiles.resolve(tiles)
       console.log(
         `\nTotal: ${Object.keys(tiles).length.toLocaleString()} parcels`
       )
     } catch (error) {
-      this.subgraphTiles.reject(new Error(error.message))
+      this.tiles.reject(new Error(error.message))
     }
   }
 
@@ -140,7 +148,7 @@ export class Server {
       `Polling changes every ${this.subgraphRefreshInterval.toLocaleString()} seconds...`
     )
     // find last timestamp
-    const tiles = await this.subgraphTiles
+    const tiles = await this.tiles
     this.subgraphLastUpdatedAt = Object.values(tiles).reduce(
       (last, tile) => (tile.updatedAt > last ? tile.updatedAt : last),
       0
@@ -163,7 +171,7 @@ export class Server {
       // perform updates if any
       if (newTiles.length > 0) {
         console.log(`Found ${newTiles.length} updates`)
-        const oldTiles = await this.subgraphTiles
+        const oldTiles = await this.tiles
         const tiles = { ...oldTiles }
         let lastUpdatedAt = 0
         for (const newTile of newTiles) {
@@ -174,8 +182,8 @@ export class Server {
               : lastUpdatedAt
         }
         this.subgraphLastUpdatedAt = lastUpdatedAt
-        this.subgraphTiles = future<Record<string, SubgraphTile>>()
-        this.subgraphTiles.resolve(this.subgraph.computeEstates(tiles))
+        this.tiles = future<Record<string, Tile>>()
+        this.tiles.resolve(this.subgraph.computeEstates(tiles))
       }
     } catch (error) {
       console.error(error.message)
@@ -186,5 +194,14 @@ export class Server {
       () => this.updateSubgraphData(),
       this.subgraphRefreshInterval * 1000
     )
+  }
+
+  async getLegacyTiles() {
+    const tiles = await this.tiles
+    const legacyTiles: Record<string, LegacyTile> = {}
+    for (const tile of Object.values(tiles)) {
+      legacyTiles[tile.id] = toLegacyTile(tile)
+    }
+    return legacyTiles
   }
 }
