@@ -9,20 +9,24 @@ export enum ServerEvents {
   READY = 'ready',
 }
 
-export type IServerComponent = {
-  events: EventEmitter
-  start: () => void
+export type IRequest = {
+  path: string
+  query: Record<string, string | string[]>
+  params: Record<string, string>
 }
 
-export type LegacyTile = {
-  type: number
-  x: number
-  y: number
-  owner?: string
-  estate_id?: string
-  name?: string
-  top?: number
-  left?: number
-  topLeft?: number
-  price?: number
+export type IResponse<T> = {
+  status: number
+  body: T
+}
+
+export type IRequestHandler<T> = (req: IRequest) => Promise<IResponse<T>>
+
+export type IServerComponent = {
+  events: EventEmitter
+  start: () => Promise<void>
+  get: <T>(path: string, handler: IRequestHandler<T>) => void
+  post: <T>(path: string, handler: IRequestHandler<T>) => void
+  put: <T>(path: string, handler: IRequestHandler<T>) => void
+  delete: <T>(path: string, handler: IRequestHandler<T>) => void
 }

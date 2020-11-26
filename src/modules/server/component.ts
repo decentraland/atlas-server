@@ -1,15 +1,19 @@
 import { EventEmitter } from 'events'
-import express from 'express'
+import express, { Request, Response } from 'express'
 import cors from 'cors'
 import future from 'fp-future'
-import { IAppComponent } from '../app/types'
-import { handle, toLegacyTiles } from './utils'
-import { IServerComponent, ServerEvents } from './types'
+import { IConfigComponent } from '../config/types'
+import {
+  IRequestHandler,
+  IServerComponent,
+  ServerConfig,
+  ServerEvents,
+} from './types'
 
-export function createServerComponet(
-  components: Pick<IAppComponent, 'config' | 'map'>
-): IServerComponent {
-  const { config, map } = components
+export function createServerComponent(components: {
+  config: IConfigComponent<ServerConfig>
+}): IServerComponent {
+  const { config } = components
 
   // config
   const port = config.getNumber('PORT')
@@ -22,27 +26,34 @@ export function createServerComponet(
   const app = express()
   app.use(cors())
 
-  // mount
-  app.get(
-    '/v1/tiles',
-    handle(async () => {
-      const tiles = await map.getTiles()
-      return toLegacyTiles(tiles)
-    })
-  )
-  app.get('/v2/tiles', handle(map.getTiles))
-
   // methods
+  function handle<T>(handler: IRequestHandler<T>) {
+    return (req: Request, res: Response) => {
+      handler({
+        path: req.path,
+        query: req.query as Record<string, string | string[]>,
+        params: req.params,
+      })
+        .then((data) =>
+          res.status(data.status).json({ ok: true, data: data.body })
+        )
+        .catch((error) => res.status(500).send({ ok: false, error }))
+    }
+  }
+
   async function start() {
     const listen = future()
     app.listen(port, host, () => listen.resolve(true))
     await listen
     events.emit(ServerEvents.READY, port)
-    map.init()
   }
 
   return {
     events,
     start,
+    get: (path, handler) => app.get(path, handle(handler)),
+    post: (path, handler) => app.post(path, handle(handler)),
+    put: (path, handler) => app.put(path, handle(handler)),
+    delete: (path, handler) => app.delete(path, handle(handler)),
   }
 }

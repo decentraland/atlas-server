@@ -1,10 +1,8 @@
-import future from 'fp-future'
 import { EventEmitter } from 'events'
-import fetch from 'isomorphic-fetch'
 
 import { Tile } from '../map/types'
-import { IAppComponent } from '../app/types'
-import { ApiEvents, Fragment, IApiComponent } from './types'
+import { IConfigComponent } from '../config/types'
+import { ApiConfig, ApiEvents, Fragment, IApiComponent } from './types'
 import { fromFragment, graphql } from './utils'
 
 const fields = `{ 
@@ -19,9 +17,9 @@ const fields = `{
   updatedAt
 }`
 
-export function createApiComponent(
-  components: Pick<IAppComponent, 'config'>
-): IApiComponent {
+export function createApiComponent(components: {
+  config: IConfigComponent<ApiConfig>
+}): IApiComponent {
   const { config } = components
 
   // config

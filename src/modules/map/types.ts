@@ -48,3 +48,16 @@ export type SpecialTile = {
   left: boolean
   topLeft: boolean
 }
+
+export type LegacyTile = {
+  type: number
+  x: number
+  y: number
+  owner?: string
+  estate_id?: string
+  name?: string
+  top?: number
+  left?: number
+  topLeft?: number
+  price?: number
+}

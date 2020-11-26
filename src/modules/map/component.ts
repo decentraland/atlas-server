@@ -1,12 +1,14 @@
 import { EventEmitter } from 'events'
 import future from 'fp-future'
-import { IAppComponent } from '../app/types'
-import { IMapComponent, Tile, MapEvents } from './types'
+import { IApiComponent } from '../api/types'
+import { IConfigComponent } from '../config/types'
+import { IMapComponent, Tile, MapEvents, MapConfig } from './types'
 import { addSpecialTiles, computeEstates } from './utils'
 
-export function createMapComponent(
-  components: Pick<IAppComponent, 'config' | 'api'>
-): IMapComponent {
+export function createMapComponent(components: {
+  config: IConfigComponent<MapConfig>
+  api: IApiComponent
+}): IMapComponent {
   const { config, api } = components
 
   // config

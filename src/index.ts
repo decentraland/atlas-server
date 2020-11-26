@@ -1,38 +1,57 @@
-import { SingleBar } from 'cli-progress'
-import { ApiEvents } from './modules/api/types'
-import { createAppComponent } from './modules/app/component'
-import { MapEvents, Tile } from './modules/map/types'
-import { ServerEvents } from './modules/server/types'
+import { setupLogs } from './adapters/logs'
+import {
+  createLegacyTilesRequestHandler,
+  createTilesRequestHandler,
+} from './adapters/handlers'
+import { createApiComponent } from './modules/api/component'
+import { createConfigComponent } from './modules/config/component'
+import { createLogComponent } from './modules/log/component'
+import { createMapComponent } from './modules/map/component'
+import { createServerComponent } from './modules/server/component'
+import { AppComponents, AppConfig } from './types'
 
 async function main() {
-  const { config, api, map, server } = createAppComponent()
+  // default config
+  const defaultValues: Partial<AppConfig> = {
+    PORT: 5000,
+    HOST: '0.0.0.0',
+    API_URL: 'https://api.thegraph.com/subgraphs/name/decentraland/marketplace',
+    API_BATCH_SIZE: 1000,
+    API_CONCURRENCY: 10,
+    REFRESH_INTERVAL: 60,
+  }
 
-  // log events
-  const bar = new SingleBar({ format: '[{bar}] {percentage}%' })
-  server.events.on(ServerEvents.READY, () =>
-    console.log(`Listening on port ${5000}`)
-  )
-  map.events.on(MapEvents.INIT, () => {
-    console.log(`Fetching data...`)
-    console.log(`URL: ${config.getString('API_URL')}`)
-    console.log(`Concurrency: ${config.getString('API_CONCURRENCY')}`)
-    console.log(`Batch Size: ${config.getString('API_BATCH_SIZE')}`)
-    bar.start(100, 0)
-  })
-  api.events.on(ApiEvents.PROGRESS, (progress: number) => bar.update(progress))
-  map.events.on(MapEvents.READY, (tiles: Tile[]) => {
-    bar.stop()
-    console.log(`Total: ${tiles.length.toLocaleString()} parcels`)
-    console.log(
-      `Polling changes every ${config.getNumber('REFRESH_INTERVAL')} seconds`
-    )
-  })
-  map.events.on(MapEvents.UPDATE, (newTiles: Tile[]) =>
-    console.log(`Updating ${newTiles.length} parcels`)
-  )
+  const components = initComponents(defaultValues)
+  initAdapters(components)
+}
 
-  // kick it
+function initComponents(defaultValues: Partial<AppConfig>): AppComponents {
+  // create components
+  const config = createConfigComponent<AppConfig>(process.env, defaultValues)
+  const api = createApiComponent({ config })
+  const map = createMapComponent({ config, api })
+  const server = createServerComponent({ config })
+  const log = createLogComponent()
+
+  return {
+    config,
+    api,
+    map,
+    server,
+    log,
+  }
+}
+
+async function initAdapters(components: AppComponents) {
+  const { map, server } = components
+
+  setupLogs(components)
+
+  server.get('/v1/tiles', createLegacyTilesRequestHandler(components))
+  server.get('/v2/tiles', createTilesRequestHandler(components))
+
   await server.start()
+  map.init()
 }
 
 main().catch((error) => console.error(error.message))

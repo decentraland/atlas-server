@@ -1,4 +1,4 @@
-import { SpecialTile, Tile, TileType } from './types'
+import { LegacyTile, SpecialTile, Tile, TileType } from './types'
 import specialTilesJson from './data/specialTiles.json'
 
 export const specialTiles = specialTilesJson as Record<string, SpecialTile>
