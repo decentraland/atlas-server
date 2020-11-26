@@ -1,8 +1,5 @@
 import { setupLogs } from './adapters/logs'
-import {
-  createLegacyTilesRequestHandler,
-  createTilesRequestHandler,
-} from './adapters/handlers'
+import { setupRoutes } from './adapters/routes'
 import { createApiComponent } from './modules/api/component'
 import { createConfigComponent } from './modules/config/component'
 import { createLogComponent } from './modules/log/component'
@@ -26,7 +23,6 @@ async function main() {
 }
 
 function initComponents(defaultValues: Partial<AppConfig>): AppComponents {
-  // create components
   const config = createConfigComponent<AppConfig>(process.env, defaultValues)
   const api = createApiComponent({ config })
   const map = createMapComponent({ config, api })
@@ -46,9 +42,7 @@ async function initAdapters(components: AppComponents) {
   const { map, server } = components
 
   setupLogs(components)
-
-  server.get('/v1/tiles', createLegacyTilesRequestHandler(components))
-  server.get('/v2/tiles', createTilesRequestHandler(components))
+  setupRoutes(components)
 
   await server.start()
   map.init()
