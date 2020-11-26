@@ -3,7 +3,7 @@ import future from 'fp-future'
 import { IApiComponent } from '../api/types'
 import { IConfigComponent } from '../config/types'
 import { IMapComponent, Tile, MapEvents, MapConfig } from './types'
-import { addSpecialTiles, computeEstates } from './utils'
+import { addSpecialTiles, computeEstate } from './utils'
 
 export function createMapComponent(components: {
   config: IConfigComponent<MapConfig>
@@ -22,16 +22,19 @@ export function createMapComponent(components: {
   let inited = false
   let lastUpdatedAt = 0
 
+  // sort
+  const sortByCoords = (a: Tile, b: Tile) =>
+    a.x < b.x ? -1 : a.x > b.x ? 1 : a.y > b.y ? -1 : 1 // sort from left to right, from top to bottom
+
   // methods
-  function addTiles(newTiles: Tile[], tiles: Record<string, Tile> = {}) {
+  function addTiles(newTiles: Tile[], oldTiles: Record<string, Tile>) {
     // mutations ahead (for performance reasons)
-    for (const tile of newTiles) {
-      tiles[tile.id] = tile
+    for (const tile of newTiles.sort(sortByCoords)) {
+      oldTiles[tile.id] = tile
       lastUpdatedAt = Math.max(lastUpdatedAt, tile.updatedAt)
+      computeEstate(tile.x, tile.y, oldTiles)
     }
-    computeEstates(tiles)
-    addSpecialTiles(tiles)
-    return tiles
+    return oldTiles
   }
 
   function init() {
@@ -39,7 +42,7 @@ export function createMapComponent(components: {
       api
         .fetchTiles()
         .then((results) => {
-          tiles.resolve(addTiles(results))
+          tiles.resolve(addSpecialTiles(addTiles(results, {})))
           setTimeout(poll, refreshInterval)
           events.emit(MapEvents.READY, results)
         })
@@ -54,11 +57,12 @@ export function createMapComponent(components: {
   }
 
   async function poll() {
-    console.log('lastUpdatedAt', lastUpdatedAt)
     const updatedTiles = await api.fetchUpdatedTiles(lastUpdatedAt)
     if (updatedTiles.length > 0) {
+      const oldTiles = await tiles
+      const newTiles = addTiles(updatedTiles, oldTiles)
       tiles = future()
-      tiles.resolve(addTiles(updatedTiles, await tiles))
+      tiles.resolve(newTiles)
       events.emit(MapEvents.UPDATE, updatedTiles)
     }
     setTimeout(poll, refreshInterval)
