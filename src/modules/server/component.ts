@@ -58,9 +58,10 @@ export function createServerComponent(components: {
   return {
     events,
     start,
-    get: (path, handler) => app.get(path, handle(handler)),
-    post: (path, handler) => app.post(path, handle(handler)),
-    put: (path, handler) => app.put(path, handle(handler)),
-    delete: (path, handler) => app.delete(path, handle(handler)),
+    handle,
+    get: (path, handler) => app.get(path, handler),
+    post: (path, handler) => app.post(path, handler),
+    put: (path, handler) => app.put(path, handler),
+    delete: (path, handler) => app.delete(path, handler),
   }
 }

@@ -1,4 +1,5 @@
 import { EventEmitter } from 'events'
+import { RequestHandler } from 'express'
 
 export type ServerConfig = {
   PORT: number
@@ -32,8 +33,9 @@ export type IRequestHandler<T> = (req: IRequest) => Promise<IResponse<T>>
 export type IServerComponent = {
   events: EventEmitter
   start: () => Promise<void>
-  get: <T>(path: string, handler: IRequestHandler<T>) => void
-  post: <T>(path: string, handler: IRequestHandler<T>) => void
-  put: <T>(path: string, handler: IRequestHandler<T>) => void
-  delete: <T>(path: string, handler: IRequestHandler<T>) => void
+  handle: <T>(handler: IRequestHandler<T>) => RequestHandler
+  get: (path: string, handler: RequestHandler) => void
+  post: (path: string, handler: RequestHandler) => void
+  put: (path: string, handler: RequestHandler) => void
+  delete: (path: string, handler: RequestHandler) => void
 }

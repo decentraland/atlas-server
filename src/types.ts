@@ -3,6 +3,7 @@ import { ApiConfig, IApiComponent } from './modules/api/types'
 import { IMapComponent, MapConfig } from './modules/map/types'
 import { IServerComponent, ServerConfig } from './modules/server/types'
 import { ILogComponent } from './modules/log/types'
+import { IImageComponent } from './modules/image/types'
 
 export type AppConfig = ApiConfig & MapConfig & ServerConfig
 
@@ -12,4 +13,5 @@ export type AppComponents = {
   map: IMapComponent
   server: IServerComponent
   log: ILogComponent
+  image: IImageComponent
 }

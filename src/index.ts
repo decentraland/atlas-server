@@ -1,9 +1,13 @@
+import fs from 'fs'
 import { setupLogs } from './adapters/logs'
 import { setupRoutes } from './adapters/routes'
 import { createApiComponent } from './modules/api/component'
 import { createConfigComponent } from './modules/config/component'
+import { createImageComponent } from './modules/image/component'
 import { createLogComponent } from './modules/log/component'
 import { createMapComponent } from './modules/map/component'
+import { TileType } from './modules/map/types'
+import { idToCoords, specialTiles } from './modules/map/utils'
 import { createServerComponent } from './modules/server/component'
 import { AppComponents, AppConfig } from './types'
 
@@ -28,6 +32,7 @@ function initComponents(defaultValues: Partial<AppConfig>): AppComponents {
   const map = createMapComponent({ config, api })
   const server = createServerComponent({ config })
   const log = createLogComponent()
+  const image = createImageComponent({ map })
 
   return {
     config,
@@ -35,6 +40,7 @@ function initComponents(defaultValues: Partial<AppConfig>): AppComponents {
     map,
     server,
     log,
+    image,
   }
 }
 

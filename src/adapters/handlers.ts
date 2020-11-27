@@ -1,5 +1,6 @@
+import { Request, RequestHandler } from 'express'
 import { LegacyTile, Tile, TileType } from '../modules/map/types'
-import { IRequest, IRequestHandler } from '../modules/server/types'
+import { IRequest } from '../modules/server/types'
 import { AppComponents } from '../types'
 
 type FilterQuery = {
@@ -83,27 +84,76 @@ function filter(
 }
 
 export const createTilesRequestHandler = (
-  components: Pick<AppComponents, 'map'>
-): IRequestHandler<Record<string, Partial<Tile>>> => {
-  const { map } = components
-  return async (req) => {
+  components: Pick<AppComponents, 'server' | 'map'>
+) => {
+  const { server, map } = components
+  return server.handle(async (req) => {
     const tiles = await map.getTiles()
     return {
       status: 200,
       body: filter(req, tiles),
     }
-  }
+  })
 }
 
 export const createLegacyTilesRequestHandler = (
-  components: Pick<AppComponents, 'map'>
-): IRequestHandler<Record<string, Partial<LegacyTile>>> => {
-  const { map } = components
-  return async (req) => {
+  components: Pick<AppComponents, 'server' | 'map'>
+) => {
+  const { server, map } = components
+  return server.handle(async (req) => {
     const tiles = await map.getTiles()
     return {
       status: 200,
       body: toLegacyTiles(filter(req, tiles)),
+    }
+  })
+}
+
+function extractParams(req: Request) {
+  const parse = (
+    name: string,
+    defaultValue: number,
+    minValue: number,
+    maxValue: number
+  ) =>
+    Math.max(
+      Math.min(
+        name in req.query && !isNaN(parseInt(req.query[name] as string))
+          ? parseInt(req.query[name] as string)
+          : defaultValue,
+        maxValue
+      ),
+      minValue
+    )
+  // params
+  const width = parse('width', 1024, 100, 4096)
+  const height = parse('height', 1024, 100, 4096)
+  const size = parse('size', 20, 5, 50)
+  const [x, y] =
+    'center' in req.query
+      ? (req.query['center'] as string).split(',').map((coord) => +coord)
+      : [0, 0]
+  const center = { x, y }
+  return {
+    width,
+    height,
+    size,
+    center,
+  }
+}
+
+export const createMapPngRequestHandler = (
+  components: Pick<AppComponents, 'image'>
+): RequestHandler => {
+  const { image } = components
+  return async (req, res) => {
+    try {
+      const { width, height, size, center } = extractParams(req)
+      const stream = await image.getStream(width, height, size, center)
+      res.type('png')
+      stream.pipe(res)
+    } catch (error) {
+      res.status(500).send(JSON.stringify({ error: error.message }))
     }
   }
 }
