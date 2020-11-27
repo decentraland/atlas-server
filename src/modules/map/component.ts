@@ -73,9 +73,14 @@ export function createMapComponent(components: {
     return tiles
   }
 
+  function getLastUpdatedAt() {
+    return lastUpdatedAt
+  }
+
   return {
     events,
     init,
     getTiles,
+    getLastUpdatedAt,
   }
 }

@@ -7,12 +7,19 @@ export type ServerConfig = {
 
 export enum ServerEvents {
   READY = 'ready',
+  REQUEST = 'request',
+  ERROR = 'error',
 }
 
-export type IRequest = {
+export type IRequest<
+  Query extends object = Record<string, string | string[]>,
+  Params extends object = Record<string, string>
+> = {
+  method: string
+  url: string
   path: string
-  query: Record<string, string | string[]>
-  params: Record<string, string>
+  query: Query
+  params: Params
 }
 
 export type IResponse<T> = {

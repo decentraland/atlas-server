@@ -15,6 +15,7 @@ export interface IMapComponent {
   events: EventEmitter
   init: () => void
   getTiles: () => Promise<Record<string, Tile>>
+  getLastUpdatedAt: () => number
 }
 
 export enum TileType {

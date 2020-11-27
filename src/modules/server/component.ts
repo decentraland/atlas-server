@@ -29,15 +29,22 @@ export function createServerComponent(components: {
   // methods
   function handle<T>(handler: IRequestHandler<T>) {
     return (req: Request, res: Response) => {
-      handler({
+      const request = {
+        url: req.url,
+        method: req.method,
         path: req.path,
         query: req.query as Record<string, string | string[]>,
         params: req.params,
-      })
+      }
+      events.emit(ServerEvents.REQUEST, request)
+      handler(request)
         .then((data) =>
           res.status(data.status).json({ ok: true, data: data.body })
         )
-        .catch((error) => res.status(500).send({ ok: false, error }))
+        .catch((error) => {
+          res.status(500).send({ ok: false, error })
+          events.emit(ServerEvents.ERROR, error)
+        })
     }
   }
 
