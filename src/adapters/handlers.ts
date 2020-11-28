@@ -136,11 +136,21 @@ function extractParams(req: Request) {
       ? (req.query['center'] as string).split(',').map((coord) => +coord)
       : [0, 0]
   const center = { x, y }
+  const showOnSale = req.query['on-sale'] === 'true'
+  const selected =
+    'selected' in req.query
+      ? (req.query.selected as string).split(';').map((id) => {
+          const [x, y] = id.split(',').map((coord) => parseInt(coord))
+          return { x, y }
+        })
+      : []
   return {
     width,
     height,
     size,
     center,
+    showOnSale,
+    selected,
   }
 }
 
@@ -150,8 +160,83 @@ export const createMapPngRequestHandler = (
   const { image } = components
   return async (req, res) => {
     try {
-      const { width, height, size, center } = extractParams(req)
-      const stream = await image.getStream(width, height, size, center)
+      const {
+        width,
+        height,
+        size,
+        center,
+        showOnSale,
+        selected,
+      } = extractParams(req)
+      const stream = await image.getStream(
+        width,
+        height,
+        size,
+        center,
+        selected,
+        showOnSale
+      )
+      res.type('png')
+      stream.pipe(res)
+    } catch (error) {
+      res.status(500).send(JSON.stringify({ error: error.message }))
+    }
+  }
+}
+
+export const createParcelMapPngRequestHandler = (
+  components: Pick<AppComponents, 'image'>
+): RequestHandler => {
+  const { image } = components
+  return async (req, res) => {
+    try {
+      const { width, height, size, showOnSale } = extractParams(req)
+      const center = {
+        x: parseInt(req.params.x) || 0,
+        y: parseInt(req.params.y) || 0,
+      }
+      const selected = [center]
+      const stream = await image.getStream(
+        width,
+        height,
+        size,
+        center,
+        selected,
+        showOnSale
+      )
+      res.type('png')
+      stream.pipe(res)
+    } catch (error) {
+      res.status(500).send(JSON.stringify({ error: error.message }))
+    }
+  }
+}
+
+export const createEstateMapPngRequestHandler = (
+  components: Pick<AppComponents, 'image' | 'map'>
+): RequestHandler => {
+  const { image, map } = components
+  return async (req, res) => {
+    try {
+      const { width, height, size, showOnSale } = extractParams(req)
+      const estateId = req.params.id
+      const tiles = await map.getTiles()
+      const selected = Object.values(tiles).filter(
+        (tile) => tile.estateId && tile.estateId === estateId
+      )
+      const xs = selected.map((coords) => coords.x).sort()
+      const ys = selected.map((coords) => coords.y).sort()
+      const x = xs[(xs.length / 2) | 0] || 0
+      const y = ys[(ys.length / 2) | 0] || 0
+      const center = { x, y }
+      const stream = await image.getStream(
+        width,
+        height,
+        size,
+        center,
+        selected,
+        showOnSale
+      )
       res.type('png')
       stream.pipe(res)
     } catch (error) {

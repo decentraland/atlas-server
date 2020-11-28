@@ -6,6 +6,8 @@ export interface IImageComponent {
     width: number,
     height: number,
     size: number,
-    center: Coord
+    center: Coord,
+    selected: Coord[],
+    showOnSale: boolean
   ): Promise<PNGStream>
 }

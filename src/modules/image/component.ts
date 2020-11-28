@@ -10,9 +10,6 @@ export function createImageComponent(components: {
   const { map } = components
 
   function getColor(tile: Tile) {
-    if (tile.price) {
-      return '#1FBCFF'
-    }
     switch (tile.type) {
       case TileType.DISTRICT:
         return '#5054D4'
@@ -31,7 +28,9 @@ export function createImageComponent(components: {
     width: number,
     height: number,
     size: number,
-    center: Coord
+    center: Coord,
+    selected: Coord[],
+    showOnSale: boolean
   ) {
     const pan = { x: 0, y: 0 }
     const { nw, se } = getViewport({ width, height, center, size, padding: 1 })
@@ -43,7 +42,7 @@ export function createImageComponent(components: {
       const tile = tiles[id]
       const result = tile
         ? {
-            color: getColor(tile),
+            color: showOnSale && tile.price ? '#1FBCFF' : getColor(tile),
             top: tile.top,
             left: tile.left,
             topLeft: tile.topLeft,
@@ -53,6 +52,25 @@ export function createImageComponent(components: {
           }
       return result
     }
+    const layers = [layer]
+
+    // render selected tiles
+    if (selected.length > 0) {
+      const selection = new Set(
+        selected.map((coords) => coordsToId(coords.x, coords.y))
+      )
+      const strokeLayer: Layer = (x, y) =>
+        selection.has(coordsToId(x, y))
+          ? { color: '#ff0044', scale: 1.4 }
+          : null
+      const fillLayer: Layer = (x, y) =>
+        selection.has(coordsToId(x, y))
+          ? { color: '#ff9990', scale: 1.2 }
+          : null
+      layers.push(strokeLayer)
+      layers.push(fillLayer)
+    }
+
     renderMap({
       ctx,
       width,
@@ -62,7 +80,7 @@ export function createImageComponent(components: {
       center,
       nw,
       se,
-      layers: [layer],
+      layers,
     })
     return canvas.createPNGStream()
   }
