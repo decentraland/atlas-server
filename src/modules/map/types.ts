@@ -36,11 +36,27 @@ export type Tile = {
   left: boolean
   topLeft: boolean
   updatedAt: number
-  owner: string | null
-  estateId: string | null
-  tokenId: string | null
-  price: number | null
+  owner?: string
+  estateId?: string
+  tokenId?: string
+  price?: number
 }
+
+export const tileFields = [
+  'id',
+  'x',
+  'y',
+  'type',
+  'name',
+  'top',
+  'left',
+  'topLeft',
+  'updatedAt',
+  'owner',
+  'estateId',
+  'tokenId',
+  'price',
+]
 
 export type SpecialTile = {
   id: string

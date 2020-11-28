@@ -43,6 +43,7 @@ export function fromFragment(fragment: Fragment): Tile {
     searchParcelEstateId,
     tokenId,
     updatedAt,
+    activeOrder,
   } = fragment
 
   const x = parseInt(searchParcelX, 10)
@@ -52,17 +53,12 @@ export function fromFragment(fragment: Fragment): Tile {
   // special tiles are plazas, districts and roads
   const specialTile = id in specialTiles ? specialTiles[id] : null
 
-  return {
+  const tile: Tile = {
     id,
     x,
     y,
-    tokenId,
     updatedAt: parseInt(updatedAt, 10),
     name: name || `Parcel ${id}`,
-    estateId: searchParcelEstateId
-      ? searchParcelEstateId.split('-').pop()! //estate-0xdeadbeef-<id>
-      : null,
-    owner: owner ? owner.id : null,
     type: specialTile
       ? specialTile.type
       : owner
@@ -71,6 +67,13 @@ export function fromFragment(fragment: Fragment): Tile {
     top: specialTile ? specialTile.top : false,
     left: specialTile ? specialTile.left : false,
     topLeft: specialTile ? specialTile.topLeft : false,
-    price: null,
   }
+
+  if (searchParcelEstateId)
+    tile.estateId = searchParcelEstateId.split('-').pop()! // estate-0xdeadbeef-<id>
+  if (owner) tile.owner = owner.id
+  if (activeOrder) tile.price = Math.round(parseInt(activeOrder.price) / 1e18)
+  if (tokenId) tile.tokenId = tokenId
+
+  return tile
 }

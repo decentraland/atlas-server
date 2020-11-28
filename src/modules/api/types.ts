@@ -25,4 +25,8 @@ export type Fragment = {
   searchParcelEstateId: string | null
   tokenId: string
   updatedAt: string
+  activeOrder: {
+    price: string
+    expiresAt: string
+  } | null
 }

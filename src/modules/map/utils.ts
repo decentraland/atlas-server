@@ -46,10 +46,6 @@ function fromSpecialTile(specialTile: SpecialTile): Tile {
     x,
     y,
     name,
-    owner: null,
-    estateId: null,
-    tokenId: null,
-    price: null,
     updatedAt: Date.now(),
   }
 }

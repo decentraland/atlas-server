@@ -1,5 +1,5 @@
 import { Request, RequestHandler } from 'express'
-import { LegacyTile, Tile, TileType } from '../modules/map/types'
+import { LegacyTile, Tile, tileFields, TileType } from '../modules/map/types'
 import { IRequest } from '../modules/server/types'
 import { AppComponents } from '../types'
 
@@ -11,6 +11,8 @@ type FilterQuery = {
   include?: string
   exclude?: string
 }
+
+const validFields = new Set(tileFields)
 
 function filter(
   req: IRequest<FilterQuery>,
@@ -49,10 +51,10 @@ function filter(
   }
 
   // include fields
-  if (include && result.length > 0) {
+  if (include) {
     const fieldsToInclude = include
       .split(',')
-      .filter((field) => field in result[0])
+      .filter((field) => validFields.has(field))
     result = Object.keys(result).reduce((newResult, id) => {
       const tile = result[id]
       const newTile: Partial<Tile> = {}
@@ -65,7 +67,7 @@ function filter(
     }, {} as typeof result)
   } else if (exclude && result.length > 0) {
     const fieldsToExclude = exclude.split(',')
-    const fieldsInclude = Object.keys(result[0]).filter(
+    const fieldsInclude = Array.from(validFields).filter(
       (field) => !fieldsToExclude.includes(field)
     )
     result = Object.keys(result).reduce((newResult, id) => {

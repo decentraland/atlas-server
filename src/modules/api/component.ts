@@ -6,15 +6,19 @@ import { ApiConfig, ApiEvents, Fragment, IApiComponent } from './types'
 import { fromFragment, graphql } from './utils'
 
 const fields = `{ 
-  name,
+  name
   owner { 
     id 
-  }, 
-  searchParcelX,
-  searchParcelY,
-  searchParcelEstateId,
-  tokenId,
+  }
+  searchParcelX
+  searchParcelY
+  searchParcelEstateId
+  tokenId
   updatedAt
+  activeOrder {
+    price
+    expiresAt
+  }
 }`
 
 export function createApiComponent(components: {

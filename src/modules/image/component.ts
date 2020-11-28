@@ -10,6 +10,9 @@ export function createImageComponent(components: {
   const { map } = components
 
   function getColor(tile: Tile) {
+    if (tile.price) {
+      return '#1FBCFF'
+    }
     switch (tile.type) {
       case TileType.DISTRICT:
         return '#5054D4'
