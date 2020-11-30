@@ -25,7 +25,7 @@ export = async function main() {
     {
       // @ts-ignore
       healthCheck: {
-        path: '/ping',
+        path: '/v2/ping',
         interval: 60,
         timeout: 10,
         unhealthyThreshold: 10,
