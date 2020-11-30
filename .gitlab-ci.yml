@@ -11,10 +11,10 @@ docker-build:
   before_script:
     - docker login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" $CI_REGISTRY
   script:
-    - docker build --pull -t "atlas-server:$CI_COMMIT_SHA" .
-    - docker build --pull -t "atlas-server:$CI_COMMIT_REF_SLUG" .
-    - docker push "atlas-server:$CI_COMMIT_SHA"
-    - docker push "atlas-server:$CI_COMMIT_REF_SLUG"
+    - docker build --pull -t "decentraland/atlas-server:$CI_COMMIT_SHA" .
+    - docker build --pull -t "decentraland/atlas-server:$CI_COMMIT_REF_SLUG" .
+    - docker push "decentraland/atlas-server:$CI_COMMIT_SHA"
+    - docker push "decentraland/atlas-server:$CI_COMMIT_REF_SLUG"
 
 deploy-infra:
   stage: deploy
