@@ -16,7 +16,7 @@ COPY . /app
 
 RUN npm run build
 
-FROM node:12-alpine
+FROM node:12
 
 WORKDIR /app
 
