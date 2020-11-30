@@ -4,6 +4,7 @@ import {
   createLegacyTilesRequestHandler,
   createMapPngRequestHandler,
   createParcelMapPngRequestHandler,
+  createPingRequestHandler,
   createTilesRequestHandler,
 } from './handlers'
 
@@ -22,4 +23,5 @@ export function setupRoutes(
     '/v1/estates/:id/map.png',
     createEstateMapPngRequestHandler(components)
   )
+  server.get('/v2/ping', createPingRequestHandler(components))
 }
