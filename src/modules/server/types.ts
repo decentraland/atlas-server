@@ -34,6 +34,7 @@ export type IServerComponent = {
   events: EventEmitter
   start: () => Promise<void>
   handle: <T>(handler: IRequestHandler<T>) => RequestHandler
+  use: (handler: RequestHandler) => void
   get: (path: string, handler: RequestHandler) => void
   post: (path: string, handler: RequestHandler) => void
   put: (path: string, handler: RequestHandler) => void

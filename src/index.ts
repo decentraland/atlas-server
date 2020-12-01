@@ -1,4 +1,5 @@
-import fs from 'fs'
+import cors from 'cors'
+import compression from 'compression'
 import { setupLogs } from './adapters/logs'
 import { setupRoutes } from './adapters/routes'
 import { createApiComponent } from './modules/api/component'
@@ -6,8 +7,6 @@ import { createConfigComponent } from './modules/config/component'
 import { createImageComponent } from './modules/image/component'
 import { createLogComponent } from './modules/log/component'
 import { createMapComponent } from './modules/map/component'
-import { TileType } from './modules/map/types'
-import { idToCoords, specialTiles } from './modules/map/utils'
 import { createServerComponent } from './modules/server/component'
 import { AppComponents, AppConfig } from './types'
 
@@ -48,6 +47,10 @@ async function initAdapters(components: AppComponents) {
   const { map, server } = components
 
   setupLogs(components)
+
+  server.use(cors())
+  server.use(compression())
+
   setupRoutes(components)
 
   await server.start()

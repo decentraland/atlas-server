@@ -1,6 +1,5 @@
 import { EventEmitter } from 'events'
 import express, { Request, Response } from 'express'
-import cors from 'cors'
 import future from 'fp-future'
 import { IConfigComponent } from '../config/types'
 import {
@@ -24,7 +23,6 @@ export function createServerComponent(components: {
 
   // server
   const app = express()
-  app.use(cors())
 
   // methods
   function handle<T>(handler: IRequestHandler<T>) {
@@ -59,6 +57,7 @@ export function createServerComponent(components: {
     events,
     start,
     handle,
+    use: (handler) => app.use(handler),
     get: (path, handler) => app.get(path, handler),
     post: (path, handler) => app.post(path, handler),
     put: (path, handler) => app.put(path, handler),
