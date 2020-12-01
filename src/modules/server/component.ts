@@ -76,17 +76,17 @@ export function createServerComponent(components: {
         } else {
           delete cache[key] // clean cache if invalidated
         }
-      } else {
-        handler(request)
-          .then((data) => {
-            cache[key] = {
-              deps: currentDeps,
-              response: data,
-            }
-            success(res)(data)
-          })
-          .catch(failure(res))
       }
+
+      handler(request)
+        .then((data) => {
+          cache[key] = {
+            deps: currentDeps,
+            response: data,
+          }
+          success(res)(data)
+        })
+        .catch(failure(res))
     }
   }
 
