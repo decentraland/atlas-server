@@ -33,6 +33,9 @@ export = async function main() {
       },
       version: '1',
       memoryReservation: 1024,
+      extraExposedServiceOptions: {
+        createCloudflareProxiedSubdomain: true
+      }
     }
   )
 
