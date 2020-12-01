@@ -89,26 +89,32 @@ export const createTilesRequestHandler = (
   components: Pick<AppComponents, 'server' | 'map'>
 ) => {
   const { server, map } = components
-  return server.handle(async (req) => {
-    const tiles = await map.getTiles()
-    return {
-      status: 200,
-      body: filter(req, tiles),
-    }
-  })
+  return server.cache(
+    async (req) => {
+      const tiles = await map.getTiles()
+      return {
+        status: 200,
+        body: filter(req, tiles),
+      }
+    },
+    [map.getLastUpdatedAt]
+  )
 }
 
 export const createLegacyTilesRequestHandler = (
   components: Pick<AppComponents, 'server' | 'map'>
 ) => {
   const { server, map } = components
-  return server.handle(async (req) => {
-    const tiles = await map.getTiles()
-    return {
-      status: 200,
-      body: toLegacyTiles(filter(req, tiles)),
-    }
-  })
+  return server.cache(
+    async (req) => {
+      const tiles = await map.getTiles()
+      return {
+        status: 200,
+        body: toLegacyTiles(filter(req, tiles)),
+      }
+    },
+    [map.getLastUpdatedAt]
+  )
 }
 
 function extractParams(req: Request) {
@@ -294,7 +300,7 @@ export function createPingRequestHandler(
   components: Pick<AppComponents, 'map' | 'server'>
 ) {
   const { server, map } = components
-  return server.handle(async (req) => {
+  return server.handle(async () => {
     await map.getTiles()
     return {
       status: 200,
