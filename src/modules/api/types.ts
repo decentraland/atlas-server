@@ -17,6 +17,11 @@ export interface IApiComponent {
   fetchUpdatedTiles: (updatedAfter: number) => Promise<Tile[]>
 }
 
+export type OrderFragment = {
+  price: string
+  expiresAt: string
+}
+
 export type Fragment = {
   name: string | null
   owner: { id: string } | null
@@ -25,8 +30,12 @@ export type Fragment = {
   searchParcelEstateId: string | null
   tokenId: string
   updatedAt: string
-  activeOrder: {
-    price: string
-    expiresAt: string
-  } | null
+  activeOrder: OrderFragment | null
+  parcel: {
+    estate: {
+      nft: {
+        activeOrder: OrderFragment | null
+      }
+    } | null
+  }
 }

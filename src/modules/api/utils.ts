@@ -2,7 +2,7 @@ import 'isomorphic-fetch'
 import future from 'fp-future'
 import { Tile, TileType } from '../map/types'
 import { coordsToId, specialTiles } from '../map/utils'
-import { Fragment } from './types'
+import { Fragment, OrderFragment } from './types'
 
 // helper to do GraphQL queries with retry logic
 export async function graphql<T>(url: string, query: string, retryDelay = 500) {
@@ -33,6 +33,10 @@ export async function graphql<T>(url: string, query: string, retryDelay = 500) {
   }
 }
 
+function isExpired(order: OrderFragment) {
+  return parseInt(order.expiresAt) <= Date.now()
+}
+
 // helper to convert a Fragment into a Tile
 export function fromFragment(fragment: Fragment): Tile {
   const {
@@ -44,10 +48,13 @@ export function fromFragment(fragment: Fragment): Tile {
     tokenId,
     updatedAt,
     activeOrder,
+    parcel: { estate },
   } = fragment
 
-  const x = parseInt(searchParcelX, 10)
-  const y = parseInt(searchParcelY, 10)
+  const estateActiveOrder = estate ? estate.nft.activeOrder : null
+
+  const x = parseInt(searchParcelX)
+  const y = parseInt(searchParcelY)
   const id = coordsToId(x, y)
 
   // special tiles are plazas, districts and roads
@@ -57,7 +64,7 @@ export function fromFragment(fragment: Fragment): Tile {
     id,
     x,
     y,
-    updatedAt: parseInt(updatedAt, 10),
+    updatedAt: parseInt(updatedAt),
     name: name || `Parcel ${id}`,
     type: specialTile
       ? specialTile.type
@@ -69,11 +76,23 @@ export function fromFragment(fragment: Fragment): Tile {
     topLeft: specialTile ? specialTile.topLeft : false,
   }
 
-  if (searchParcelEstateId)
+  if (searchParcelEstateId) {
     tile.estateId = searchParcelEstateId.split('-').pop()! // estate-0xdeadbeef-<id>
-  if (owner) tile.owner = owner.id
-  if (activeOrder) tile.price = Math.round(parseInt(activeOrder.price) / 1e18)
-  if (tokenId) tile.tokenId = tokenId
+  }
+
+  if (owner) {
+    tile.owner = owner.id
+  }
+
+  if (activeOrder && !isExpired(activeOrder)) {
+    tile.price = Math.round(parseInt(activeOrder.price) / 1e18)
+  } else if (estateActiveOrder && !isExpired(estateActiveOrder)) {
+    tile.price = Math.round(parseInt(estateActiveOrder.price) / 1e18)
+  }
+
+  if (tokenId) {
+    tile.tokenId = tokenId
+  }
 
   return tile
 }

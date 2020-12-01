@@ -19,6 +19,16 @@ const fields = `{
     price
     expiresAt
   }
+  parcel {
+    estate {
+      nft {
+        activeOrder {
+          price
+          expiresAt
+        }
+      }
+    }
+  }
 }`
 
 export function createApiComponent(components: {
