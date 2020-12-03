@@ -53,11 +53,11 @@ This endpoint has been **deprecated**, you should use the `/v2/tiles` endpoint, 
   x: number
   y: number
   type: 'owned' | 'unowned' | 'plaza' | 'road' | 'district'
-  name: string
   top: boolean
   left: boolean
   topLeft: boolean
   updatedAt: number
+  name?: string
   owner?: string
   estateId?: string
   tokenId?: string

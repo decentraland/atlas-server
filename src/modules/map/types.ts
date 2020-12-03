@@ -31,11 +31,11 @@ export type Tile = {
   x: number
   y: number
   type: TileType
-  name: string
   top: boolean
   left: boolean
   topLeft: boolean
   updatedAt: number
+  name?: string
   owner?: string
   estateId?: string
   tokenId?: string

@@ -65,7 +65,6 @@ export function fromFragment(fragment: Fragment): Tile {
     x,
     y,
     updatedAt: parseInt(updatedAt),
-    name: name || `Parcel ${id}`,
     type: specialTile
       ? specialTile.type
       : owner
@@ -74,6 +73,10 @@ export function fromFragment(fragment: Fragment): Tile {
     top: specialTile ? specialTile.top : false,
     left: specialTile ? specialTile.left : false,
     topLeft: specialTile ? specialTile.topLeft : false,
+  }
+
+  if (name) {
+    tile.name = name
   }
 
   if (searchParcelEstateId) {
