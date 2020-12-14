@@ -40,22 +40,24 @@ function isExpired(order: OrderFragment) {
 // helper to convert a Fragment into a Tile
 export function fromFragment(fragment: Fragment): Tile {
   const {
-    owner,
-    name,
+    owner: parcelOwner,
+    name: parcelName,
     searchParcelX,
     searchParcelY,
     searchParcelEstateId,
     tokenId,
-    updatedAt,
-    activeOrder,
+    updatedAt: parcelUpdatedAt,
+    activeOrder: parcelActiveOrder,
     parcel: { estate },
   } = fragment
-
-  const estateActiveOrder = estate ? estate.nft.activeOrder : null
 
   const x = parseInt(searchParcelX)
   const y = parseInt(searchParcelY)
   const id = coordsToId(x, y)
+  const name = (estate && estate.nft.name) || parcelName
+  const owner = (estate && estate.nft.owner) || parcelOwner
+  const activeOrder = (estate && estate.nft.activeOrder) || parcelActiveOrder
+  const updatedAt = (estate && estate.nft.updatedAt) || parcelUpdatedAt
 
   // special tiles are plazas, districts and roads
   const specialTile = id in specialTiles ? specialTiles[id] : null
@@ -89,8 +91,6 @@ export function fromFragment(fragment: Fragment): Tile {
 
   if (activeOrder && !isExpired(activeOrder)) {
     tile.price = Math.round(parseInt(activeOrder.price) / 1e18)
-  } else if (estateActiveOrder && !isExpired(estateActiveOrder)) {
-    tile.price = Math.round(parseInt(estateActiveOrder.price) / 1e18)
   }
 
   if (tokenId) {
