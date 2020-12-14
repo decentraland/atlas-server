@@ -47,21 +47,17 @@ export function fromFragment(fragment: Fragment): Tile {
     searchParcelEstateId,
     tokenId,
     updatedAt: parcelUpdatedAt,
-    activeOrder,
+    activeOrder: parcelActiveOrder,
     parcel: { estate },
   } = fragment
-
-  const estateName = (estate && estate.nft.name) || null
-  const estateOwner = (estate && estate.nft.owner) || null
-  const estateActiveOrder = estate ? estate.nft.activeOrder : null
-  const estateUpdatedAt = (estate && estate.nft.updatedAt) || null
 
   const x = parseInt(searchParcelX)
   const y = parseInt(searchParcelY)
   const id = coordsToId(x, y)
-  const owner = estateOwner || parcelOwner
-  const name = estateName || parcelName
-  const updatedAt = estateUpdatedAt || parcelUpdatedAt
+  const name = (estate && estate.nft.name) || parcelName
+  const owner = (estate && estate.nft.owner) || parcelOwner
+  const activeOrder = (estate && estate.nft.activeOrder) || parcelActiveOrder
+  const updatedAt = (estate && estate.nft.updatedAt) || parcelUpdatedAt
 
   // special tiles are plazas, districts and roads
   const specialTile = id in specialTiles ? specialTiles[id] : null
@@ -95,8 +91,6 @@ export function fromFragment(fragment: Fragment): Tile {
 
   if (activeOrder && !isExpired(activeOrder)) {
     tile.price = Math.round(parseInt(activeOrder.price) / 1e18)
-  } else if (estateActiveOrder && !isExpired(estateActiveOrder)) {
-    tile.price = Math.round(parseInt(estateActiveOrder.price) / 1e18)
   }
 
   if (tokenId) {
