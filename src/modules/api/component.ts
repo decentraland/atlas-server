@@ -22,10 +22,15 @@ const fields = `{
   parcel {
     estate {
       nft {
+        name
+        owner { 
+          id 
+        }
         activeOrder {
           price
           expiresAt
         }
+        updatedAt
       }
     }
   }

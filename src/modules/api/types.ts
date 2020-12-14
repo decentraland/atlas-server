@@ -34,7 +34,10 @@ export type Fragment = {
   parcel: {
     estate: {
       nft: {
+        name: string
+        owner: { id: string } | null
         activeOrder: OrderFragment | null
+        updatedAt: string
       }
     } | null
   }
