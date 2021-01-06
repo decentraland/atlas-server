@@ -1,7 +1,11 @@
+import {
+  IBaseComponent,
+  IStatusCheckCapableComponent,
+} from '@well-known-components/interfaces'
 import { EventEmitter } from 'events'
 
 export type MapConfig = {
-  REFRESH_INTERVAL: number
+  REFRESH_INTERVAL: string
 }
 
 export enum MapEvents {
@@ -11,9 +15,10 @@ export enum MapEvents {
   ERROR = 'error',
 }
 
-export interface IMapComponent {
+export interface IMapComponent
+  extends IBaseComponent,
+    IStatusCheckCapableComponent {
   events: EventEmitter
-  init: () => void
   getTiles: () => Promise<Record<string, Tile>>
   getLastUpdatedAt: () => number
 }

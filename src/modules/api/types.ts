@@ -3,8 +3,8 @@ import { Tile } from '../map/types'
 
 export type ApiConfig = {
   API_URL: string
-  API_BATCH_SIZE: number
-  API_CONCURRENCY: number
+  API_BATCH_SIZE: string
+  API_CONCURRENCY: string
 }
 
 export enum ApiEvents {

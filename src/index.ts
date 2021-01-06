@@ -1,60 +1,62 @@
-import cors from 'cors'
-import compression from 'compression'
-import { setupLogs } from './adapters/logs'
 import { setupRoutes } from './adapters/routes'
 import { createApiComponent } from './modules/api/component'
-import { createConfigComponent } from './modules/config/component'
 import { createImageComponent } from './modules/image/component'
-import { createLogComponent } from './modules/log/component'
 import { createMapComponent } from './modules/map/component'
-import { createServerComponent } from './modules/server/component'
-import { AppComponents, AppConfig } from './types'
+import { AppComponents, AppConfig, GlobalContext } from './types'
+import { createConfigComponent } from '@well-known-components/env-config-provider'
+import { createServerComponent } from '@well-known-components/http-server'
+import { createStatusCheckComponent } from '@well-known-components/http-server/dist/status-checks'
+import { createLogComponent } from '@well-known-components/logger'
+import { Lifecycle } from '@well-known-components/interfaces'
 
-async function main() {
-  // default config
-  const defaultValues: Partial<AppConfig> = {
-    PORT: 5000,
-    HOST: '0.0.0.0',
-    API_URL: 'https://api.thegraph.com/subgraphs/name/decentraland/marketplace',
-    API_BATCH_SIZE: 1000,
-    API_CONCURRENCY: 10,
-    REFRESH_INTERVAL: 60,
+import { config as configDotEnvFile } from 'dotenv'
+import { setupLogs } from './adapters/logs'
+
+async function main(components: AppComponents) {
+  const globalContext: GlobalContext = {
+    components,
   }
 
-  const components = initComponents(defaultValues)
-  initAdapters(components)
+  setupLogs(components)
+  setupRoutes(globalContext)
 }
 
-function initComponents(defaultValues: Partial<AppConfig>): AppComponents {
+async function initComponents(): Promise<AppComponents> {
+  configDotEnvFile()
+
+  // default config
+  const defaultValues: Partial<AppConfig> = {
+    HTTP_SERVER_PORT: '5000',
+    HTTP_SERVER_HOST: '0.0.0.0',
+    API_URL: 'https://api.thegraph.com/subgraphs/name/decentraland/marketplace',
+    API_BATCH_SIZE: '1000',
+    API_CONCURRENCY: '10',
+    REFRESH_INTERVAL: '60',
+  }
+
   const config = createConfigComponent<AppConfig>(process.env, defaultValues)
-  const api = createApiComponent({ config })
-  const map = createMapComponent({ config, api })
-  const server = createServerComponent({ config })
-  const log = createLogComponent()
-  const image = createImageComponent({ map })
+  const logs = createLogComponent()
+  const server = await createServerComponent(
+    { config, logs },
+    { cors: {}, compression: {} }
+  )
+  const statusChecks = await createStatusCheckComponent({ server })
+  const api = await createApiComponent({ config, logs })
+  const map = await createMapComponent({ config, api, logs })
+  const image = await createImageComponent({ map })
 
   return {
     config,
     api,
     map,
     server,
-    log,
+    logs,
     image,
+    statusChecks,
   }
 }
 
-async function initAdapters(components: AppComponents) {
-  const { map, server } = components
-
-  setupLogs(components)
-
-  server.use(cors())
-  server.use(compression())
-
-  setupRoutes(components)
-
-  await server.start()
-  map.init()
-}
-
-main().catch((error) => console.error(error.message))
+Lifecycle.programEntryPoint({
+  main,
+  initComponents,
+})

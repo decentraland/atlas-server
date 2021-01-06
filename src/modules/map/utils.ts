@@ -1,4 +1,4 @@
-import { LegacyTile, SpecialTile, Tile, TileType } from './types'
+import { SpecialTile, Tile, TileType } from './types'
 import specialTilesJson from './data/specialTiles.json'
 
 export const specialTiles = specialTilesJson as Record<string, SpecialTile>
@@ -54,4 +54,26 @@ export function addSpecialTiles(tiles: Record<string, Tile>) {
     tiles[specialTile.id] = fromSpecialTile(specialTile)
   }
   return tiles
+}
+
+// sort
+const sortByCoords = (a: Tile, b: Tile) =>
+  a.x < b.x ? -1 : a.x > b.x ? 1 : a.y > b.y ? -1 : 1 // sort from left to right, from top to bottom
+
+// returns the max lastUpdatedAt and the mutated tiles
+export function addTiles(
+  newTiles: Tile[],
+  oldTiles: Record<string, Tile>,
+  lastUpdatedAt: number
+) {
+  // mutations ahead (for performance reasons)
+  for (const tile of newTiles.sort(sortByCoords)) {
+    oldTiles[tile.id] = tile
+    lastUpdatedAt = Math.max(lastUpdatedAt, tile.updatedAt)
+    computeEstate(tile.x, tile.y, oldTiles)
+  }
+  return {
+    lastUpdatedAt,
+    tiles: oldTiles,
+  }
 }

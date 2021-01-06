@@ -1,18 +1,24 @@
 import { EventEmitter } from 'events'
 import future from 'fp-future'
+import {
+  IConfigComponent,
+  ILoggerComponent,
+} from '@well-known-components/interfaces'
 import { IApiComponent } from '../api/types'
-import { IConfigComponent } from '../config/types'
-import { IMapComponent, Tile, MapEvents, MapConfig } from './types'
-import { addSpecialTiles, computeEstate } from './utils'
+import { IMapComponent, MapEvents, Tile } from './types'
+import { addSpecialTiles, addTiles } from './utils'
 
-export function createMapComponent(components: {
-  config: IConfigComponent<MapConfig>
+export async function createMapComponent(components: {
+  config: IConfigComponent
   api: IApiComponent
-}): IMapComponent {
-  const { config, api } = components
+  logs: ILoggerComponent
+}): Promise<IMapComponent> {
+  const { config, api, logs } = components
+  const logger = logs.getLogger('map-component')
 
   // config
-  const refreshInterval = config.getNumber('REFRESH_INTERVAL') * 1000
+  const refreshInterval =
+    (await config.requireNumber('REFRESH_INTERVAL')) * 1000
 
   // events
   const events = new EventEmitter()
@@ -22,54 +28,65 @@ export function createMapComponent(components: {
   let inited = false
   let lastUpdatedAt = 0
 
-  // sort
-  const sortByCoords = (a: Tile, b: Tile) =>
-    a.x < b.x ? -1 : a.x > b.x ? 1 : a.y > b.y ? -1 : 1 // sort from left to right, from top to bottom
+  /**
+   * Start the component lifecycle. See IBaseComponent
+   */
+  async function start() {
+    if (!inited) {
+      try {
+        logger.debug(`Fetching data...`)
 
-  // methods
-  function addTiles(newTiles: Tile[], oldTiles: Record<string, Tile>) {
-    // mutations ahead (for performance reasons)
-    for (const tile of newTiles.sort(sortByCoords)) {
-      oldTiles[tile.id] = tile
-      lastUpdatedAt = Math.max(lastUpdatedAt, tile.updatedAt)
-      computeEstate(tile.x, tile.y, oldTiles)
+        const results = await api.fetchTiles()
+
+        const addTilesResult = addTiles(results, {}, lastUpdatedAt)
+        lastUpdatedAt = addTilesResult.lastUpdatedAt
+
+        tiles.resolve(addSpecialTiles(addTilesResult.tiles))
+        setTimeout(poll, refreshInterval)
+        events.emit(MapEvents.READY, results)
+
+        logger.debug(`Total: ${results.length.toLocaleString()} parcels`)
+        logger.debug(`Polling changes every ${refreshInterval}ms`)
+
+        inited = true
+      } catch (error) {
+        logger.error(error)
+        inited = false
+        tiles.reject(error)
+        throw error
+      }
     }
-    return oldTiles
   }
 
-  function init() {
-    if (!inited) {
-      api
-        .fetchTiles()
-        .then((results) => {
-          tiles.resolve(addSpecialTiles(addTiles(results, {})))
-          setTimeout(poll, refreshInterval)
-          events.emit(MapEvents.READY, results)
-        })
-        .catch((error) => {
-          inited = false
-          tiles.reject(error)
-          events.emit(MapEvents.ERROR, error)
-        })
-      inited = true
-      events.emit(MapEvents.INIT)
-    }
+  /**
+   * Readiness probes indicate whether your application is ready to
+   * handle requests. It could be that your application is alive, but
+   * that it just can't handle HTTP traffic. In that case, Kubernetes
+   * won't kill the container, but it will stop sending it requests.
+   * In practical terms, that means the pod is removed from an
+   * associated service's "pool" of pods that are handling requests,
+   * by marking the pod as "Unready".
+   *
+   * IMPORTANT: This method should return as soon as possible, not wait for completion.
+   */
+  async function readynessProbe(): Promise<boolean> {
+    return inited
   }
 
   async function poll() {
     const updatedTiles = await api.fetchUpdatedTiles(lastUpdatedAt)
     if (updatedTiles.length > 0) {
       const oldTiles = await tiles
-      const newTiles = addTiles(updatedTiles, oldTiles)
+      const addTilesResult = addTiles(updatedTiles, oldTiles, lastUpdatedAt)
+      lastUpdatedAt = addTilesResult.lastUpdatedAt
       tiles = future()
-      tiles.resolve(newTiles)
+      tiles.resolve(addTilesResult.tiles)
       events.emit(MapEvents.UPDATE, updatedTiles)
     }
     setTimeout(poll, refreshInterval)
   }
 
   function getTiles() {
-    init()
     return tiles
   }
 
@@ -78,8 +95,14 @@ export function createMapComponent(components: {
   }
 
   return {
+    // IBaseComponent
+    start,
+
+    // IStatusCheckCapableComponent
+    readynessProbe,
+
+    // map component
     events,
-    init,
     getTiles,
     getLastUpdatedAt,
   }

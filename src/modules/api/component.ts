@@ -1,14 +1,17 @@
 import { EventEmitter } from 'events'
+import {
+  IConfigComponent,
+  ILoggerComponent,
+} from '@well-known-components/interfaces'
 
 import { Tile } from '../map/types'
-import { IConfigComponent } from '../config/types'
-import { ApiConfig, ApiEvents, Fragment, IApiComponent } from './types'
+import { ApiEvents, Fragment, IApiComponent } from './types'
 import { fromFragment, graphql } from './utils'
 
-const fields = `{ 
+const fields = `{
   name
-  owner { 
-    id 
+  owner {
+    id
   }
   searchParcelX
   searchParcelY
@@ -31,15 +34,21 @@ const fields = `{
   }
 }`
 
-export function createApiComponent(components: {
-  config: IConfigComponent<ApiConfig>
-}): IApiComponent {
-  const { config } = components
+export async function createApiComponent(components: {
+  config: IConfigComponent
+  logs: ILoggerComponent
+}): Promise<IApiComponent> {
+  const { config, logs } = components
+  const logger = logs.getLogger('api-component')
 
   // config
-  const url = config.getString('API_URL')
-  const batchSize = config.getNumber('API_BATCH_SIZE')
-  const concurrency = config.getNumber('API_CONCURRENCY')
+  const url = await config.requireString('API_URL')
+  const batchSize = await config.requireNumber('API_BATCH_SIZE')
+  const concurrency = await config.requireNumber('API_CONCURRENCY')
+
+  logger.debug(`URL: ${await config.getString('API_URL')}`)
+  logger.debug(`Concurrency: ${await config.getString('API_CONCURRENCY')}`)
+  logger.debug(`Batch Size: ${await config.getString('API_BATCH_SIZE')}`)
 
   // events
   const events = new EventEmitter()
@@ -66,6 +75,7 @@ export function createApiComponent(components: {
         total = total + result.length
         const progress = ((total / 90601) * 100) | 0 // there are 301x301=90601 parcels in the world
         events.emit(ApiEvents.PROGRESS, Math.min(99, progress))
+        logger.debug(`Progress: ${Math.round(progress)}`)
 
         // resolve
         return result
@@ -92,23 +102,25 @@ export function createApiComponent(components: {
     // final progress update
     events.emit(ApiEvents.PROGRESS, 100)
 
+    logger.debug(`Progress: Finished`)
+
     return tiles
   }
 
   async function fetchBatch(lastTokenId = '', page = 0) {
     const { nfts } = await graphql<{ nfts: Fragment[] }>(
       url,
-      `{ 
+      `{
         nfts(
-          first: ${batchSize}, 
-          skip: ${batchSize * page}, 
-          orderBy: tokenId, 
-          orderDirection: asc, 
+          first: ${batchSize},
+          skip: ${batchSize * page},
+          orderBy: tokenId,
+          orderDirection: asc,
           where: {
-            ${lastTokenId ? `tokenId_gt: "${lastTokenId}",` : ''} 
-            category: parcel 
+            ${lastTokenId ? `tokenId_gt: "${lastTokenId}",` : ''}
+            category: parcel
           }
-        ) ${fields} 
+        ) ${fields}
       }`
     )
     return nfts.map(fromFragment)
@@ -117,16 +129,16 @@ export function createApiComponent(components: {
   async function fetchUpdatedTiles(updatedAfter: number) {
     const { nfts } = await graphql<{ nfts: Fragment[] }>(
       url,
-      `{ 
+      `{
         nfts(
-          first: ${batchSize}, 
-          orderBy: updatedAt, 
-          orderDirection: asc, 
-          where: { 
-            updatedAt_gt: "${updatedAfter}", 
-            category: parcel 
+          first: ${batchSize},
+          orderBy: updatedAt,
+          orderDirection: asc,
+          where: {
+            updatedAt_gt: "${updatedAfter}",
+            category: parcel
           }
-        ) ${fields} 
+        ) ${fields}
       }`
     )
     return nfts.map(fromFragment)

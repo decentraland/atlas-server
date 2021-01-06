@@ -4,9 +4,9 @@ import { IMapComponent, Tile, TileType } from '../map/types'
 import { coordsToId } from '../map/utils'
 import { IImageComponent } from './types'
 
-export function createImageComponent(components: {
+export async function createImageComponent(components: {
   map: IMapComponent
-}): IImageComponent {
+}): Promise<IImageComponent> {
   const { map } = components
 
   function getColor(tile: Tile) {

@@ -1,27 +1,40 @@
-import { AppComponents } from '../types'
+import { createDappsWrapper } from '../logic/dapps-wrapper'
+import { GlobalContext } from '../types'
 import {
-  createEstateMapPngRequestHandler,
   createLegacyTilesRequestHandler,
-  createMapPngRequestHandler,
-  createParcelMapPngRequestHandler,
-  createPingRequestHandler,
   createTilesRequestHandler,
+  estateMapPngRequestHandler,
+  mapPngRequestHandler,
+  parcelMapPngRequestHandler,
+  pingRequestHandler,
 } from './handlers'
 
-export function setupRoutes(
-  components: Pick<AppComponents, 'server' | 'map' | 'image'>
-) {
+export function setupRoutes(globalContext: GlobalContext) {
+  const { components } = globalContext
   const { server } = components
-  server.get('/v1/tiles', createLegacyTilesRequestHandler(components))
-  server.get('/v2/tiles', createTilesRequestHandler(components))
-  server.get('/v1/map.png', createMapPngRequestHandler(components))
+
+  const dappsMiddleware = createDappsWrapper<GlobalContext>(components)
+  const t = dappsMiddleware(createLegacyTilesRequestHandler(components))
+  server.get(globalContext, '/v1/tiles', t)
   server.get(
+    globalContext,
+    '/v2/tiles',
+    dappsMiddleware(createTilesRequestHandler(components))
+  )
+  server.get(
+    globalContext,
+    '/v1/map.png',
+    dappsMiddleware(mapPngRequestHandler)
+  )
+  server.get(
+    globalContext,
     '/v1/parcels/:x/:y/map.png',
-    createParcelMapPngRequestHandler(components)
+    dappsMiddleware(parcelMapPngRequestHandler)
   )
   server.get(
+    globalContext,
     '/v1/estates/:id/map.png',
-    createEstateMapPngRequestHandler(components)
+    dappsMiddleware(estateMapPngRequestHandler)
   )
-  server.get('/v2/ping', createPingRequestHandler(components))
+  server.get(globalContext, '/v2/ping', dappsMiddleware(pingRequestHandler))
 }
