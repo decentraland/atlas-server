@@ -2,6 +2,8 @@ import { IHttpServerComponent as http } from '@well-known-components/interfaces'
 import { extractQueryParams, filterTiles, toLegacyTiles } from '../logic/tiles'
 import { AppComponents } from '../types'
 import { cacheWrapper } from '../logic/cache'
+import { getStream } from '../logic/image-helpers'
+import { idText, isExportDeclaration } from 'typescript'
 
 export const createTilesRequestHandler = (
   components: Pick<AppComponents, 'map'>
@@ -36,10 +38,10 @@ export const createLegacyTilesRequestHandler = (
 }
 
 export async function mapPngRequestHandler(ctx: {
-  components: Pick<AppComponents, 'image'>
+  components: Pick<AppComponents, 'map'>
   query: http.QueryParams
 }) {
-  const { image } = ctx.components
+  const { map } = ctx.components
   const {
     width,
     height,
@@ -48,7 +50,8 @@ export async function mapPngRequestHandler(ctx: {
     showOnSale,
     selected,
   } = extractQueryParams(ctx.query)
-  const stream = await image.getStream(
+  const stream = await getStream(
+    map,
     width,
     height,
     size,
@@ -66,21 +69,22 @@ export async function mapPngRequestHandler(ctx: {
 }
 
 export async function parcelMapPngRequestHandler(ctx: {
-  components: Pick<AppComponents, 'image'>
+  components: Pick<AppComponents, 'map'>
   query: http.QueryParams
   params: {
     x: string
     y: string
   }
 }) {
-  const { image } = ctx.components
+  const { map } = ctx.components
   const { width, height, size, showOnSale } = extractQueryParams(ctx.query)
   const center = {
     x: parseInt(ctx.params.x) || 0,
     y: parseInt(ctx.params.y) || 0,
   }
   const selected = [center]
-  const stream = await image.getStream(
+  const stream = await getStream(
+    map,
     width,
     height,
     size,
@@ -98,11 +102,11 @@ export async function parcelMapPngRequestHandler(ctx: {
 }
 
 export async function estateMapPngRequestHandler(ctx: {
-  components: Pick<AppComponents, 'image' | 'map'>
+  components: Pick<AppComponents, 'map'>
   params: { id: string }
   query: http.QueryParams
 }) {
-  const { map, image } = ctx.components
+  const { map } = ctx.components
   const { width, height, size, showOnSale } = extractQueryParams(ctx.query)
   const estateId = ctx.params.id
   const tiles = await map.getTiles()
@@ -114,7 +118,8 @@ export async function estateMapPngRequestHandler(ctx: {
   const x = xs[(xs.length / 2) | 0] || 0
   const y = ys[(ys.length / 2) | 0] || 0
   const center = { x, y }
-  const stream = await image.getStream(
+  const stream = await getStream(
+    map,
     width,
     height,
     size,

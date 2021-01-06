@@ -6,7 +6,7 @@ import {
 } from '@well-known-components/interfaces'
 import { IApiComponent } from '../api/types'
 import { IMapComponent, MapEvents, Tile } from './types'
-import { addSpecialTiles, addTiles } from './utils'
+import { addSpecialTiles, addTiles } from '../../logic/map-utils'
 
 export async function createMapComponent(components: {
   config: IConfigComponent

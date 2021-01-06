@@ -1,11 +1,9 @@
 import { setupRoutes } from './adapters/routes'
-import { createApiComponent } from './modules/api/component'
-import { createImageComponent } from './modules/image/component'
-import { createMapComponent } from './modules/map/component'
+import { createApiComponent } from './ports/api/component'
+import { createMapComponent } from './ports/map/component'
 import { AppComponents, AppConfig, GlobalContext } from './types'
 import { createConfigComponent } from '@well-known-components/env-config-provider'
-import { createServerComponent } from '@well-known-components/http-server'
-import { createStatusCheckComponent } from '@well-known-components/http-server/dist/status-checks'
+import { createServerComponent, createStatusCheckComponent } from '@well-known-components/http-server'
 import { createLogComponent } from '@well-known-components/logger'
 import { Lifecycle } from '@well-known-components/interfaces'
 
@@ -43,7 +41,6 @@ async function initComponents(): Promise<AppComponents> {
   const statusChecks = await createStatusCheckComponent({ server })
   const api = await createApiComponent({ config, logs })
   const map = await createMapComponent({ config, api, logs })
-  const image = await createImageComponent({ map })
 
   return {
     config,
@@ -51,7 +48,6 @@ async function initComponents(): Promise<AppComponents> {
     map,
     server,
     logs,
-    image,
     statusChecks,
   }
 }

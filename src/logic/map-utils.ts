@@ -1,4 +1,4 @@
-import { SpecialTile, Tile, TileType } from './types'
+import { SpecialTile, Tile, TileType } from '../ports/map/types'
 import specialTilesJson from './data/specialTiles.json'
 
 export const specialTiles = specialTilesJson as Record<string, SpecialTile>

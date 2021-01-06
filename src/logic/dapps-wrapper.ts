@@ -52,7 +52,9 @@ export function createDappsWrapper<T>(components: Pick<AppComponents, 'logs'>) {
   )
 
   // TODO: abstract this helper
-  return (handler: IAdapterHandler<http.DefaultContext<T>, http.IResponse>): IAdapterHandler<http.DefaultContext<T>, http.IResponse> => {
+  return (
+    handler: IAdapterHandler<http.DefaultContext<T>, http.IResponse>
+  ): IAdapterHandler<http.DefaultContext<T>, http.IResponse> => {
     return async (context: http.DefaultContext<T>) => {
       return middleware(context, handler)
     }

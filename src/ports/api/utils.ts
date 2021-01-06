@@ -1,7 +1,7 @@
 import 'isomorphic-fetch'
 import future from 'fp-future'
 import { Tile, TileType } from '../map/types'
-import { coordsToId, specialTiles } from '../map/utils'
+import { coordsToId, specialTiles } from '../../logic/map-utils'
 import { Fragment, OrderFragment } from './types'
 
 // helper to do GraphQL queries with retry logic

@@ -1,4 +1,4 @@
-import { LegacyTile, Tile, tileFields, TileType } from '../modules/map/types'
+import { LegacyTile, Tile, tileFields, TileType } from '../ports/map/types'
 
 type FilterQuery = {
   x1?: string

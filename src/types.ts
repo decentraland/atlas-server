@@ -1,6 +1,5 @@
-import type { ApiConfig, IApiComponent } from './modules/api/types'
-import type { IMapComponent, MapConfig } from './modules/map/types'
-import type { IImageComponent } from './modules/image/types'
+import type { ApiConfig, IApiComponent } from './ports/api/types'
+import type { IMapComponent, MapConfig } from './ports/map/types'
 import type {
   IBaseComponent,
   IConfigComponent,
@@ -19,7 +18,6 @@ export type AppComponents = {
   map: IMapComponent
   server: IHttpServerComponent
   logs: ILoggerComponent
-  image: IImageComponent
   statusChecks: IBaseComponent
 }
 

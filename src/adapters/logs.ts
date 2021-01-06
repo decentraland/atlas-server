@@ -1,6 +1,6 @@
 import { SingleBar } from 'cli-progress'
-import { ApiEvents } from '../modules/api/types'
-import { MapEvents, Tile } from '../modules/map/types'
+import { ApiEvents } from '../ports/api/types'
+import { MapEvents, Tile } from '../ports/map/types'
 import { AppComponents } from '../types'
 
 export const setupLogs = (
