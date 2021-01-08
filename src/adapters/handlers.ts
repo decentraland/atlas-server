@@ -3,7 +3,6 @@ import { extractQueryParams, filterTiles, toLegacyTiles } from '../logic/tiles'
 import { AppComponents } from '../types'
 import { cacheWrapper } from '../logic/cache'
 import { getStream } from '../logic/image-helpers'
-import { idText, isExportDeclaration } from 'typescript'
 
 export const createTilesRequestHandler = (
   components: Pick<AppComponents, 'map'>
