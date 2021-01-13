@@ -38,7 +38,5 @@ export function setupRoutes(
   )
 
   // forward legacy endpoints
-  server.get('/v1/parcels/*', redirect)
-  server.get('/v1/estates/*', redirect)
-  server.get('/v1/districts/*', redirect)
+  server.get('/v1/**', redirect)
 }
