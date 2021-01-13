@@ -2,10 +2,16 @@ import { EventEmitter } from 'events'
 
 import { Tile } from '../map/types'
 import { IConfigComponent } from '../config/types'
-import { ApiConfig, ApiEvents, Fragment, IApiComponent } from './types'
-import { fromFragment, graphql } from './utils'
+import {
+  ApiConfig,
+  ApiEvents,
+  TileFragment,
+  IApiComponent,
+  NFTFragment,
+} from './types'
+import { fromNFTFragment, fromTileFragment, graphql } from './utils'
 
-const fields = `{ 
+const tileFields = `{ 
   name
   owner { 
     id 
@@ -32,6 +38,30 @@ const fields = `{
         }
         updatedAt
       }
+    }
+  }
+}`
+
+const nftFields = `{
+  name
+  category
+  tokenId
+  contractAddress
+  parcel {
+    x 
+    y
+    data {
+      description
+    }
+  }
+  estate {
+    size
+    parcels { 
+      x
+      y 
+    }
+    data {
+      description
     }
   }
 }`
@@ -101,7 +131,7 @@ export function createApiComponent(components: {
   }
 
   async function fetchBatch(lastTokenId = '', page = 0) {
-    const { nfts } = await graphql<{ nfts: Fragment[] }>(
+    const { nfts } = await graphql<{ nfts: TileFragment[] }>(
       url,
       `{ 
         nfts(
@@ -113,14 +143,14 @@ export function createApiComponent(components: {
             ${lastTokenId ? `tokenId_gt: "${lastTokenId}",` : ''} 
             category: parcel 
           }
-        ) ${fields} 
+        ) ${tileFields} 
       }`
     )
-    return nfts.map(fromFragment)
+    return nfts.map(fromTileFragment)
   }
 
   async function fetchUpdatedTiles(updatedAfter: number) {
-    const { nfts } = await graphql<{ nfts: Fragment[] }>(
+    const { nfts } = await graphql<{ nfts: TileFragment[] }>(
       url,
       `{ 
         nfts(
@@ -131,15 +161,71 @@ export function createApiComponent(components: {
             updatedAt_gt: "${updatedAfter}", 
             category: parcel 
           }
-        ) ${fields} 
+        ) ${tileFields} 
       }`
     )
-    return nfts.map(fromFragment)
+    return nfts.map(fromTileFragment)
+  }
+
+  async function fetchParcel(x: string, y: string) {
+    const { nfts } = await graphql<{ nfts: NFTFragment[] }>(
+      url,
+      `{ 
+        nfts(
+          first: 1,
+          where: { 
+            category: parcel,
+            searchParcelX: "${x}",
+            searchParcelY: "${y}"
+          }
+        ) ${nftFields} 
+      }`
+    )
+
+    return nfts.length > 0 ? fromNFTFragment(nfts[0]) : null
+  }
+
+  async function fetchEstate(id: string) {
+    const { nfts } = await graphql<{ nfts: NFTFragment[] }>(
+      url,
+      `{ 
+        nfts(
+          first: 1,
+          where: { 
+            category: estate,
+            tokenId: "${id}",
+            searchEstateSize_gt: 0
+          }
+        ) ${nftFields} 
+      }`
+    )
+
+    return nfts.length > 0 ? fromNFTFragment(nfts[0]) : null
+  }
+
+  async function fetchToken(contractAddress: string, tokenId: string) {
+    const { nfts } = await graphql<{ nfts: NFTFragment[] }>(
+      url,
+      `{ 
+        nfts(
+          first: 1,
+          where: { 
+            contractAddress: "${contractAddress.toLowerCase()}",
+            tokenId: "${tokenId.toLowerCase()}",
+            searchEstateSize_gt: 0
+          }
+        ) ${nftFields} 
+      }`
+    )
+    return nfts.length > 0 ? fromNFTFragment(nfts[0]) : null
   }
 
   return {
     events,
     fetchTiles,
     fetchUpdatedTiles,
+    fetchParcel,
+    fetchEstate,
+    fetchToken,
   }
 }

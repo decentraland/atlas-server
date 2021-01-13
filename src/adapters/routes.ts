@@ -1,17 +1,23 @@
 import { AppComponents } from '../types'
 import {
   createEstateMapPngRequestHandler,
+  createEstateRequestHandler,
   createLegacyTilesRequestHandler,
   createMapPngRequestHandler,
   createParcelMapPngRequestHandler,
+  createParcelRequestHandler,
   createPingRequestHandler,
   createTilesRequestHandler,
+  createTokenRequestHandler,
 } from './handlers'
 
 export function setupRoutes(
-  components: Pick<AppComponents, 'server' | 'map' | 'image'>
+  components: Pick<
+    AppComponents,
+    'server' | 'map' | 'image' | 'config' | 'redirect' | 'api'
+  >
 ) {
-  const { server } = components
+  const { server, redirect } = components
   server.get('/v1/tiles', createLegacyTilesRequestHandler(components))
   server.get('/v2/tiles', createTilesRequestHandler(components))
   server.get('/v1/map.png', createMapPngRequestHandler(components))
@@ -24,4 +30,15 @@ export function setupRoutes(
     createEstateMapPngRequestHandler(components)
   )
   server.get('/v2/ping', createPingRequestHandler(components))
+  server.get('/v2/parcels/:x/:y', createParcelRequestHandler(components))
+  server.get('/v2/estates/:id', createEstateRequestHandler(components))
+  server.get(
+    '/v2/contracts/:address/tokens/:id',
+    createTokenRequestHandler(components)
+  )
+
+  // forward legacy endpoints
+  server.get('/v1/parcels/*', redirect)
+  server.get('/v1/estates/*', redirect)
+  server.get('/v1/districts/*', redirect)
 }

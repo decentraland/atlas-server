@@ -251,6 +251,63 @@ export const createEstateMapPngRequestHandler = (
   }
 }
 
+export const createParcelRequestHandler = (
+  components: Pick<AppComponents, 'api'>
+): RequestHandler => {
+  const { api } = components
+  return async (req, res) => {
+    const { x, y } = req.params
+    try {
+      const parcel = await api.fetchParcel(x, y)
+      if (parcel) {
+        res.status(200).json(parcel)
+      } else {
+        res.status(404).json({ error: 'Not Found' })
+      }
+    } catch (error) {
+      res.status(500).json({ error })
+    }
+  }
+}
+
+export const createEstateRequestHandler = (
+  components: Pick<AppComponents, 'api'>
+): RequestHandler => {
+  const { api } = components
+  return async (req, res) => {
+    const { id } = req.params
+    try {
+      const estate = await api.fetchEstate(id)
+      if (estate) {
+        res.status(200).json(estate)
+      } else {
+        res.status(404).json({ error: 'Not Found' })
+      }
+    } catch (error) {
+      res.status(500).json({ error })
+    }
+  }
+}
+
+export const createTokenRequestHandler = (
+  components: Pick<AppComponents, 'api'>
+): RequestHandler => {
+  const { api } = components
+  return async (req, res) => {
+    const { address, id } = req.params
+    try {
+      const token = await api.fetchToken(address, id)
+      if (token) {
+        res.status(200).json(token)
+      } else {
+        res.status(404).json({ error: 'Not Found' })
+      }
+    } catch (error) {
+      res.status(500).json({ error })
+    }
+  }
+}
+
 // helpers to convert to legacy format
 function toLegacyTiles(tiles: Record<string, Partial<Tile>>) {
   const legacyTiles: Record<string, Partial<LegacyTile>> = {}

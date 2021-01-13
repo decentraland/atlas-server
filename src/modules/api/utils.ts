@@ -2,7 +2,15 @@ import 'isomorphic-fetch'
 import future from 'fp-future'
 import { Tile, TileType } from '../map/types'
 import { coordsToId, specialTiles } from '../map/utils'
-import { Fragment, OrderFragment } from './types'
+import {
+  TileFragment,
+  OrderFragment,
+  Proximity,
+  NFTFragment,
+  NFT,
+  Attribute,
+} from './types'
+import proximities from './data/proximity.json'
 
 // helper to do GraphQL queries with retry logic
 export async function graphql<T>(url: string, query: string, retryDelay = 500) {
@@ -37,8 +45,8 @@ function isExpired(order: OrderFragment) {
   return parseInt(order.expiresAt) <= Date.now()
 }
 
-// helper to convert a Fragment into a Tile
-export function fromFragment(fragment: Fragment): Tile {
+// helper to convert a TileFragment into a Tile
+export function fromTileFragment(fragment: TileFragment): Tile {
   const {
     owner: parcelOwner,
     name: parcelName,
@@ -98,4 +106,110 @@ export function fromFragment(fragment: Fragment): Tile {
   }
 
   return tile
+}
+
+export function fromNFTFragment(fragment: NFTFragment): NFT {
+  const { category, name, parcel, estate, tokenId, contractAddress } = fragment
+  switch (category) {
+    case 'parcel': {
+      const { x, y } = parcel!
+      const attributes: Attribute[] = [
+        {
+          trait_type: 'X',
+          value: parseInt(x, 10),
+          display_type: 'number',
+        },
+        {
+          trait_type: 'Y',
+          value: parseInt(y, 10),
+          display_type: 'number',
+        },
+      ]
+
+      const proximity = getProximity([{ x, y }])
+      if (proximity) {
+        for (const key of Object.keys(proximity)) {
+          attributes.push({
+            trait_type: `Distance to ${capitalize(key)}`,
+            value: parseInt((proximity as any)[key], 10),
+            display_type: 'number',
+          })
+        }
+      }
+      return {
+        name: name || `Parcel ${x},${y}`,
+        description: (parcel!.data && parcel!.data.description) || '',
+        image: `https://api.decentraland.org/v1/parcels/${x}/${y}/map.png?size=24&width=1024&height=1024`,
+        external_url: `https://market.decentraland.org/contracts/${contractAddress}/tokens/${tokenId}`,
+        attributes,
+      }
+    }
+    case 'estate': {
+      const { size, parcels } = estate!
+      const attributes: Attribute[] = [
+        {
+          trait_type: 'Size',
+          value: size,
+          display_type: 'number',
+        },
+      ]
+      const proximity = getProximity(parcels)
+      if (proximity) {
+        for (const key of Object.keys(proximity)) {
+          attributes.push({
+            trait_type: `Distance to ${capitalize(key)}`,
+            value: parseInt((proximity as any)[key], 10),
+            display_type: 'number',
+          })
+        }
+      }
+      return {
+        name,
+        description: (estate!.data && estate!.data.description) || '',
+        image: `https://api.decentraland.org/v1/estates/${tokenId}/map.png?size=24&width=1024&height=1024`,
+        external_url: `https://market.decentraland.org/contracts/${contractAddress}/tokens/${tokenId}`,
+        attributes,
+      }
+    }
+  }
+}
+
+export const getProximity = (
+  coords: { x: number | string; y: number | string }[]
+) => {
+  let proximity: Proximity | undefined
+  for (const { x, y } of coords) {
+    const id = x + ',' + y
+    const coordProximity = (proximities as Record<string, Proximity>)[id]
+    if (coordProximity) {
+      if (proximity === undefined) {
+        proximity = {}
+      }
+      if (
+        coordProximity.district !== undefined &&
+        (proximity.district === undefined ||
+          coordProximity.district < proximity.district)
+      ) {
+        proximity.district = coordProximity.district
+      }
+      if (
+        coordProximity.plaza !== undefined &&
+        (proximity.plaza === undefined ||
+          coordProximity.plaza < proximity.plaza)
+      ) {
+        proximity.plaza = coordProximity.plaza
+      }
+      if (
+        coordProximity.road !== undefined &&
+        (proximity.road === undefined || coordProximity.road < proximity.road)
+      ) {
+        proximity.road = coordProximity.road
+      }
+    }
+  }
+  return proximity
+}
+
+function capitalize(text: string) {
+  return text[0].toUpperCase() + text.slice(1)
 }

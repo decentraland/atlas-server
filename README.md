@@ -112,3 +112,9 @@ Example:
 - `/v1/parcels/:x/:y/map.png`: This endpoint returns a PNG of the map already centered and highlighting a Parcel. You can also adjust `width`, `height` and `size` via query params
 
 - `/v1/estates/:id/map.png`: This endpoint returns a PNG of the map already centered and highlighting an Estate. You can also adjust `width`, `height` and `size` via query params
+
+- `/v2/parcels/:x/:y`: This endpoint returns metadata about a parcel by passing its coordinates. The metadata uses the [OpenSea Metadata Standard](https://docs.opensea.io/docs/metadata-standards).
+
+- `/v2/estates/:id`: This endpoint returns metadata about an estate by passing its id. The metadata uses the [OpenSea Metadata Standard](https://docs.opensea.io/docs/metadata-standards).
+
+- `/v2/contracts/:address/tokens/:id`: This endpoint returns metadata about a parcel or an estate, by passing the contract address and the token id. The contract address for LAND on mainnet is `0xf87e31492faf9a91b02ee0deaad50d51d56d5d4d` and the contract address for Estate on mainnet is `0x959e104e1a4db6317fa58f8295f586e1a978c297`. The metadata uses the [OpenSea Metadata Standard](https://docs.opensea.io/docs/metadata-standards).
