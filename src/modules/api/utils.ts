@@ -142,6 +142,7 @@ export function fromNFTFragment(fragment: NFTFragment): NFT {
         image: `https://api.decentraland.org/v1/parcels/${x}/${y}/map.png?size=24&width=1024&height=1024`,
         external_url: `https://market.decentraland.org/contracts/${contractAddress}/tokens/${tokenId}`,
         attributes,
+        background_color: '000000',
       }
     }
     case 'estate': {
@@ -169,6 +170,7 @@ export function fromNFTFragment(fragment: NFTFragment): NFT {
         image: `https://api.decentraland.org/v1/estates/${tokenId}/map.png?size=24&width=1024&height=1024`,
         external_url: `https://market.decentraland.org/contracts/${contractAddress}/tokens/${tokenId}`,
         attributes,
+        background_color: '000000',
       }
     }
   }

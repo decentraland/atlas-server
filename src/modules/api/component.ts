@@ -193,8 +193,7 @@ export function createApiComponent(components: {
           first: 1,
           where: { 
             category: estate,
-            tokenId: "${id}",
-            searchEstateSize_gt: 0
+            tokenId: "${id}"
           }
         ) ${nftFields} 
       }`
@@ -211,8 +210,7 @@ export function createApiComponent(components: {
           first: 1,
           where: { 
             contractAddress: "${contractAddress.toLowerCase()}",
-            tokenId: "${tokenId.toLowerCase()}",
-            searchEstateSize_gt: 0
+            tokenId: "${tokenId.toLowerCase()}"
           }
         ) ${nftFields} 
       }`
