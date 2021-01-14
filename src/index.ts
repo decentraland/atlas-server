@@ -21,7 +21,7 @@ async function main() {
     API_CONCURRENCY: 10,
     REFRESH_INTERVAL: 60,
     REDIRECT_URL:
-      'https://alb-marketplace-prod-354772954.us-east-1.elb.amazonaws.com',
+      'https://land-api.decentraland.org',
   }
 
   const components = initComponents(defaultValues)
