@@ -5,10 +5,10 @@ export = async function main() {
   const revision = process.env['CI_COMMIT_SHA']
   const image = `decentraland/atlas-server:${revision}`
 
-  const hostname = 'atlas-api.decentraland.' + envTLD
+  const hostname = 'api.decentraland.' + envTLD
 
-  const atlasApi = await createFargateTask(
-    `atlas-api`,
+  const api = await createFargateTask(
+    `api`,
     image,
     5000,
     [
@@ -39,7 +39,7 @@ export = async function main() {
     }
   )
 
-  const publicUrl = atlasApi.endpoint
+  const publicUrl = api.endpoint
 
   return {
     publicUrl,
