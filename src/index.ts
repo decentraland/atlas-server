@@ -1,5 +1,4 @@
 import cors from 'cors'
-import compression from 'compression'
 import { setupLogs } from './adapters/logs'
 import { setupRoutes } from './adapters/routes'
 import { createApiComponent } from './modules/api/component'
@@ -56,7 +55,6 @@ async function initAdapters(components: AppComponents) {
   setupLogs(components)
 
   server.use(cors())
-  server.use(compression())
 
   setupRoutes(components)
 
