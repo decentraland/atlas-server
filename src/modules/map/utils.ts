@@ -40,7 +40,9 @@ export function computeEstate(
 // helper to convert a "special tile" into a Tile. A "special tile" is a road, a plaza or a district
 function fromSpecialTile(specialTile: SpecialTile): Tile {
   const [x, y] = idToCoords(specialTile.id)
-  const name = specialTile.type[0].toUpperCase() + specialTile.type.slice(1)
+  const name =
+    specialTile.name ||
+    specialTile.type[0].toUpperCase() + specialTile.type.slice(1)
   return {
     ...specialTile,
     x,

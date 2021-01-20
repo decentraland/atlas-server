@@ -14,10 +14,10 @@ import {
 export function setupRoutes(
   components: Pick<
     AppComponents,
-    'server' | 'map' | 'image' | 'config' | 'redirect' | 'api'
+    'server' | 'map' | 'image' | 'config' | 'redirect' | 'api' | 'district'
   >
 ) {
-  const { server, redirect } = components
+  const { server, redirect, district } = components
   server.get('/v1/tiles', createLegacyTilesRequestHandler(components))
   server.get('/v2/tiles', createTilesRequestHandler(components))
   server.get('/v1/map.png', createMapPngRequestHandler(components))
@@ -35,6 +35,24 @@ export function setupRoutes(
   server.get(
     '/v2/contracts/:address/tokens/:id',
     createTokenRequestHandler(components)
+  )
+  server.get(
+    '/v2/districts',
+    server.handle(async () => ({ status: 200, body: district.getDistricts() }))
+  )
+  server.get(
+    '/v2/districts/:id',
+    server.handle(async (req) => ({
+      status: 200,
+      body: district.getDistrict(req.params.id),
+    }))
+  )
+  server.get(
+    '/v2/addresses/:address/contributions',
+    server.handle(async (req) => ({
+      status: 200,
+      body: district.getContributionsByAddress(req.params.address),
+    }))
   )
 
   // forward legacy endpoints

@@ -118,3 +118,9 @@ Example:
 - `/v2/estates/:id`: This endpoint returns metadata about an estate by passing its id. The metadata uses the [OpenSea Metadata Standard](https://docs.opensea.io/docs/metadata-standards).
 
 - `/v2/contracts/:address/tokens/:id`: This endpoint returns metadata about a parcel or an estate, by passing the contract address and the token id. The contract address for LAND on mainnet is `0xf87e31492faf9a91b02ee0deaad50d51d56d5d4d` and the contract address for Estate on mainnet is `0x959e104e1a4db6317fa58f8295f586e1a978c297`. The metadata uses the [OpenSea Metadata Standard](https://docs.opensea.io/docs/metadata-standards).
+
+- `/v2/districts`: Returns a list of all Districts in Genesis City.
+
+- `/v2/districts/:id`: Returns a specific district by `id`.
+
+- `/v2/addresses/:address/contributions`: Returns a list of contributions made by specific address. Each contribution includes the amount of parcels and the district `id` they were contributed to.

@@ -64,6 +64,7 @@ export type SpecialTile = {
   top: boolean
   left: boolean
   topLeft: boolean
+  name?: string
 }
 
 export type LegacyTile = {

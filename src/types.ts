@@ -5,6 +5,7 @@ import { IServerComponent, ServerConfig } from './modules/server/types'
 import { ILogComponent } from './modules/log/types'
 import { IImageComponent } from './modules/image/types'
 import { IRedirectComponent, RedirectConfig } from './modules/redirect/types'
+import { IDistrictComponent } from './modules/district/types'
 
 export type AppConfig = ApiConfig & MapConfig & ServerConfig & RedirectConfig
 
@@ -16,4 +17,5 @@ export type AppComponents = {
   log: ILogComponent
   image: IImageComponent
   redirect: IRedirectComponent
+  district: IDistrictComponent
 }
