@@ -1,4 +1,5 @@
 import cors from 'cors'
+import morgan from 'morgan'
 import { setupLogs } from './adapters/logs'
 import { setupRoutes } from './adapters/routes'
 import { createApiComponent } from './modules/api/component'
@@ -55,6 +56,9 @@ async function initAdapters(components: AppComponents) {
   setupLogs(components)
 
   server.use(cors())
+  server.use(
+    morgan(':method :url :status :res[content-length] - :response-time ms')
+  )
 
   setupRoutes(components)
 
