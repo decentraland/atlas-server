@@ -3,7 +3,7 @@ import future from 'fp-future'
 import { IApiComponent } from '../api/types'
 import { IConfigComponent } from '../config/types'
 import { IMapComponent, Tile, MapEvents, MapConfig } from './types'
-import { addSpecialTiles, computeEstate } from './utils'
+import { computeEstate } from './utils'
 
 export function createMapComponent(components: {
   config: IConfigComponent<MapConfig>
@@ -42,7 +42,7 @@ export function createMapComponent(components: {
       api
         .fetchTiles()
         .then((results) => {
-          tiles.resolve(addSpecialTiles(addTiles(results, {})))
+          tiles.resolve(addTiles(results, {}))
           setTimeout(poll, refreshInterval)
           events.emit(MapEvents.READY, results)
         })

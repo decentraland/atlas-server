@@ -1,4 +1,5 @@
 import { Request, RequestHandler } from 'express'
+import { utils } from 'decentraland-commons'
 import { LegacyTile, Tile, tileFields, TileType } from '../modules/map/types'
 import { IRequest } from '../modules/server/types'
 import { AppComponents } from '../types'
@@ -46,7 +47,8 @@ function filter(
         tile.y >= minY &&
         tile.y <= maxY
       ) {
-        result[tile.id] = tile
+        // Remove parcel and estate properties which are only useful for return the specific asset
+        result[tile.id] = utils.omit(tile, ['parcel', 'estate'])
       }
     }
   }
@@ -147,9 +149,9 @@ function extractParams(req: Request) {
   const selected =
     'selected' in req.query
       ? (req.query.selected as string).split(';').map((id) => {
-          const [x, y] = id.split(',').map((coord) => parseInt(coord))
-          return { x, y }
-        })
+        const [x, y] = id.split(',').map((coord) => parseInt(coord))
+        return { x, y }
+      })
       : []
   return {
     width,
@@ -261,13 +263,19 @@ export const createEstateMapPngRequestHandler = (
 }
 
 export const createParcelRequestHandler = (
-  components: Pick<AppComponents, 'api'>
+  components: Pick<AppComponents, 'nft' | 'map'>
 ): RequestHandler => {
-  const { api } = components
+  const { nft, map } = components
   return async (req, res) => {
     const { x, y } = req.params
     try {
-      const parcel = await api.fetchParcel(x, y)
+      const tiles = await map.getTiles()
+      const selected = Object.values(tiles).filter(
+        (tile) => tile.x === parseInt(x) && tile.y === parseInt(y)
+      )[0]
+
+      const parcel = await nft.getParcelFromTile(selected)
+
       if (parcel) {
         res.status(200).json(parcel)
       } else {
@@ -280,17 +288,22 @@ export const createParcelRequestHandler = (
 }
 
 export const createEstateRequestHandler = (
-  components: Pick<AppComponents, 'api'>
+  components: Pick<AppComponents, 'nft' | 'map'>
 ): RequestHandler => {
-  const { api } = components
+  const { nft, map } = components
   return async (req, res) => {
     const { id } = req.params
     try {
-      const estate = await api.fetchEstate(id)
-      if (estate) {
+      const tiles = await map.getTiles()
+      const selectedTiles = Object.values(tiles).filter(
+        (tile) => tile.estateId === id
+      )
+
+      if (selectedTiles) {
+        const estate = await nft.getEstateFromTile(selectedTiles)
         res.status(200).json(estate)
       } else {
-        res.status(404).json({ error: 'Not Found' })
+        res.status(404).json({ error: 'Estate not found. Chances are that it was dissolved' })
       }
     } catch (error) {
       res.status(500).json({ error })
@@ -299,13 +312,21 @@ export const createEstateRequestHandler = (
 }
 
 export const createTokenRequestHandler = (
-  components: Pick<AppComponents, 'api'>
+  components: Pick<AppComponents, 'nft' | 'map'>
 ): RequestHandler => {
-  const { api } = components
+  const { nft, map } = components
   return async (req, res) => {
     const { address, id } = req.params
     try {
-      const token = await api.fetchToken(address, id)
+      const tiles = await map.getTiles()
+
+      const selected = Object.values(tiles).filter(
+        (tile) =>
+          (tile.parcel.contractAddress === address.toLowerCase() && tile.parcel.tokenId === id) ||
+          (tile.estate && tile.estate.contractAddress === address.toLowerCase() && tile.estate.tokenId === id)
+      )
+
+      const token = await nft.getNFTFromTile(selected)
       if (token) {
         res.status(200).json(token)
       } else {

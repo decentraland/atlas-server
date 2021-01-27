@@ -21,7 +21,7 @@ const districtByIdCounter = new Counter({
 export function setupRoutes(
   components: Pick<
     AppComponents,
-    'server' | 'map' | 'image' | 'config' | 'api' | 'district'
+    'server' | 'map' | 'image' | 'config' | 'api' | 'district' | 'nft'
   >
 ) {
   const { server, district } = components

@@ -40,6 +40,19 @@ export type Tile = {
   estateId?: string
   tokenId?: string
   price?: number
+  parcel: {
+    contractAddress: string
+    tokenId: string
+    name: string | null
+    description?: string
+  }
+  estate?: {
+    contractAddress: string
+    tokenId: string
+    size: number
+    name?: string
+    description?: string
+  }
 }
 
 export const tileFields = [

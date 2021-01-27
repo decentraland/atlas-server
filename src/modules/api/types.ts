@@ -11,28 +11,10 @@ export enum ApiEvents {
   PROGRESS = 'progress',
 }
 
-export type NFT = {
-  name: string
-  description: string
-  image: string
-  external_url: string
-  background_color: string
-  attributes: Attribute[]
-}
-
-export type Attribute = {
-  trait_type: string
-  value: number
-  display_type: 'number'
-}
-
 export interface IApiComponent {
   events: EventEmitter
   fetchTiles: () => Promise<Tile[]>
   fetchUpdatedTiles: (updatedAfter: number) => Promise<Tile[]>
-  fetchParcel: (x: string, y: string) => Promise<NFT | null>
-  fetchEstate: (id: string) => Promise<NFT | null>
-  fetchToken: (contractAddress: string, tokenId: string) => Promise<NFT | null>
 }
 
 export type OrderFragment = {
@@ -42,6 +24,7 @@ export type OrderFragment = {
 
 export type TileFragment = {
   name: string | null
+  contractAddress: string
   owner: { id: string } | null
   searchParcelX: string
   searchParcelY: string
@@ -50,8 +33,13 @@ export type TileFragment = {
   updatedAt: string
   activeOrder: OrderFragment | null
   parcel: {
+    data: { description: string }
     estate: {
+      data: { description: string }
+      size: number
       nft: {
+        tokenId: string
+        contractAddress: string
         name: string
         owner: { id: string } | null
         activeOrder: OrderFragment | null
@@ -59,34 +47,4 @@ export type TileFragment = {
       }
     } | null
   }
-}
-
-export type NFTFragment = {
-  name: string
-  category: 'parcel' | 'estate'
-  tokenId: string
-  contractAddress: string
-  parcel: {
-    x: string
-    y: string
-    data: {
-      description: string | null
-    } | null
-  } | null
-  estate: {
-    size: number
-    parcels: {
-      x: string
-      y: string
-    }[]
-    data: {
-      description: string | null
-    } | null
-  } | null
-}
-
-export type Proximity = {
-  district?: number
-  road?: number
-  plaza?: number
 }

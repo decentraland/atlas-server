@@ -1,4 +1,4 @@
-import { LegacyTile, SpecialTile, Tile, TileType } from './types'
+import { SpecialTile, Tile, TileType } from './types'
 import specialTilesJson from './data/specialTiles.json'
 
 export const specialTiles = specialTilesJson as Record<string, SpecialTile>
@@ -35,27 +35,4 @@ export function computeEstate(
     tile.left = leftTile ? leftTile.estateId === tile.estateId : false
     tile.topLeft = topLeftTile ? topLeftTile.estateId === tile.estateId : false
   }
-}
-
-// helper to convert a "special tile" into a Tile. A "special tile" is a road, a plaza or a district
-function fromSpecialTile(specialTile: SpecialTile): Tile {
-  const [x, y] = idToCoords(specialTile.id)
-  const name =
-    specialTile.name ||
-    specialTile.type[0].toUpperCase() + specialTile.type.slice(1)
-  return {
-    ...specialTile,
-    x,
-    y,
-    name,
-    updatedAt: Date.now(),
-  }
-}
-export function addSpecialTiles(tiles: Record<string, Tile>) {
-  for (const specialTile of Object.values(specialTiles)) {
-    tiles[specialTile.id] = specialTile.id in tiles
-        ? tiles[specialTile.id]
-        : fromSpecialTile(specialTile)
-  }
-  return tiles
 }

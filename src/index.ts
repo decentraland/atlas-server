@@ -9,6 +9,7 @@ import { createImageComponent } from './modules/image/component'
 import { createLogComponent } from './modules/log/component'
 import { createMapComponent } from './modules/map/component'
 import { createServerComponent } from './modules/server/component'
+import { createNFTComponent } from './modules/nft/component'
 import { AppComponents, AppConfig } from './types'
 
 async function main() {
@@ -34,6 +35,7 @@ function initComponents(defaultValues: Partial<AppConfig>): AppComponents {
   const log = createLogComponent()
   const image = createImageComponent({ map })
   const district = createDistrictComponent()
+  const nft = createNFTComponent()
 
   return {
     config,
@@ -43,6 +45,7 @@ function initComponents(defaultValues: Partial<AppConfig>): AppComponents {
     log,
     image,
     district,
+    nft
   }
 }
 
