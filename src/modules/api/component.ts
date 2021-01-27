@@ -12,7 +12,6 @@ import { fromTileFragment, graphql } from './utils'
 
 const tileFields = `{
   name
-  contractAddress
   owner {
     id
   }
