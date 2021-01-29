@@ -34,7 +34,7 @@ export const setupLogs = (
   })
 
   map.events.on(MapEvents.UPDATE, (newTiles: Tile[]) =>
-    console.log(`Updating ${newTiles.length} parcels`)
+    console.log(`Updating ${newTiles.length} parcels: ${newTiles.map(tile => `${tile.x},${tile.y}`).join(', ')}`)
   )
 
   server.events.on(ServerEvents.ERROR, (error: Error) =>
