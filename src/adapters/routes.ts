@@ -14,10 +14,10 @@ import {
 export function setupRoutes(
   components: Pick<
     AppComponents,
-    'server' | 'map' | 'image' | 'config' | 'redirect' | 'api' | 'district'
+    'server' | 'map' | 'image' | 'config' | 'api' | 'district'
   >
 ) {
-  const { server, redirect, district } = components
+  const { server, district } = components
   server.get('/v1/tiles', createLegacyTilesRequestHandler(components))
   server.get('/v2/tiles', createTilesRequestHandler(components))
   server.get('/v1/map.png', createMapPngRequestHandler(components))
@@ -54,7 +54,4 @@ export function setupRoutes(
       body: district.getContributionsByAddress(req.params.address),
     }))
   )
-
-  // forward legacy endpoints
-  server.get('/v1/**', redirect)
 }

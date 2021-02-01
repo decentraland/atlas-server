@@ -9,7 +9,6 @@ import { createImageComponent } from './modules/image/component'
 import { createLogComponent } from './modules/log/component'
 import { createMapComponent } from './modules/map/component'
 import { createServerComponent } from './modules/server/component'
-import { createRedirectComponent } from './modules/redirect/component'
 import { AppComponents, AppConfig } from './types'
 
 async function main() {
@@ -21,7 +20,6 @@ async function main() {
     API_BATCH_SIZE: 1000,
     API_CONCURRENCY: 10,
     REFRESH_INTERVAL: 60,
-    REDIRECT_URL: 'https://land-api.decentraland.org',
   }
 
   const components = initComponents(defaultValues)
@@ -35,7 +33,6 @@ function initComponents(defaultValues: Partial<AppConfig>): AppComponents {
   const server = createServerComponent({ config })
   const log = createLogComponent()
   const image = createImageComponent({ map })
-  const redirect = createRedirectComponent({ config })
   const district = createDistrictComponent()
 
   return {
@@ -45,7 +42,6 @@ function initComponents(defaultValues: Partial<AppConfig>): AppComponents {
     server,
     log,
     image,
-    redirect,
     district,
   }
 }
