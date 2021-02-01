@@ -54,7 +54,4 @@ export function setupRoutes(
       body: district.getContributionsByAddress(req.params.address),
     }))
   )
-
-  // forward legacy endpoints
-  server.get('/v1/**', redirect)
 }
