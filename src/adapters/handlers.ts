@@ -2,6 +2,7 @@ import { Request, RequestHandler } from 'express'
 import { LegacyTile, Tile, tileFields, TileType } from '../modules/map/types'
 import { IRequest } from '../modules/server/types'
 import { AppComponents } from '../types'
+import { Histogram } from 'prom-client'
 
 type FilterQuery = {
   x1?: string
@@ -160,6 +161,12 @@ function extractParams(req: Request) {
   }
 }
 
+const mapGenerationHistogram = new Histogram({
+  name: 'dcl_map_render_time',
+  help: 'map render time',
+  buckets: [0.1, 5, 15, 50, 100, 500],
+})
+
 export const createMapPngRequestHandler = (
   components: Pick<AppComponents, 'image'>
 ): RequestHandler => {
@@ -174,6 +181,7 @@ export const createMapPngRequestHandler = (
         showOnSale,
         selected,
       } = extractParams(req)
+      const startTime = Date.now()
       const stream = await image.getStream(
         width,
         height,
@@ -182,6 +190,7 @@ export const createMapPngRequestHandler = (
         selected,
         showOnSale
       )
+      mapGenerationHistogram.observe(Date.now() - startTime)
       res.type('png')
       stream.pipe(res)
     } catch (error) {
