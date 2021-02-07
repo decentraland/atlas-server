@@ -19,7 +19,7 @@
     "@types/morgan": "^1.9.2",
     "@types/node": "^14.14.9",
     "canvas": "^2.6.1",
-    "cli-progress": "^3.8.2",
+    "cli-progress": "^3.9.0",
     "cors": "^2.8.5",
     "dotenv": "^8.2.0",
     "express": "^4.17.1",
