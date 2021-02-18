@@ -150,10 +150,13 @@ export function createApiComponent(components: {
   }
 
   async function fetchUpdatedTiles(updatedAfter: number) {
-    const { nfts } = await graphql<{ nfts: TileFragment[] }>(
+    const { parcels, estates } = await graphql<{
+      parcels: TileFragment[]
+      estates: { estate: { parcels: { nft: TileFragment }[] } }[]
+    }>(
       url,
       `{ 
-        nfts(
+        parcels: nfts(
           first: ${batchSize}, 
           orderBy: updatedAt, 
           orderDirection: asc, 
@@ -162,9 +165,44 @@ export function createApiComponent(components: {
             category: parcel 
           }
         ) ${tileFields} 
+        estates: nfts(
+          first: ${batchSize}, 
+          orderBy: updatedAt, 
+          orderDirection: asc, 
+          where: { 
+            updatedAt_gt: "${updatedAfter}", 
+            category: estate
+          }
+        ) {
+          estate { 
+            parcels {
+              nft ${tileFields} 
+            } 
+          }
+        }
       }`
     )
-    return nfts.map(fromTileFragment)
+    const updatedTiles = parcels.map(fromTileFragment)
+
+    // The following piece adds tiles from updated Estates. This is necessary only for an Estate that get listed or delisted on sale, since that doesn't chagne the lastUpdatedAt property of a Parcel.
+
+    // keep track of tiles already added
+    const tilesAlreadyAdded = new Set<string>(
+      updatedTiles.map((tile) => tile.id)
+    )
+    // grab tiles from updated estates
+    const updatedTilesFromEstates = estates
+      .reduce<Tile[]>(
+        (tiles, nft) => [
+          ...tiles,
+          ...nft.estate.parcels.map((parcel) => fromTileFragment(parcel.nft)),
+        ],
+        []
+      )
+      // remove duplicated tiles, if any
+      .filter((tile) => !tilesAlreadyAdded.has(tile.id))
+
+    return [...updatedTiles, ...updatedTilesFromEstates]
   }
 
   async function fetchParcel(x: string, y: string) {
