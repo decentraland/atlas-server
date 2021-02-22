@@ -11,7 +11,7 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "@types/cli-progress": "^3.8.0",
+    "@types/cli-progress": "^3.9.0",
     "@types/compression": "^1.7.0",
     "@types/cors": "^2.8.8",
     "@types/express": "^4.17.9",
