@@ -11,13 +11,6 @@ import {
   createTokenRequestHandler,
 } from './handlers'
 
-import { register, Counter } from 'prom-client'
-
-const districtByIdCounter = new Counter({
-  name: 'dcl_districts_by_id_counter',
-  help: 'How many times the districtbyid was called'
-})
-
 export function setupRoutes(
   components: Pick<
     AppComponents,
@@ -49,14 +42,10 @@ export function setupRoutes(
   )
   server.get(
     '/v2/districts/:id',
-    server.handle(async (req) => {
-      districtByIdCounter.inc()
-
-      return {
-        status: 200,
-        body: district.getDistrict(req.params.id),
-      }
-    })
+    server.handle(async (req) => ({
+      status: 200,
+      body: district.getDistrict(req.params.id),
+    }))
   )
   server.get(
     '/v2/addresses/:address/contributions',
@@ -64,12 +53,5 @@ export function setupRoutes(
       status: 200,
       body: district.getContributionsByAddress(req.params.address),
     }))
-  )
-  server.get(
-    '/metrics',
-    async (req, res) => {
-      res.header("content-type", register.contentType)
-      res.send(await register.metrics())
-    }
   )
 }

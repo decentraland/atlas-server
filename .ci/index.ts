@@ -32,9 +32,6 @@ export = async function main() {
         healthyThreshold: 3,
       },
       version: '1',
-      metrics: {
-        path: '/metrics'
-      },
       memoryReservation: 1024,
       cpuReservation: 1024,
       desiredCount: env === 'prd' ? 3 : 1,
