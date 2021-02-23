@@ -1,6 +1,9 @@
 import { EventEmitter } from 'events'
+import { NFT } from '../api/types'
 
 export type MapConfig = {
+  LAND_CONTRACT_ADDRESS: string
+  ESTATE_CONTRACT_ADDRESS: string
   REFRESH_INTERVAL: number
 }
 
@@ -15,6 +18,9 @@ export interface IMapComponent {
   events: EventEmitter
   init: () => void
   getTiles: () => Promise<Record<string, Tile>>
+  getParcel: (x: string | number, y: string | number) => Promise<NFT | null>
+  getEstate: (id: string) => Promise<NFT | null>
+  getToken: (contractAddress: string, tokenId: string) => Promise<NFT | null>
   getLastUpdatedAt: () => number
 }
 

@@ -261,13 +261,13 @@ export const createEstateMapPngRequestHandler = (
 }
 
 export const createParcelRequestHandler = (
-  components: Pick<AppComponents, 'api'>
+  components: Pick<AppComponents, 'map'>
 ): RequestHandler => {
-  const { api } = components
+  const { map } = components
   return async (req, res) => {
     const { x, y } = req.params
     try {
-      const parcel = await api.fetchParcel(x, y)
+      const parcel = await map.getParcel(x, y)
       if (parcel) {
         res.status(200).json(parcel)
       } else {
@@ -280,13 +280,13 @@ export const createParcelRequestHandler = (
 }
 
 export const createEstateRequestHandler = (
-  components: Pick<AppComponents, 'api'>
+  components: Pick<AppComponents, 'map'>
 ): RequestHandler => {
-  const { api } = components
+  const { map } = components
   return async (req, res) => {
     const { id } = req.params
     try {
-      const estate = await api.fetchEstate(id)
+      const estate = await map.getEstate(id)
       if (estate) {
         res.status(200).json(estate)
       } else {
@@ -299,13 +299,13 @@ export const createEstateRequestHandler = (
 }
 
 export const createTokenRequestHandler = (
-  components: Pick<AppComponents, 'api'>
+  components: Pick<AppComponents, 'map'>
 ): RequestHandler => {
-  const { api } = components
+  const { map } = components
   return async (req, res) => {
     const { address, id } = req.params
     try {
-      const token = await api.fetchToken(address, id)
+      const token = await map.getToken(address, id)
       if (token) {
         res.status(200).json(token)
       } else {

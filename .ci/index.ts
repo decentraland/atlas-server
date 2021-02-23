@@ -20,6 +20,34 @@ export = async function main() {
             ? 'https://api.thegraph.com/subgraphs/name/decentraland/marketplace'
             : 'https://api.thegraph.com/subgraphs/name/decentraland/marketplace-ropsten',
       },
+      {
+        name: 'IMAGE_BASE_URL',
+        value:
+          env === 'prd' || env === 'stg'
+            ? 'https://api.decentraland.org/v1'
+            : 'https://api.decentraland.io/v1',
+      },
+      {
+        name: 'EXTERNAL_BASE_URL',
+        value:
+          env === 'prd' || env === 'stg'
+            ? 'https://market.decentraland.org'
+            : 'https://market.decentraland.io',
+      },
+      {
+        name: 'LAND_CONTRACT_ADDRESS',
+        value:
+          env === 'prd' || env === 'stg'
+            ? '0xf87e31492faf9a91b02ee0deaad50d51d56d5d4d'
+            : '0x7a73483784ab79257bb11b96fd62a2c3ae4fb75b',
+      },
+      {
+        name: 'ESTATE_CONTRACT_ADDRESS',
+        value:
+          env === 'prd' || env === 'stg'
+            ? '0x959e104e1a4db6317fa58f8295f586e1a978c297'
+            : '0x124bf28a423b2ca80b3846c3aa0eb944fe7ebb95',
+      },
     ],
     hostname,
     {
@@ -33,7 +61,7 @@ export = async function main() {
       },
       version: '1',
       metrics: {
-        path: '/metrics'
+        path: '/metrics',
       },
       memoryReservation: 1024,
       cpuReservation: 1024,

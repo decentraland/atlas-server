@@ -20,6 +20,10 @@ async function main() {
     API_BATCH_SIZE: 1000,
     API_CONCURRENCY: 5,
     REFRESH_INTERVAL: 60,
+    IMAGE_BASE_URL: 'https://api.decentraland.org/v1',
+    EXTERNAL_BASE_URL: 'https://market.decentraland.org',
+    LAND_CONTRACT_ADDRESS: '0xf87e31492faf9a91b02ee0deaad50d51d56d5d4d',
+    ESTATE_CONTRACT_ADDRESS: '0x959e104e1a4db6317fa58f8295f586e1a978c297',
   }
 
   const components = initComponents(defaultValues)

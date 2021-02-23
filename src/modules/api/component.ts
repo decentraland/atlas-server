@@ -1,15 +1,26 @@
 import { EventEmitter } from 'events'
 
-import { Tile } from '../map/types'
+import { Tile, TileType } from '../map/types'
 import { IConfigComponent } from '../config/types'
 import {
   ApiConfig,
   ApiEvents,
-  TileFragment,
+  Batch,
+  ParcelFragment,
   IApiComponent,
-  NFTFragment,
+  NFT,
+  Attribute,
+  EstateFragment,
+  Result,
 } from './types'
-import { fromNFTFragment, fromTileFragment, graphql } from './utils'
+import {
+  isExpired,
+  getProximity,
+  graphql,
+  capitalize,
+  buildFromEstates,
+} from './utils'
+import { coordsToId, specialTiles } from '../map/utils'
 
 const tileFields = `{ 
   name
@@ -26,7 +37,17 @@ const tileFields = `{
     expiresAt
   }
   parcel {
+    data {
+      name
+      description
+    }
     estate {
+      tokenId
+      size
+      parcels {
+        x
+        y
+      }
       nft {
         name
         owner { 
@@ -42,30 +63,6 @@ const tileFields = `{
   }
 }`
 
-const nftFields = `{
-  name
-  category
-  tokenId
-  contractAddress
-  parcel {
-    x 
-    y
-    data {
-      description
-    }
-  }
-  estate {
-    size
-    parcels { 
-      x
-      y 
-    }
-    data {
-      description
-    }
-  }
-}`
-
 export function createApiComponent(components: {
   config: IConfigComponent<ApiConfig>
 }): IApiComponent {
@@ -75,35 +72,48 @@ export function createApiComponent(components: {
   const url = config.getString('API_URL')
   const batchSize = config.getNumber('API_BATCH_SIZE')
   const concurrency = config.getNumber('API_CONCURRENCY')
+  const imageBaseUrl = config.getString('IMAGE_BASE_URL')
+  const externalBaseUrl = config.getString('EXTERNAL_BASE_URL')
+  const landContractAddress = config.getString('LAND_CONTRACT_ADDRESS')
+  const estateContractAddress = config.getString('ESTATE_CONTRACT_ADDRESS')
 
   // events
   const events = new EventEmitter()
 
   // methods
-  async function fetchTiles() {
+  async function fetchData() {
     const tiles: Tile[] = []
+    const parcels: NFT[] = []
+    const estates: NFT[] = []
 
     // auxiliars for fetching in batches
-    let batches: Promise<Tile[]>[] = []
+
+    let batches: Promise<Batch>[] = []
     let total = 0
     let complete = false
     let lastTokenId = ''
 
     while (!complete) {
       // fetch batch
-      const batch = fetchBatch(lastTokenId, batches.length).then((result) => {
+      const batch = fetchBatch(lastTokenId, batches.length).then((batch) => {
         // merge results
-        for (const tile of result) {
+        for (const tile of batch.tiles) {
           tiles.push(tile)
+        }
+        for (const parcel of batch.parcels) {
+          parcels.push(parcel)
+        }
+        for (const estate of batch.estates) {
+          estates.push(estate)
         }
 
         // notify progress
-        total = total + result.length
+        total = total + batch.tiles.length
         const progress = ((total / 90601) * 100) | 0 // there are 301x301=90601 parcels in the world
         events.emit(ApiEvents.PROGRESS, Math.min(99, progress))
 
         // resolve
-        return result
+        return batch
       })
 
       // when max concurrency is reached...
@@ -111,15 +121,17 @@ export function createApiComponent(components: {
       if (batches.length === Math.max(concurrency, 1)) {
         // ...wait for all the batches to finish
         const results = await Promise.all(batches)
-
         // find last id
         lastTokenId = results
+          .map((batch) => batch.tiles)
           .filter((result) => result.length > 0)
           .pop()!
           .pop()!.tokenId!
 
         // prepare next iteration
-        complete = results.some((result) => result.length === 0)
+        complete = results
+          .map((batch) => batch.tiles)
+          .some((result) => result.length === 0)
         batches = []
       }
     }
@@ -127,11 +139,28 @@ export function createApiComponent(components: {
     // final progress update
     events.emit(ApiEvents.PROGRESS, 100)
 
-    return tiles
+    const result: Result = {
+      tiles,
+      parcels,
+      // remove duplicates
+      estates: Array.from(
+        estates.reduce<Map<string, NFT>>(
+          (map, nft) => map.set(nft.id, nft),
+          new Map()
+        ),
+        ([_key, value]) => value
+      ),
+      updatedAt: tiles.reduce<number>(
+        (lastUpdatedAt, tile) => Math.max(lastUpdatedAt, tile.updatedAt),
+        0
+      ),
+    }
+
+    return result
   }
 
   async function fetchBatch(lastTokenId = '', page = 0) {
-    const { nfts } = await graphql<{ nfts: TileFragment[] }>(
+    const { nfts } = await graphql<{ nfts: ParcelFragment[] }>(
       url,
       `{ 
         nfts(
@@ -146,13 +175,26 @@ export function createApiComponent(components: {
         ) ${tileFields} 
       }`
     )
-    return nfts.map(fromTileFragment)
+    return nfts.reduce<Batch>(
+      (batch, nft) => {
+        const tile = buildTile(nft)
+        const parcel = buildParcel(nft)
+        const estate = buildEstate(nft)
+        batch.tiles.push(tile)
+        batch.parcels.push(parcel)
+        if (estate) {
+          batch.estates.push(estate)
+        }
+        return batch
+      },
+      { tiles: [], parcels: [], estates: [] }
+    )
   }
 
-  async function fetchUpdatedTiles(updatedAfter: number) {
+  async function fetchUpdatedData(updatedAfter: number) {
     const { parcels, estates } = await graphql<{
-      parcels: TileFragment[]
-      estates: { estate: { parcels: { nft: TileFragment }[] } }[]
+      parcels: ParcelFragment[]
+      estates: EstateFragment[]
     }>(
       url,
       `{ 
@@ -174,6 +216,7 @@ export function createApiComponent(components: {
             category: estate
           }
         ) {
+          updatedAt
           estate { 
             parcels {
               nft ${tileFields} 
@@ -182,86 +225,207 @@ export function createApiComponent(components: {
         }
       }`
     )
-    const updatedTiles = parcels.map(fromTileFragment)
+
+    const updatedTiles = parcels.map(buildTile)
+    const updatedParcels = parcels.map(buildParcel)
+    const updatedEstates = parcels
+      .map(buildEstate)
+      .filter((estate) => estate !== null) as NFT[]
 
     // The following piece adds tiles from updated Estates. This is necessary only for an Estate that get listed or delisted on sale, since that doesn't chagne the lastUpdatedAt property of a Parcel.
-
-    // keep track of tiles already added
-    const tilesAlreadyAdded = new Set<string>(
-      updatedTiles.map((tile) => tile.id)
+    const updatedTilesFromEstates = buildFromEstates(
+      estates,
+      updatedTiles,
+      buildTile
     )
-    // grab tiles from updated estates
-    const updatedTilesFromEstates = estates
-      .reduce<Tile[]>(
-        (tiles, nft) => [
-          ...tiles,
-          ...nft.estate.parcels.map((parcel) => fromTileFragment(parcel.nft)),
-        ],
-        []
-      )
-      // remove duplicated tiles, if any
-      .filter((tile) => !tilesAlreadyAdded.has(tile.id))
+    const updatedParcelsFromEstates = buildFromEstates(
+      estates,
+      updatedParcels,
+      buildParcel
+    )
+    const updatedEstatesFromEstates = buildFromEstates(
+      estates,
+      updatedEstates,
+      buildEstate
+    )
 
-    return [...updatedTiles, ...updatedTilesFromEstates]
+    const batch: Batch = {
+      tiles: [...updatedTiles, ...updatedTilesFromEstates],
+      parcels: [...updatedParcels, ...updatedParcelsFromEstates],
+      estates: [...updatedEstates, ...updatedEstatesFromEstates],
+    }
+
+    const tilesLastUpdatedAt = batch.tiles.reduce<number>(
+      (updatedAt, tile) => Math.max(updatedAt, tile.updatedAt),
+      0
+    )
+    const estatesLastUpdatedAt = estates.reduce<number>(
+      (updatedAt, estate) =>
+        Math.max(updatedAt, parseInt(estate.updatedAt, 10)),
+      0
+    )
+
+    const updatedAt = Math.max(tilesLastUpdatedAt, estatesLastUpdatedAt)
+
+    const result: Result = {
+      ...batch,
+      updatedAt,
+    }
+
+    return result
   }
 
-  async function fetchParcel(x: string, y: string) {
-    const { nfts } = await graphql<{ nfts: NFTFragment[] }>(
-      url,
-      `{ 
-        nfts(
-          first: 1,
-          where: { 
-            category: parcel,
-            searchParcelX: "${x}",
-            searchParcelY: "${y}"
-          }
-        ) ${nftFields} 
-      }`
+  function buildTile(fragment: ParcelFragment): Tile {
+    const {
+      owner: parcelOwner,
+      name: parcelName,
+      searchParcelX,
+      searchParcelY,
+      searchParcelEstateId,
+      tokenId,
+      updatedAt: parcelUpdatedAt,
+      activeOrder: parcelActiveOrder,
+      parcel: { estate },
+    } = fragment
+
+    const x = parseInt(searchParcelX)
+    const y = parseInt(searchParcelY)
+    const id = coordsToId(x, y)
+    const name = (estate && estate.nft.name) || parcelName
+    const owner = (estate && estate.nft.owner) || parcelOwner
+    const activeOrder = (estate && estate.nft.activeOrder) || parcelActiveOrder
+    const updatedAt = Math.max(
+      estate ? parseInt(estate.nft.updatedAt, 10) : 0,
+      parseInt(parcelUpdatedAt, 10)
     )
 
-    return nfts.length > 0 ? fromNFTFragment(nfts[0]) : null
+    // special tiles are plazas, districts and roads
+    const specialTile = id in specialTiles ? specialTiles[id] : null
+
+    const tile: Tile = {
+      id,
+      x,
+      y,
+      updatedAt,
+      type: specialTile
+        ? specialTile.type
+        : owner
+        ? TileType.OWNED
+        : TileType.UNOWNED,
+      top: specialTile ? specialTile.top : false,
+      left: specialTile ? specialTile.left : false,
+      topLeft: specialTile ? specialTile.topLeft : false,
+    }
+
+    if (name) {
+      tile.name = name
+    }
+
+    if (searchParcelEstateId) {
+      tile.estateId = searchParcelEstateId.split('-').pop()! // estate-0xdeadbeef-<id>
+    }
+
+    if (owner) {
+      tile.owner = owner.id
+    }
+
+    if (activeOrder && !isExpired(activeOrder)) {
+      tile.price = Math.round(parseInt(activeOrder.price) / 1e18)
+    }
+
+    if (tokenId) {
+      tile.tokenId = tokenId
+    }
+
+    return tile
   }
 
-  async function fetchEstate(id: string) {
-    const { nfts } = await graphql<{ nfts: NFTFragment[] }>(
-      url,
-      `{ 
-        nfts(
-          first: 1,
-          where: { 
-            category: estate,
-            tokenId: "${id}"
-          }
-        ) ${nftFields} 
-      }`
-    )
+  function buildParcel(fragment: ParcelFragment): NFT {
+    const {
+      searchParcelX,
+      searchParcelY,
+      tokenId,
+      parcel: { data },
+    } = fragment
 
-    return nfts.length > 0 ? fromNFTFragment(nfts[0]) : null
+    const x = parseInt(searchParcelX, 10)
+    const y = parseInt(searchParcelY, 10)
+
+    const attributes: Attribute[] = [
+      {
+        trait_type: 'X',
+        value: x,
+        display_type: 'number',
+      },
+      {
+        trait_type: 'Y',
+        value: y,
+        display_type: 'number',
+      },
+    ]
+
+    const proximity = getProximity([{ x, y }])
+    if (proximity) {
+      for (const key of Object.keys(proximity)) {
+        attributes.push({
+          trait_type: `Distance to ${capitalize(key)}`,
+          value: parseInt((proximity as any)[key], 10),
+          display_type: 'number',
+        })
+      }
+    }
+
+    return {
+      id: tokenId,
+      name: (data && data.name) || `Parcel ${x},${y}`,
+      description: (data && data.description) || '',
+      image: `${imageBaseUrl}/parcels/${x}/${y}/map.png?size=24&width=1024&height=1024`,
+      external_url: `${externalBaseUrl}/contracts/${landContractAddress}/tokens/${tokenId}`,
+      attributes,
+      background_color: '000000',
+    }
   }
 
-  async function fetchToken(contractAddress: string, tokenId: string) {
-    const { nfts } = await graphql<{ nfts: NFTFragment[] }>(
-      url,
-      `{ 
-        nfts(
-          first: 1,
-          where: { 
-            contractAddress: "${contractAddress.toLowerCase()}",
-            tokenId: "${tokenId.toLowerCase()}"
-          }
-        ) ${nftFields} 
-      }`
-    )
-    return nfts.length > 0 ? fromNFTFragment(nfts[0]) : null
+  function buildEstate(fragment: ParcelFragment): NFT | null {
+    const {
+      parcel: { estate },
+    } = fragment
+    if (!estate) return null
+
+    const { size, parcels, tokenId } = estate
+    const { name, description } = estate.nft
+    const attributes: Attribute[] = [
+      {
+        trait_type: 'Size',
+        value: size,
+        display_type: 'number',
+      },
+    ]
+    const proximity = getProximity(parcels)
+    if (proximity) {
+      for (const key of Object.keys(proximity)) {
+        attributes.push({
+          trait_type: `Distance to ${capitalize(key)}`,
+          value: parseInt((proximity as any)[key], 10),
+          display_type: 'number',
+        })
+      }
+    }
+
+    return {
+      id: tokenId,
+      name,
+      description: description || '',
+      image: `${imageBaseUrl}/estates/${tokenId}/map.png?size=24&width=1024&height=1024`,
+      external_url: `${externalBaseUrl}/contracts/${estateContractAddress}/tokens/${tokenId}`,
+      attributes,
+      background_color: '000000',
+    }
   }
 
   return {
     events,
-    fetchTiles,
-    fetchUpdatedTiles,
-    fetchParcel,
-    fetchEstate,
-    fetchToken,
+    fetchData,
+    fetchUpdatedData,
   }
 }

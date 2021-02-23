@@ -1,6 +1,6 @@
 import { SingleBar } from 'cli-progress'
-import { ApiEvents } from '../modules/api/types'
-import { MapEvents, Tile } from '../modules/map/types'
+import { ApiEvents, Result } from '../modules/api/types'
+import { MapEvents } from '../modules/map/types'
 import { ServerEvents } from '../modules/server/types'
 import { AppComponents } from '../types'
 
@@ -25,17 +25,27 @@ export const setupLogs = (
 
   api.events.on(ApiEvents.PROGRESS, (progress: number) => bar.update(progress))
 
-  map.events.on(MapEvents.READY, (tiles: Tile[]) => {
+  map.events.on(MapEvents.READY, (result: Result) => {
     bar.stop()
-    console.log(`Total: ${tiles.length.toLocaleString()} parcels`)
+    console.log(`Total: ${result.tiles.length.toLocaleString()} tiles`)
+    console.log(`Parcels: ${result.parcels.length.toLocaleString()}`)
+    console.log(`Estates: ${result.estates.length.toLocaleString()}`)
+    console.log(`Last timestamp:`, result.updatedAt)
     console.log(
       `Polling changes every ${config.getNumber('REFRESH_INTERVAL')} seconds`
     )
   })
 
-  map.events.on(MapEvents.UPDATE, (newTiles: Tile[]) =>
-    console.log(`Updating ${newTiles.length} parcels: ${newTiles.map(tile => `${tile.x},${tile.y}`).join(', ')}`)
-  )
+  map.events.on(MapEvents.UPDATE, (result: Result) => {
+    console.log(
+      `Updating ${result.tiles.length} tiles: ${result.tiles
+        .map((tile) => `${tile.x},${tile.y}`)
+        .join(', ')}`
+    )
+    console.log(`Updating ${result.parcels.length} parcels`)
+    console.log(`Updating ${result.estates.length} estates`)
+    console.log(`Last timestamp:`, result.updatedAt)
+  })
 
   server.events.on(ServerEvents.ERROR, (error: Error) =>
     console.log(`Error: ${error.message}`)
