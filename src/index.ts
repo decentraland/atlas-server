@@ -18,7 +18,7 @@ async function main() {
     HOST: '0.0.0.0',
     API_URL: 'https://api.thegraph.com/subgraphs/name/decentraland/marketplace',
     API_BATCH_SIZE: 1000,
-    API_CONCURRENCY: 10,
+    API_CONCURRENCY: 5,
     REFRESH_INTERVAL: 60,
   }
 
