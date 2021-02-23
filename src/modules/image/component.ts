@@ -35,53 +35,55 @@ export function createImageComponent(components: {
     const pan = { x: 0, y: 0 }
     const { nw, se } = getViewport({ width, height, center, size, padding: 1 })
     const canvas = createCanvas(width, height)
-    const ctx = canvas.getContext('2d') as CanvasRenderingContext2D
-    const tiles = await map.getTiles()
-    const layer: Layer = (x, y) => {
-      const id = coordsToId(x, y)
-      const tile = tiles[id]
-      const result = tile
-        ? {
+    if (map.getInitialTilesCompleted()) {
+      const ctx = canvas.getContext('2d') as CanvasRenderingContext2D
+      const tiles = await map.getTiles()
+      const layer: Layer = (x, y) => {
+        const id = coordsToId(x, y)
+        const tile = tiles[id]
+        const result = tile
+          ? {
             color: showOnSale && tile.price ? '#1FBCFF' : getColor(tile),
             top: tile.top,
             left: tile.left,
             topLeft: tile.topLeft,
           }
-        : {
+          : {
             color: (x + y) % 2 === 0 ? '#110e13' : '#0d0b0e',
           }
-      return result
-    }
-    const layers = [layer]
+        return result
+      }
+      const layers = [layer]
 
-    // render selected tiles
-    if (selected.length > 0) {
-      const selection = new Set(
-        selected.map((coords) => coordsToId(coords.x, coords.y))
-      )
-      const strokeLayer: Layer = (x, y) =>
-        selection.has(coordsToId(x, y))
-          ? { color: '#ff0044', scale: 1.4 }
-          : null
-      const fillLayer: Layer = (x, y) =>
-        selection.has(coordsToId(x, y))
-          ? { color: '#ff9990', scale: 1.2 }
-          : null
-      layers.push(strokeLayer)
-      layers.push(fillLayer)
-    }
+      // render selected tiles
+      if (selected.length > 0) {
+        const selection = new Set(
+          selected.map((coords) => coordsToId(coords.x, coords.y))
+        )
+        const strokeLayer: Layer = (x, y) =>
+          selection.has(coordsToId(x, y))
+            ? { color: '#ff0044', scale: 1.4 }
+            : null
+        const fillLayer: Layer = (x, y) =>
+          selection.has(coordsToId(x, y))
+            ? { color: '#ff9990', scale: 1.2 }
+            : null
+        layers.push(strokeLayer)
+        layers.push(fillLayer)
+      }
 
-    renderMap({
-      ctx,
-      width,
-      height,
-      size,
-      pan,
-      center,
-      nw,
-      se,
-      layers,
-    })
+      renderMap({
+        ctx,
+        width,
+        height,
+        size,
+        pan,
+        center,
+        nw,
+        se,
+        layers,
+      })
+    }
     return canvas.createPNGStream()
   }
   return {

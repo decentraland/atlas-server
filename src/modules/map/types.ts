@@ -16,6 +16,7 @@ export interface IMapComponent {
   init: () => void
   getTiles: () => Promise<Record<string, Tile>>
   getLastUpdatedAt: () => number
+  getInitialTilesCompleted: () => boolean
 }
 
 export enum TileType {

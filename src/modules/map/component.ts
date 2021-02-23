@@ -20,6 +20,7 @@ export function createMapComponent(components: {
   // data
   let tiles = future<Record<string, Tile>>()
   let inited = false
+  let fetchedInitTiles = false
   let lastUpdatedAt = 0
 
   // sort
@@ -45,6 +46,7 @@ export function createMapComponent(components: {
           tiles.resolve(addSpecialTiles(addTiles(results, {})))
           setTimeout(poll, refreshInterval)
           events.emit(MapEvents.READY, results)
+          fetchedInitTiles = true
         })
         .catch((error) => {
           inited = false
@@ -77,10 +79,15 @@ export function createMapComponent(components: {
     return lastUpdatedAt
   }
 
+  function getInitialTilesCompleted() {
+    return fetchedInitTiles
+  }
+
   return {
     events,
     init,
     getTiles,
     getLastUpdatedAt,
+    getInitialTilesCompleted
   }
 }
