@@ -125,3 +125,4 @@ Example:
 - `/v2/districts/:id`: Returns a specific district by `id`.
 
 - `/v2/addresses/:address/contributions`: Returns a list of contributions made by specific address. Each contribution includes the amount of parcels and the district `id` they were contributed to.
+
