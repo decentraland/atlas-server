@@ -31,7 +31,7 @@ export = async function main() {
         unhealthyThreshold: 10,
         healthyThreshold: 3,
       },
-      memoryReservation: 4096,
+      memoryReservation: 6144,
       cpuReservation: 2048,
       desiredCount: env === 'prd' ? 3 : 1,
       extraExposedServiceOptions: {
