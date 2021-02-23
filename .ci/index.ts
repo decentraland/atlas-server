@@ -31,9 +31,8 @@ export = async function main() {
         unhealthyThreshold: 10,
         healthyThreshold: 3,
       },
-      version: '1',
-      memoryReservation: 2048,
-      cpuReservation: 1024,
+      memoryReservation: 4096,
+      cpuReservation: 2048,
       desiredCount: env === 'prd' ? 3 : 1,
       extraExposedServiceOptions: {
         createCloudflareProxiedSubdomain: true,
