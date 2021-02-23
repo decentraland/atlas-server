@@ -356,9 +356,8 @@ function getLegacyTile(tile: Partial<Tile>): number {
 export function createPingRequestHandler(
   components: Pick<AppComponents, 'map' | 'server'>
 ) {
-  const { server, map } = components
+  const { server } = components
   return server.handle(async () => {
-    await map.getTiles()
     return {
       status: 200,
       body: 'ok',

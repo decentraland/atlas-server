@@ -32,7 +32,7 @@ export = async function main() {
         healthyThreshold: 3,
       },
       version: '1',
-      memoryReservation: 1024,
+      memoryReservation: 2048,
       cpuReservation: 1024,
       desiredCount: env === 'prd' ? 3 : 1,
       extraExposedServiceOptions: {
