@@ -40,6 +40,7 @@ export function createMapComponent(components: {
     }
     return oldTiles
   }
+
   function addParcels(newParcels: NFT[], oldParcels: Record<string, NFT>) {
     for (const parcel of newParcels) {
       const xAttr = parcel.attributes.find(
