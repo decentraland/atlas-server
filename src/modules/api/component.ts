@@ -232,7 +232,7 @@ export function createApiComponent(components: {
       .map(buildEstate)
       .filter((estate) => estate !== null) as NFT[]
 
-    // The following piece adds tiles from updated Estates. This is necessary only for an Estate that get listed or delisted on sale, since that doesn't chagne the lastUpdatedAt property of a Parcel.
+    // The following piece adds tiles from updated Estates. This is necessary only for an Estate that get listed or delisted on sale, since that doesn't change the lastUpdatedAt property of a Parcel.
     const updatedTilesFromEstates = buildFromEstates(
       estates,
       updatedTiles,
