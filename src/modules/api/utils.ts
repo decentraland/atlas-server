@@ -86,17 +86,23 @@ export function buildFromEstates<T extends { id: string }>(
   list: T[],
   build: (fragment: ParcelFragment) => T | null
 ) {
+  // keep track of entries already added to the list
   const alreadyAdded = new Set<string>(list.map((entry) => entry.id))
-  return estates.reduce<T[]>((entries, nft) => {
-    const newEntries = nft.estate.parcels
-      .map((parcel) => build(parcel.nft))
-      .filter((entry) => entry !== null) as T[]
-    for (const newEntry of newEntries) {
-      if (!alreadyAdded.has(newEntry.id)) {
-        entries.push(newEntry)
-        alreadyAdded.add(newEntry.id)
-      }
-    }
-    return entries
-  }, [])
+  // fill list with new entries from EstateFragments
+  return estates.reduce<T[]>(
+    (entries, nft) =>
+      // grab parcels from each estate
+      nft.estate.parcels
+        // build each entry from each ParcelFragment
+        .map((parcel) => build(parcel.nft))
+        // add entries to the list, only if not null and not added already
+        .reduce((entries, entry) => {
+          if (entry && !alreadyAdded.has(entry.id)) {
+            entries.push(entry)
+            alreadyAdded.add(entry.id)
+          }
+          return entries
+        }, entries),
+    []
+  )
 }
