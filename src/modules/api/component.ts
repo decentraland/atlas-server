@@ -22,7 +22,7 @@ import {
 } from './utils'
 import { coordsToId, specialTiles } from '../map/utils'
 
-const tileFields = `{ 
+const parcelFields = `{ 
   name
   owner { 
     id 
@@ -172,7 +172,7 @@ export function createApiComponent(components: {
             ${lastTokenId ? `tokenId_gt: "${lastTokenId}",` : ''} 
             category: parcel 
           }
-        ) ${tileFields} 
+        ) ${parcelFields} 
       }`
     )
     return nfts.reduce<Batch>(
@@ -206,7 +206,7 @@ export function createApiComponent(components: {
             updatedAt_gt: "${updatedAfter}", 
             category: parcel 
           }
-        ) ${tileFields} 
+        ) ${parcelFields} 
         estates: nfts(
           first: ${batchSize}, 
           orderBy: updatedAt, 
@@ -219,7 +219,7 @@ export function createApiComponent(components: {
           updatedAt
           estate { 
             parcels {
-              nft ${tileFields} 
+              nft ${parcelFields} 
             } 
           }
         }
