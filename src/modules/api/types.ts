@@ -5,13 +5,21 @@ export type ApiConfig = {
   API_URL: string
   API_BATCH_SIZE: number
   API_CONCURRENCY: number
+  IMAGE_BASE_URL: string
+  EXTERNAL_BASE_URL: string
+  LAND_CONTRACT_ADDRESS: string
+  ESTATE_CONTRACT_ADDRESS: string
 }
 
 export enum ApiEvents {
   PROGRESS = 'progress',
 }
 
+export type Batch = { tiles: Tile[]; parcels: NFT[]; estates: NFT[] }
+export type Result = Batch & { updatedAt: number }
+
 export type NFT = {
+  id: string
   name: string
   description: string
   image: string
@@ -28,11 +36,8 @@ export type Attribute = {
 
 export interface IApiComponent {
   events: EventEmitter
-  fetchTiles: () => Promise<Tile[]>
-  fetchUpdatedTiles: (updatedAfter: number) => Promise<Tile[]>
-  fetchParcel: (x: string, y: string) => Promise<NFT | null>
-  fetchEstate: (id: string) => Promise<NFT | null>
-  fetchToken: (contractAddress: string, tokenId: string) => Promise<NFT | null>
+  fetchData: () => Promise<Result>
+  fetchUpdatedData: (updatedAfter: number) => Promise<Result>
 }
 
 export type OrderFragment = {
@@ -40,7 +45,16 @@ export type OrderFragment = {
   expiresAt: string
 }
 
-export type TileFragment = {
+export type EstateFragment = {
+  updatedAt: string
+  estate: {
+    parcels: {
+      nft: ParcelFragment
+    }[]
+  }
+}
+
+export type ParcelFragment = {
   name: string | null
   owner: { id: string } | null
   searchParcelX: string
@@ -50,39 +64,23 @@ export type TileFragment = {
   updatedAt: string
   activeOrder: OrderFragment | null
   parcel: {
+    data: {
+      name: string | null
+      description: string | null
+    } | null
     estate: {
+      tokenId: string
+      size: number
+      parcels: { x: string; y: string }[]
       nft: {
         name: string
+        description: string | null
         owner: { id: string } | null
         activeOrder: OrderFragment | null
         updatedAt: string
       }
     } | null
   }
-}
-
-export type NFTFragment = {
-  name: string
-  category: 'parcel' | 'estate'
-  tokenId: string
-  contractAddress: string
-  parcel: {
-    x: string
-    y: string
-    data: {
-      description: string | null
-    } | null
-  } | null
-  estate: {
-    size: number
-    parcels: {
-      x: string
-      y: string
-    }[]
-    data: {
-      description: string | null
-    } | null
-  } | null
 }
 
 export type Proximity = {
