@@ -92,6 +92,9 @@ export const createTilesRequestHandler = (
   const { server, map } = components
   return server.cache(
     async (req) => {
+      if (!map.isReady()) {
+        throw new Error('Not ready')
+      }
       const tiles = await map.getTiles()
       return {
         status: 200,
@@ -108,6 +111,9 @@ export const createLegacyTilesRequestHandler = (
   const { server, map } = components
   return server.cache(
     async (req) => {
+      if (!map.isReady()) {
+        throw new Error('Not ready')
+      }
       const tiles = await map.getTiles()
       return {
         status: 200,
@@ -168,11 +174,14 @@ const mapGenerationHistogram = new Histogram({
 })
 
 export const createMapPngRequestHandler = (
-  components: Pick<AppComponents, 'image'>
+  components: Pick<AppComponents, 'image' | 'map'>
 ): RequestHandler => {
-  const { image } = components
+  const { image, map } = components
   return async (req, res) => {
     try {
+      if (!map.isReady()) {
+        throw new Error('Not ready')
+      }
       const {
         width,
         height,
@@ -194,17 +203,20 @@ export const createMapPngRequestHandler = (
       res.type('png')
       stream.pipe(res)
     } catch (error) {
-      res.status(500).send(JSON.stringify({ error: error.message }))
+      res.status(500).send(JSON.stringify({ ok: false, error: error.message }))
     }
   }
 }
 
 export const createParcelMapPngRequestHandler = (
-  components: Pick<AppComponents, 'image'>
+  components: Pick<AppComponents, 'image' | 'map'>
 ): RequestHandler => {
-  const { image } = components
+  const { image, map } = components
   return async (req, res) => {
     try {
+      if (!map.isReady()) {
+        throw new Error('Not ready')
+      }
       const { width, height, size, showOnSale } = extractParams(req)
       const center = {
         x: parseInt(req.params.x) || 0,
@@ -222,7 +234,7 @@ export const createParcelMapPngRequestHandler = (
       res.type('png')
       stream.pipe(res)
     } catch (error) {
-      res.status(500).send(JSON.stringify({ error: error.message }))
+      res.status(500).send(JSON.stringify({ ok: false, error: error.message }))
     }
   }
 }
@@ -233,6 +245,9 @@ export const createEstateMapPngRequestHandler = (
   const { image, map } = components
   return async (req, res) => {
     try {
+      if (!map.isReady()) {
+        throw new Error('Not ready')
+      }
       const { width, height, size, showOnSale } = extractParams(req)
       const estateId = req.params.id
       const tiles = await map.getTiles()
@@ -255,7 +270,7 @@ export const createEstateMapPngRequestHandler = (
       res.type('png')
       stream.pipe(res)
     } catch (error) {
-      res.status(500).send(JSON.stringify({ error: error.message }))
+      res.status(500).send(JSON.stringify({ ok: false, error: error.message }))
     }
   }
 }
@@ -267,14 +282,17 @@ export const createParcelRequestHandler = (
   return async (req, res) => {
     const { x, y } = req.params
     try {
+      if (!map.isReady()) {
+        throw new Error('Not ready')
+      }
       const parcel = await map.getParcel(x, y)
       if (parcel) {
         res.status(200).json(parcel)
       } else {
-        res.status(404).json({ error: 'Not Found' })
+        res.status(404).json({ ok: false, error: 'Not Found' })
       }
     } catch (error) {
-      res.status(500).json({ error })
+      res.status(500).json({ ok: false, error: error.message })
     }
   }
 }
@@ -286,14 +304,17 @@ export const createEstateRequestHandler = (
   return async (req, res) => {
     const { id } = req.params
     try {
+      if (!map.isReady()) {
+        throw new Error('Not ready')
+      }
       const estate = await map.getEstate(id)
       if (estate) {
         res.status(200).json(estate)
       } else {
-        res.status(404).json({ error: 'Not Found' })
+        res.status(404).json({ ok: false, error: 'Not Found' })
       }
     } catch (error) {
-      res.status(500).json({ error })
+      res.status(500).json({ ok: false, error: error.message })
     }
   }
 }
@@ -305,14 +326,17 @@ export const createTokenRequestHandler = (
   return async (req, res) => {
     const { address, id } = req.params
     try {
+      if (!map.isReady()) {
+        throw new Error('Not ready')
+      }
       const token = await map.getToken(address, id)
       if (token) {
         res.status(200).json(token)
       } else {
-        res.status(404).json({ error: 'Not Found' })
+        res.status(404).json({ ok: false, error: 'Not Found' })
       }
     } catch (error) {
-      res.status(500).json({ error })
+      res.status(500).json({ ok: false, error: error.message })
     }
   }
 }
@@ -365,9 +389,23 @@ function getLegacyTile(tile: Partial<Tile>): number {
 export function createPingRequestHandler(
   components: Pick<AppComponents, 'map' | 'server'>
 ) {
+  const { server } = components
+  return server.handle(async () => {
+    return {
+      status: 200,
+      body: 'ok',
+    }
+  })
+}
+
+export function createReadyRequestHandler(
+  components: Pick<AppComponents, 'map' | 'server'>
+) {
   const { server, map } = components
   return server.handle(async () => {
-    await map.getTiles()
+    if (!map.isReady()) {
+      throw new Error('Not ready')
+    }
     return {
       status: 200,
       body: 'ok',

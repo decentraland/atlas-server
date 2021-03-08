@@ -45,7 +45,7 @@ export function createServerComponent(components: {
 
   function failure(res: Response) {
     return (error: Error) => {
-      res.status(500).send({ ok: false, error })
+      res.status(500).send({ ok: false, error: error.message })
       events.emit(ServerEvents.ERROR, error)
     }
   }
