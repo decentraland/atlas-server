@@ -21,6 +21,7 @@ export interface IMapComponent {
   getParcel: (x: string | number, y: string | number) => Promise<NFT | null>
   getEstate: (id: string) => Promise<NFT | null>
   getToken: (contractAddress: string, tokenId: string) => Promise<NFT | null>
+  isReady: () => boolean
   getLastUpdatedAt: () => number
 }
 

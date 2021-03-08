@@ -25,6 +25,7 @@ export function createMapComponent(components: {
   let estates = future<Record<string, NFT>>()
   let tokens = future<Record<string, NFT>>()
   let inited = false
+  let ready = false
   let lastUpdatedAt = 0
 
   // sort
@@ -93,6 +94,7 @@ export function createMapComponent(components: {
           parcels.resolve(addParcels(result.parcels, {}))
           estates.resolve(addEstates(result.estates, {}))
           tokens.resolve(addTokens(result.parcels, result.estates, {}))
+          ready = true
           setTimeout(poll, refreshInterval)
           events.emit(MapEvents.READY, result)
         })
@@ -172,6 +174,10 @@ export function createMapComponent(components: {
     return result || null
   }
 
+  function isReady() {
+    return ready
+  }
+
   function getLastUpdatedAt() {
     return lastUpdatedAt
   }
@@ -183,6 +189,7 @@ export function createMapComponent(components: {
     getParcel,
     getEstate,
     getToken,
+    isReady,
     getLastUpdatedAt,
   }
 }

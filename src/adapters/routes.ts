@@ -7,6 +7,7 @@ import {
   createParcelMapPngRequestHandler,
   createParcelRequestHandler,
   createPingRequestHandler,
+  createReadyRequestHandler,
   createTilesRequestHandler,
   createTokenRequestHandler,
 } from './handlers'
@@ -15,7 +16,7 @@ import { register, Counter } from 'prom-client'
 
 const districtByIdCounter = new Counter({
   name: 'dcl_districts_by_id_counter',
-  help: 'How many times the districtbyid was called'
+  help: 'How many times the districtbyid was called',
 })
 
 export function setupRoutes(
@@ -37,6 +38,7 @@ export function setupRoutes(
     createEstateMapPngRequestHandler(components)
   )
   server.get('/v2/ping', createPingRequestHandler(components))
+  server.get('/v2/ready', createReadyRequestHandler(components))
   server.get('/v2/parcels/:x/:y', createParcelRequestHandler(components))
   server.get('/v2/estates/:id', createEstateRequestHandler(components))
   server.get(
@@ -65,11 +67,8 @@ export function setupRoutes(
       body: district.getContributionsByAddress(req.params.address),
     }))
   )
-  server.get(
-    '/metrics',
-    async (req, res) => {
-      res.header("content-type", register.contentType)
-      res.send(await register.metrics())
-    }
-  )
+  server.get('/metrics', async (req, res) => {
+    res.header('content-type', register.contentType)
+    res.send(await register.metrics())
+  })
 }
