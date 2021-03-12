@@ -66,7 +66,7 @@ export const mapPngRequestHandler = async (context: {
     return {
       status: 200,
       headers: {
-        'content-type': 'application/png',
+        'content-type': 'image/png',
       },
       body: stream,
     }
@@ -110,7 +110,7 @@ export const parcelMapPngRequestHandler = async (context: {
     return {
       status: 200,
       headers: {
-        'content-type': 'application/png',
+        'content-type': 'image/png',
       },
       body: stream,
     }
@@ -154,7 +154,7 @@ export const estateMapPngRequestHandler = async (context: {
     return {
       status: 200,
       headers: {
-        'content-type': 'application/png',
+        'content-type': 'image/png',
       },
       body: stream,
     }
