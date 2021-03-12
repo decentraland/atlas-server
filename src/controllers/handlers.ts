@@ -10,7 +10,7 @@ export const createTilesRequestHandler = (
   return cacheWrapper(
     async (context: { url: URL }) => {
       if (!map.isReady()) {
-        throw new Error('Not ready')
+        return { status: 503, body: 'Not ready' }
       }
       const tiles = await map.getTiles()
       return {
@@ -29,7 +29,7 @@ export const createLegacyTilesRequestHandler = (
   return cacheWrapper(
     async (context: { url: URL }) => {
       if (!map.isReady()) {
-        throw new Error('Not ready')
+        return { status: 503, body: 'Not ready' }
       }
       const tiles = await map.getTiles()
       return {
@@ -49,7 +49,7 @@ export const mapPngRequestHandler = async (context: {
   const timer = metrics.startTimer('dcl_map_render_time')
   try {
     if (!map.isReady()) {
-      throw new Error('Not ready')
+      return { status: 503, body: 'Not ready' }
     }
     const { width, height, size, center, showOnSale, selected } = extractParams(
       context.url
@@ -91,7 +91,7 @@ export const parcelMapPngRequestHandler = async (context: {
   const { image, map } = components
   try {
     if (!map.isReady()) {
-      throw new Error('Not ready')
+      return { status: 503, body: 'Not ready' }
     }
     const { width, height, size, showOnSale } = extractParams(context.url)
     const center = {
@@ -130,7 +130,7 @@ export const estateMapPngRequestHandler = async (context: {
   const { image, map } = context.components
   try {
     if (!map.isReady()) {
-      throw new Error('Not ready')
+      return { status: 503, body: 'Not ready' }
     }
     const { width, height, size, showOnSale } = extractParams(context.url)
     const { estateId } = context.params
@@ -238,7 +238,7 @@ export async function readyRequestHandler(context: {
 }) {
   const { map } = context.components
   if (!map.isReady()) {
-    throw new Error('Not ready')
+    return { status: 503, body: 'Not ready' }
   }
   return {
     status: 200,

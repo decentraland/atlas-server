@@ -1,3 +1,4 @@
+import { setupLogs } from "./controllers/logs"
 import { setupRouter } from "./controllers/routes"
 import { AppComponents, GlobalContext, TestComponents } from "./types"
 
@@ -11,4 +12,6 @@ export async function main(components: AppComponents | TestComponents) {
   const router = await setupRouter(components)
   components.server.use(router.middleware())
   components.server.setContext(globalContext)
+
+  setupLogs(components)
 }

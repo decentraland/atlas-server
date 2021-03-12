@@ -1,4 +1,8 @@
-import { IConfigComponent } from '@well-known-components/interfaces'
+import {
+  IBaseComponent,
+  IConfigComponent,
+  IStatusCheckCapableComponent,
+} from '@well-known-components/interfaces'
 import { EventEmitter } from 'events'
 import future from 'fp-future'
 import { IApiComponent, NFT } from '../api/types'
@@ -8,13 +12,18 @@ import { addSpecialTiles, computeEstate } from './utils'
 export async function createMapComponent(components: {
   config: IConfigComponent
   api: IApiComponent
-}): Promise<IMapComponent> {
+}): Promise<IMapComponent & IBaseComponent & IStatusCheckCapableComponent> {
   const { config, api } = components
 
   // config
-  const refreshInterval = await config.requireNumber('REFRESH_INTERVAL') * 1000
-  const landContractAddress = await config.requireString('LAND_CONTRACT_ADDRESS')
-  const estateContractAddress = await config.requireString('ESTATE_CONTRACT_ADDRESS')
+  const refreshInterval =
+    (await config.requireNumber('REFRESH_INTERVAL')) * 1000
+  const landContractAddress = await config.requireString(
+    'LAND_CONTRACT_ADDRESS'
+  )
+  const estateContractAddress = await config.requireString(
+    'ESTATE_CONTRACT_ADDRESS'
+  )
 
   // events
   const events = new EventEmitter()
@@ -24,7 +33,6 @@ export async function createMapComponent(components: {
   let parcels = future<Record<string, NFT>>()
   let estates = future<Record<string, NFT>>()
   let tokens = future<Record<string, NFT>>()
-  let inited = false
   let ready = false
   let lastUpdatedAt = 0
 
@@ -84,28 +92,59 @@ export async function createMapComponent(components: {
     return oldTokens
   }
 
-  function init() {
-    if (!inited) {
-      api
-        .fetchData()
-        .then((result) => {
-          lastUpdatedAt = result.updatedAt
-          tiles.resolve(addSpecialTiles(addTiles(result.tiles, {})))
-          parcels.resolve(addParcels(result.parcels, {}))
-          estates.resolve(addEstates(result.estates, {}))
-          tokens.resolve(addTokens(result.parcels, result.estates, {}))
-          ready = true
-          setTimeout(poll, refreshInterval)
-          events.emit(MapEvents.READY, result)
-        })
-        .catch((error) => {
-          inited = false
-          tiles.reject(error)
-          events.emit(MapEvents.ERROR, error)
-        })
-      inited = true
+  const lifeCycle: IBaseComponent = {
+    // IBaseComponent.start lifecycle
+    async start() {
       events.emit(MapEvents.INIT)
-    }
+      try {
+        const result = await api.fetchData()
+        lastUpdatedAt = result.updatedAt
+        tiles.resolve(addSpecialTiles(addTiles(result.tiles, {})))
+        parcels.resolve(addParcels(result.parcels, {}))
+        estates.resolve(addEstates(result.estates, {}))
+        tokens.resolve(addTokens(result.parcels, result.estates, {}))
+        ready = true
+        setTimeout(poll, refreshInterval)
+        events.emit(MapEvents.READY, result)
+      } catch (error) {
+        tiles.reject(error)
+        events.emit(MapEvents.ERROR, error)
+      }
+    },
+  }
+
+  const statusChecks: IStatusCheckCapableComponent = {
+    /**
+     * The first probe to run is the Startup probe.
+     * When your app starts up, it might need to do a lot of work.
+     * It might need to fetch data from remote services, load dlls
+     * from plugins, who knows what else. During that process, your
+     * app should either not respond to requests, or if it does, it
+     * should return a status code of 400 or higher. Once the startup
+     * process has finished, you can switch to returning a success
+     * result (200) for the startup probe.
+     *
+     * IMPORTANT: This method should return as soon as possible, not wait for completion.
+     * @public
+     */
+    async startupProbe() {
+      return isReady()
+    },
+    /**
+     * Readiness probes indicate whether your application is ready to
+     * handle requests. It could be that your application is alive, but
+     * that it just can't handle HTTP traffic. In that case, Kubernetes
+     * won't kill the container, but it will stop sending it requests.
+     * In practical terms, that means the pod is removed from an
+     * associated service's "pool" of pods that are handling requests,
+     * by marking the pod as "Unready".
+     *
+     * IMPORTANT: This method should return as soon as possible, not wait for completion.
+     * @public
+     */
+    async readynessProbe() {
+      return isReady()
+    },
   }
 
   async function poll() {
@@ -144,7 +183,6 @@ export async function createMapComponent(components: {
   }
 
   function getTiles() {
-    init()
     return tiles
   }
 
@@ -152,14 +190,12 @@ export async function createMapComponent(components: {
     x: string | number,
     y: string | number
   ): Promise<NFT | null> {
-    init()
     const id = x + ',' + y
     const result = (await parcels)[id]
     return result || null
   }
 
   async function getEstate(id: string): Promise<NFT | null> {
-    init()
     const result = (await estates)[id]
     return result || null
   }
@@ -168,7 +204,6 @@ export async function createMapComponent(components: {
     contractAddress: string,
     tokenId: string
   ): Promise<NFT | null> {
-    init()
     const id = contractAddress + '-' + tokenId
     const result = (await tokens)[id]
     return result || null
@@ -183,8 +218,9 @@ export async function createMapComponent(components: {
   }
 
   return {
+    ...lifeCycle,
+    ...statusChecks,
     events,
-    init,
     getTiles,
     getParcel,
     getEstate,

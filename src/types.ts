@@ -28,7 +28,9 @@ export type BaseComponents = {
 }
 
 // production components
-export type AppComponents = BaseComponents & {}
+export type AppComponents = BaseComponents & {
+  statusChecks: {}
+}
 
 // test environment components
 export type TestComponents = BaseComponents & {}

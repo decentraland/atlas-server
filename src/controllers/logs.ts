@@ -10,11 +10,11 @@ export const setupLogs = (
 
   const bar = new SingleBar({ format: '[{bar}] {percentage}%' })
 
-  map.events.on(MapEvents.INIT, () => {
+  map.events.on(MapEvents.INIT, async () => {
     console.log(`Fetching data...`)
-    console.log(`URL: ${config.getString('API_URL')}`)
-    console.log(`Concurrency: ${config.getString('API_CONCURRENCY')}`)
-    console.log(`Batch Size: ${config.getString('API_BATCH_SIZE')}`)
+    console.log(`URL: ${await config.getString('API_URL')}`)
+    console.log(`Concurrency: ${await config.getString('API_CONCURRENCY')}`)
+    console.log(`Batch Size: ${await config.getString('API_BATCH_SIZE')}`)
     bar.start(100, 0)
   })
 
