@@ -16,27 +16,16 @@
   "author": "",
   "license": "Apache-2.0",
   "dependencies": {
-    "@types/cli-progress": "^3.8.0",
-    "@types/compression": "^1.7.0",
-    "@types/cors": "^2.8.8",
-    "@types/express": "^4.17.9",
-    "@types/isomorphic-fetch": "0.0.35",
-    "@types/morgan": "^1.9.2",
-    "@types/node": "^14.14.9",
+    "@types/cli-progress": "^3.9.1",
     "@well-known-components/env-config-provider": "^1.0.0",
     "@well-known-components/http-server": "^1.0.0",
     "@well-known-components/interfaces": "^1.0.0",
     "@well-known-components/logger": "^1.0.0",
     "@well-known-components/metrics": "^1.0.0",
-    "canvas": "^2.6.1",
-    "cli-progress": "^3.8.2",
-    "cors": "^2.8.5",
+    "canvas": "^2.7.0",
+    "cli-progress": "^3.9.0",
     "dotenv": "^8.2.0",
-    "express": "^4.17.1",
     "fp-future": "^1.0.1",
-    "isomorphic-fetch": "^3.0.0",
-    "morgan": "^1.10.0",
-    "prom-client": "^13.1.0",
-    "typescript": "^4.1.2"
+    "typescript": "^4.2.3"
   }
 }
