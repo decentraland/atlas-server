@@ -1,11 +1,12 @@
-import { IMetricsComponent } from "@well-known-components/interfaces"
-import { validateMetricsDeclaration } from "@well-known-components/metrics"
+import { IMetricsComponent } from '@well-known-components/interfaces'
+import { validateMetricsDeclaration } from '@well-known-components/metrics'
 
 export const metricDeclarations = {
-  test_ping_counter: {
-    help: "Count calls to ping",
-    type: IMetricsComponent.CounterType,
-    labelNames: ["pathname"],
+  dcl_map_render_time: {
+    help: 'map render time',
+    buckets: [0.1, 5, 15, 50, 100, 500],
+    type: IMetricsComponent.HistogramType,
+    labelNames: ['status'],
   },
 }
 

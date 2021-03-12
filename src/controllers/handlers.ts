@@ -1,5 +1,4 @@
 import { AppComponents } from '../types'
-import { Histogram } from 'prom-client'
 import { toLegacyTiles } from '../adapters/legacy-tiles'
 import { cacheWrapper } from '../logic/cache-wrapper'
 import { extractParams, getFilterFromUrl } from '../logic/filter-params'
@@ -42,17 +41,12 @@ export const createLegacyTilesRequestHandler = (
   )
 }
 
-const mapGenerationHistogram = new Histogram({
-  name: 'dcl_map_render_time',
-  help: 'map render time',
-  buckets: [0.1, 5, 15, 50, 100, 500],
-})
-
 export const mapPngRequestHandler = async (context: {
-  components: Pick<AppComponents, 'image' | 'map'>
+  components: Pick<AppComponents, 'image' | 'map' | 'metrics'>
   url: URL
 }) => {
-  const { image, map } = context.components
+  const { image, map, metrics } = context.components
+  const timer = metrics.startTimer('dcl_map_render_time')
   try {
     if (!map.isReady()) {
       throw new Error('Not ready')
@@ -60,7 +54,6 @@ export const mapPngRequestHandler = async (context: {
     const { width, height, size, center, showOnSale, selected } = extractParams(
       context.url
     )
-    const startTime = Date.now()
     const stream = await image.getStream(
       width,
       height,
@@ -69,7 +62,7 @@ export const mapPngRequestHandler = async (context: {
       selected,
       showOnSale
     )
-    mapGenerationHistogram.observe(Date.now() - startTime)
+    timer.end({ status: 200 })
     return {
       status: 200,
       headers: {
@@ -78,6 +71,7 @@ export const mapPngRequestHandler = async (context: {
       body: stream,
     }
   } catch (error) {
+    timer.end({ status: 500 })
     return {
       status: 500,
       body: { ok: false, error: error.message },
