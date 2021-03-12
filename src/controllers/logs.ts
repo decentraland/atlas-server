@@ -1,19 +1,14 @@
 import { SingleBar } from 'cli-progress'
 import { ApiEvents, Result } from '../modules/api/types'
 import { MapEvents } from '../modules/map/types'
-import { ServerEvents } from '../modules/server/types'
 import { AppComponents } from '../types'
 
 export const setupLogs = (
-  components: Pick<AppComponents, 'config' | 'server' | 'map' | 'api'>
+  components: Pick<AppComponents, 'config' | 'map' | 'api'>
 ) => {
-  const { config, server, map, api } = components
+  const { config, map, api } = components
 
   const bar = new SingleBar({ format: '[{bar}] {percentage}%' })
-
-  server.events.on(ServerEvents.READY, () =>
-    console.log(`Listening on port ${5000}`)
-  )
 
   map.events.on(MapEvents.INIT, () => {
     console.log(`Fetching data...`)
@@ -46,8 +41,4 @@ export const setupLogs = (
     console.log(`Updating ${result.estates.length} estates`)
     console.log(`Last timestamp:`, result.updatedAt)
   })
-
-  server.events.on(ServerEvents.ERROR, (error: Error) =>
-    console.log(`Error: ${error.message}`)
-  )
 }

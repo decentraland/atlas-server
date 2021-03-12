@@ -1,5 +1,5 @@
 import { createCanvas } from 'canvas'
-import { Coord, Layer, getViewport, renderMap } from '../../render'
+import { Coord, Layer, getViewport, renderMap } from '../render'
 import { IMapComponent, Tile, TileType } from '../map/types'
 import { coordsToId } from '../map/utils'
 import { IImageComponent } from './types'

@@ -1,9 +1,8 @@
 import { EventEmitter } from 'events'
 
 import { Tile, TileType } from '../map/types'
-import { IConfigComponent } from '../config/types'
+import { IConfigComponent } from '@well-known-components/interfaces'
 import {
-  ApiConfig,
   ApiEvents,
   Batch,
   ParcelFragment,
@@ -63,15 +62,15 @@ const parcelFields = `{
   }
 }`
 
-export function createApiComponent(components: {
-  config: IConfigComponent<ApiConfig>
-}): IApiComponent {
+export async function createApiComponent(components: {
+  config: IConfigComponent
+}): Promise<IApiComponent> {
   const { config } = components
 
   // config
-  const url = config.getString('API_URL')
-  const batchSize = config.getNumber('API_BATCH_SIZE')
-  const concurrency = config.getNumber('API_CONCURRENCY')
+  const url = await config.requireString('API_URL')
+  const batchSize = await config.requireNumber('API_BATCH_SIZE')
+  const concurrency = await config.requireNumber('API_CONCURRENCY')
   const imageBaseUrl = config.getString('IMAGE_BASE_URL')
   const externalBaseUrl = config.getString('EXTERNAL_BASE_URL')
   const landContractAddress = config.getString('LAND_CONTRACT_ADDRESS')

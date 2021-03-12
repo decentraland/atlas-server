@@ -1,20 +1,20 @@
+import { IConfigComponent } from '@well-known-components/interfaces'
 import { EventEmitter } from 'events'
 import future from 'fp-future'
 import { IApiComponent, NFT } from '../api/types'
-import { IConfigComponent } from '../config/types'
 import { IMapComponent, Tile, MapEvents, MapConfig } from './types'
 import { addSpecialTiles, computeEstate } from './utils'
 
-export function createMapComponent(components: {
-  config: IConfigComponent<MapConfig>
+export async function createMapComponent(components: {
+  config: IConfigComponent
   api: IApiComponent
-}): IMapComponent {
+}): Promise<IMapComponent> {
   const { config, api } = components
 
   // config
-  const refreshInterval = config.getNumber('REFRESH_INTERVAL') * 1000
-  const landContractAddress = config.getString('LAND_CONTRACT_ADDRESS')
-  const estateContractAddress = config.getString('ESTATE_CONTRACT_ADDRESS')
+  const refreshInterval = await config.requireNumber('REFRESH_INTERVAL') * 1000
+  const landContractAddress = await config.requireString('LAND_CONTRACT_ADDRESS')
+  const estateContractAddress = await config.requireString('ESTATE_CONTRACT_ADDRESS')
 
   // events
   const events = new EventEmitter()

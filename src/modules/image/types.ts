@@ -1,5 +1,5 @@
 import { PNGStream } from 'canvas'
-import { Coord } from '../../render'
+import { Coord } from '../render'
 
 export interface IImageComponent {
   getStream(
