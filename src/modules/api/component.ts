@@ -71,10 +71,10 @@ export async function createApiComponent(components: {
   const url = await config.requireString('API_URL')
   const batchSize = await config.requireNumber('API_BATCH_SIZE')
   const concurrency = await config.requireNumber('API_CONCURRENCY')
-  const imageBaseUrl = config.getString('IMAGE_BASE_URL')
-  const externalBaseUrl = config.getString('EXTERNAL_BASE_URL')
-  const landContractAddress = config.getString('LAND_CONTRACT_ADDRESS')
-  const estateContractAddress = config.getString('ESTATE_CONTRACT_ADDRESS')
+  const imageBaseUrl = await config.requireString('IMAGE_BASE_URL')
+  const externalBaseUrl = await config.requireString('EXTERNAL_BASE_URL')
+  const landContractAddress = await config.requireString('LAND_CONTRACT_ADDRESS')
+  const estateContractAddress = await config.requireString('ESTATE_CONTRACT_ADDRESS')
 
   // events
   const events = new EventEmitter()
