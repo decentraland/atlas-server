@@ -1,3 +1,5 @@
 name: atlas-server
 runtime: nodejs
 description: Atlas server
+config:
+  supra:stack-id: blue
