@@ -24,8 +24,8 @@ export = async function main() {
         name: 'IMAGE_BASE_URL',
         value:
           env === 'prd' || env === 'stg'
-            ? 'https://api.decentraland.org/v1'
-            : 'https://api.decentraland.io/v1',
+            ? 'https://api.decentraland.org/v2'
+            : 'https://api.decentraland.io/v2',
       },
       {
         name: 'EXTERNAL_BASE_URL',
