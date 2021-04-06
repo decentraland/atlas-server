@@ -17,7 +17,7 @@
   "license": "Apache-2.0",
   "dependencies": {
     "@types/cli-progress": "^3.9.1",
-    "@well-known-components/env-config-provider": "^1.0.1-20210406192314.commit-a54268c",
+    "@well-known-components/env-config-provider": "^1.1.0",
     "@well-known-components/http-server": "^1.0.0",
     "@well-known-components/interfaces": "^1.0.0",
     "@well-known-components/logger": "^1.0.0",
