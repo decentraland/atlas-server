@@ -16,7 +16,6 @@ export enum MapEvents {
 
 export interface IMapComponent {
   events: EventEmitter
-  init: () => void
   getTiles: () => Promise<Record<string, Tile>>
   getParcel: (x: string | number, y: string | number) => Promise<NFT | null>
   getEstate: (id: string) => Promise<NFT | null>

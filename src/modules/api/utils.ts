@@ -1,4 +1,3 @@
-import 'isomorphic-fetch'
 import future from 'fp-future'
 import {
   EstateFragment,
@@ -7,6 +6,7 @@ import {
   Proximity,
 } from './types'
 import proximities from './data/proximity.json'
+import fetch from 'node-fetch'
 
 // helper to do GraphQL queries with retry logic
 export async function graphql<T>(url: string, query: string, retryDelay = 500) {
