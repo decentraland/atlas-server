@@ -15,7 +15,7 @@ export const createTilesRequestHandler = (
       const tiles = await map.getTiles()
       return {
         status: 200,
-        body: getFilterFromUrl(context.url, tiles),
+        body: { ok: true, data: getFilterFromUrl(context.url, tiles) },
       }
     },
     [map.getLastUpdatedAt]
@@ -34,7 +34,7 @@ export const createLegacyTilesRequestHandler = (
       const tiles = await map.getTiles()
       return {
         status: 200,
-        body: toLegacyTiles(getFilterFromUrl(context.url, tiles)),
+        body: { ok: true, data: toLegacyTiles(getFilterFromUrl(context.url, tiles)) },
       }
     },
     [map.getLastUpdatedAt]
