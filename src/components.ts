@@ -17,12 +17,18 @@ export async function initComponents(): Promise<AppComponents> {
     { path: ['.env.defaults', '.env'] },
     process.env
   )
+
+  const cors = {
+    origin: await config.getString('CORS_ORIGIN'),
+    method: await config.getString('CORS_METHOD'),
+  }
+
   const api = await createApiComponent({ config })
   const map = await createMapComponent({ config, api })
   const logs = createLogComponent()
   const server = await createServerComponent<GlobalContext>(
     { config, logs },
-    {}
+    { cors, compression: {} }
   )
   const image = createImageComponent({ map })
   const district = createDistrictComponent()
