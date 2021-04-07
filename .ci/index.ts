@@ -48,6 +48,8 @@ export = async function main() {
             ? '0x959e104e1a4db6317fa58f8295f586e1a978c297'
             : '0x124bf28a423b2ca80b3846c3aa0eb944fe7ebb95',
       },
+      { name: 'CORS_ORIGIN', value: '*' },
+      { name: 'CORS_METHOD', value: '*' },
     ],
     hostname,
     {
