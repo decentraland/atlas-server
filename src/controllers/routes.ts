@@ -41,14 +41,14 @@ export async function setupRouter(
   router.get('/v2/contracts/:address/tokens/:id', tokenRequestHandler)
   router.get('/v2/districts', async () => ({
     status: 200,
-    body: district.getDistricts(),
+    body: { ok: true, data: district.getDistricts() },
   }))
   router.get('/v2/districts/:id', async (req) => {
     const result = district.getDistrict(req.params.id)
     if (result) {
       return {
         status: 200,
-        body: result,
+        body: { ok: true, data: result },
       }
     } else {
       return {
@@ -60,7 +60,7 @@ export async function setupRouter(
 
   router.get('/v2/addresses/:address/contributions', async (req) => ({
     status: 200,
-    body: district.getContributionsByAddress(req.params.address),
+    body: { ok: true, data: district.getContributionsByAddress(req.params.address) },
   }))
 
   return router
