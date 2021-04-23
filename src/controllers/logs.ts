@@ -44,4 +44,12 @@ export const setupLogs = (
     console.log(`Updating ${result.estates.length} estates`)
     console.log(`Last timestamp:`, result.updatedAt)
   })
+
+  map.events.on(MapEvents.ERROR, (error: Error) => {
+    console.log(
+      `Error: updating tiles
+       ${error.message}
+       ${error.stack}`
+    )
+  })
 }

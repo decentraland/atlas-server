@@ -10,6 +10,7 @@ import {
   createTilesRequestHandler,
   tokenRequestHandler,
   pingRequestHandler,
+  tilesInfoRequestHandler
 } from './handlers'
 
 import { Router } from '@well-known-components/http-server'
@@ -28,6 +29,7 @@ export async function setupRouter(
   const { district } = components
   router.get('/v1/tiles', createLegacyTilesRequestHandler(components))
   router.get('/v2/tiles', createTilesRequestHandler(components))
+  router.get('/v2/tiles/info', tilesInfoRequestHandler)
   router.get('/v1/map.png', mapPngRequestHandler)
   router.get('/v1/parcels/:x/:y/map.png', parcelMapPngRequestHandler)
   router.get('/v1/estates/:estateId/map.png', estateMapPngRequestHandler)
