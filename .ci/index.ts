@@ -1,5 +1,8 @@
+import * as pulumi from '@pulumi/pulumi'
 import { createFargateTask } from 'dcl-ops-lib/createFargateTask'
 import { env, envTLD } from 'dcl-ops-lib/domain'
+
+const prometheusStack = new pulumi.StackReference(`prometheus-${env}`)
 
 export = async function main() {
   const revision = process.env['CI_COMMIT_SHA']
@@ -50,6 +53,7 @@ export = async function main() {
       },
       { name: 'CORS_ORIGIN', value: '*' },
       { name: 'CORS_METHOD', value: '*' },
+      { name: 'WKC_METRICS_BEARER_TOKEN', value: prometheusStack.getOutput('serviceMetricsBearerToken') },
     ],
     hostname,
     {
