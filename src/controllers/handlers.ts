@@ -245,3 +245,18 @@ export async function readyRequestHandler(context: {
     body: 'ok',
   }
 }
+
+export async function tilesInfoRequestHandler(context: {
+  components: Pick<AppComponents, 'map'>
+}) {
+  const { map } = context.components
+  if (!map.isReady()) {
+    return { status: 503, body: 'Not ready' }
+  }
+
+  const lastUpdatedAt = map.getLastUpdatedAt()
+  return {
+    status: 200,
+    body: { lastUpdatedAt },
+  }
+}
