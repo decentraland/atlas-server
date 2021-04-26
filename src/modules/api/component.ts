@@ -21,10 +21,10 @@ import {
 } from './utils'
 import { coordsToId, specialTiles } from '../map/utils'
 
-const parcelFields = `{ 
+const parcelFields = `{
   name
-  owner { 
-    id 
+  owner {
+    id
   }
   searchParcelX
   searchParcelY
@@ -49,8 +49,8 @@ const parcelFields = `{
       }
       nft {
         name
-        owner { 
-          id 
+        owner {
+          id
         }
         activeOrder {
           price
@@ -161,17 +161,17 @@ export async function createApiComponent(components: {
   async function fetchBatch(lastTokenId = '', page = 0) {
     const { nfts } = await graphql<{ nfts: ParcelFragment[] }>(
       url,
-      `{ 
+      `{
         nfts(
-          first: ${batchSize}, 
-          skip: ${batchSize * page}, 
-          orderBy: tokenId, 
-          orderDirection: asc, 
+          first: ${batchSize},
+          skip: ${batchSize * page},
+          orderBy: tokenId,
+          orderDirection: asc,
           where: {
-            ${lastTokenId ? `tokenId_gt: "${lastTokenId}",` : ''} 
-            category: parcel 
+            ${lastTokenId ? `tokenId_gt: "${lastTokenId}",` : ''}
+            category: parcel
           }
-        ) ${parcelFields} 
+        ) ${parcelFields}
       }`
     )
     return nfts.reduce<Batch>(
@@ -191,87 +191,91 @@ export async function createApiComponent(components: {
   }
 
   async function fetchUpdatedData(updatedAfter: number) {
-    const { parcels, estates } = await graphql<{
-      parcels: ParcelFragment[]
-      estates: EstateFragment[]
-    }>(
-      url,
-      `{ 
+    try {
+      const { parcels, estates } = await graphql<{
+        parcels: ParcelFragment[]
+        estates: EstateFragment[]
+      }>(
+        url,
+        `{
         parcels: nfts(
-          first: ${batchSize}, 
-          orderBy: updatedAt, 
-          orderDirection: asc, 
-          where: { 
-            updatedAt_gt: "${updatedAfter}", 
-            category: parcel 
+          first: ${batchSize},
+          orderBy: updatedAt,
+          orderDirection: asc,
+          where: {
+            updatedAt_gt: "${updatedAfter}",
+            category: parcel
           }
-        ) ${parcelFields} 
+        ) ${parcelFields}
         estates: nfts(
-          first: ${batchSize}, 
-          orderBy: updatedAt, 
-          orderDirection: asc, 
-          where: { 
-            updatedAt_gt: "${updatedAfter}", 
+          first: ${batchSize},
+          orderBy: updatedAt,
+          orderDirection: asc,
+          where: {
+            updatedAt_gt: "${updatedAfter}",
             category: estate
           }
         ) {
           updatedAt
-          estate { 
+          estate {
             parcels {
-              nft ${parcelFields} 
-            } 
+              nft ${parcelFields}
+            }
           }
         }
       }`
-    )
+      )
 
-    const updatedTiles = parcels.map(buildTile)
-    const updatedParcels = parcels.map(buildParcel)
-    const updatedEstates = parcels
-      .map(buildEstate)
-      .filter((estate) => estate !== null) as NFT[]
+      const updatedTiles = parcels.map(buildTile)
+      const updatedParcels = parcels.map(buildParcel)
+      const updatedEstates = parcels
+        .map(buildEstate)
+        .filter((estate) => estate !== null) as NFT[]
 
-    // The following piece adds tiles from updated Estates. This is necessary only for an Estate that get listed or delisted on sale, since that doesn't change the lastUpdatedAt property of a Parcel.
-    const updatedTilesFromEstates = buildFromEstates(
-      estates,
-      updatedTiles,
-      buildTile
-    )
-    const updatedParcelsFromEstates = buildFromEstates(
-      estates,
-      updatedParcels,
-      buildParcel
-    )
-    const updatedEstatesFromEstates = buildFromEstates(
-      estates,
-      updatedEstates,
-      buildEstate
-    )
+      // The following piece adds tiles from updated Estates. This is necessary only for an Estate that get listed or delisted on sale, since that doesn't change the lastUpdatedAt property of a Parcel.
+      const updatedTilesFromEstates = buildFromEstates(
+        estates,
+        updatedTiles,
+        buildTile
+      )
+      const updatedParcelsFromEstates = buildFromEstates(
+        estates,
+        updatedParcels,
+        buildParcel
+      )
+      const updatedEstatesFromEstates = buildFromEstates(
+        estates,
+        updatedEstates,
+        buildEstate
+      )
 
-    const batch: Batch = {
-      tiles: [...updatedTiles, ...updatedTilesFromEstates],
-      parcels: [...updatedParcels, ...updatedParcelsFromEstates],
-      estates: [...updatedEstates, ...updatedEstatesFromEstates],
+      const batch: Batch = {
+        tiles: [...updatedTiles, ...updatedTilesFromEstates],
+        parcels: [...updatedParcels, ...updatedParcelsFromEstates],
+        estates: [...updatedEstates, ...updatedEstatesFromEstates],
+      }
+
+      const tilesLastUpdatedAt = batch.tiles.reduce<number>(
+        (updatedAt, tile) => Math.max(updatedAt, tile.updatedAt),
+        0
+      )
+      const estatesLastUpdatedAt = estates.reduce<number>(
+        (updatedAt, estate) =>
+          Math.max(updatedAt, parseInt(estate.updatedAt, 10)),
+        0
+      )
+
+      const updatedAt = Math.max(tilesLastUpdatedAt, estatesLastUpdatedAt)
+
+      const result: Result = {
+        ...batch,
+        updatedAt,
+      }
+
+      return result
+    } catch (e) {
+      throw new Error(`Failed to fetch update data: ${e.message}`)
     }
-
-    const tilesLastUpdatedAt = batch.tiles.reduce<number>(
-      (updatedAt, tile) => Math.max(updatedAt, tile.updatedAt),
-      0
-    )
-    const estatesLastUpdatedAt = estates.reduce<number>(
-      (updatedAt, estate) =>
-        Math.max(updatedAt, parseInt(estate.updatedAt, 10)),
-      0
-    )
-
-    const updatedAt = Math.max(tilesLastUpdatedAt, estatesLastUpdatedAt)
-
-    const result: Result = {
-      ...batch,
-      updatedAt,
-    }
-
-    return result
   }
 
   function buildTile(fragment: ParcelFragment): Tile {
@@ -309,8 +313,8 @@ export async function createApiComponent(components: {
       type: specialTile
         ? specialTile.type
         : owner
-        ? TileType.OWNED
-        : TileType.UNOWNED,
+          ? TileType.OWNED
+          : TileType.UNOWNED,
       top: specialTile ? specialTile.top : false,
       left: specialTile ? specialTile.left : false,
       topLeft: specialTile ? specialTile.topLeft : false,
