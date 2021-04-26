@@ -26,7 +26,7 @@ export async function graphql<T>(url: string, query: string, retries = 5, retryD
     // retry
     console.log(`Retrying graphql fetch. Error: ${error.message}. Query: ${query}`)
     const retry = future<T>()
-    retries ? setTimeout(
+    retries > 0 ? setTimeout(
       () =>
         // reduce retries and duplicate delay time on each attempt
         graphql<T>(url, query, retries - 1, retryDelay * 2).then((result) =>
