@@ -108,7 +108,6 @@ export async function createMapComponent(components: {
         events.emit(MapEvents.READY, result)
       } catch (error) {
         tiles.reject(error)
-        events.emit(MapEvents.ERROR, error)
       }
     },
   }
@@ -148,37 +147,42 @@ export async function createMapComponent(components: {
   }
 
   async function poll() {
-    const result = await api.fetchUpdatedData(lastUpdatedAt)
-    if (result.tiles.length > 0) {
-      // update tiles
-      const oldTiles = await tiles
-      const newTiles = addTiles(result.tiles, oldTiles)
-      tiles = future()
-      tiles.resolve(newTiles)
+    try {
+      const result = await api.fetchUpdatedData(lastUpdatedAt)
+      if (result.tiles.length > 0) {
+        // update tiles
+        const oldTiles = await tiles
+        const newTiles = addTiles(result.tiles, oldTiles)
+        tiles = future()
+        tiles.resolve(newTiles)
 
-      // update parcels
-      const oldParcels = await parcels
-      const newParcels = addParcels(result.parcels, oldParcels)
-      parcels = future()
-      parcels.resolve(newParcels)
+        // update parcels
+        const oldParcels = await parcels
+        const newParcels = addParcels(result.parcels, oldParcels)
+        parcels = future()
+        parcels.resolve(newParcels)
 
-      // update estates
-      const oldEstates = await estates
-      const newEstates = addEstates(result.estates, oldEstates)
-      estates = future()
-      estates.resolve(newEstates)
+        // update estates
+        const oldEstates = await estates
+        const newEstates = addEstates(result.estates, oldEstates)
+        estates = future()
+        estates.resolve(newEstates)
 
-      // update token
-      const oldTokens = await tokens
-      const newTokens = addTokens(result.parcels, result.estates, oldTokens)
-      tokens = future()
-      tokens.resolve(newTokens)
+        // update token
+        const oldTokens = await tokens
+        const newTokens = addTokens(result.parcels, result.estates, oldTokens)
+        tokens = future()
+        tokens.resolve(newTokens)
 
-      // update lastUpdatedAt
-      lastUpdatedAt = result.updatedAt
+        // update lastUpdatedAt
+        lastUpdatedAt = result.updatedAt
 
-      events.emit(MapEvents.UPDATE, result)
+        events.emit(MapEvents.UPDATE, result)
+      }
+    } catch (e) {
+      events.emit(MapEvents.ERROR, e)
     }
+
     setTimeout(poll, refreshInterval)
   }
 

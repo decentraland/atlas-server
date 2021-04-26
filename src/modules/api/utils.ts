@@ -24,16 +24,18 @@ export async function graphql<T>(url: string, query: string, retries = 5, retryD
     return result.data
   } catch (error) {
     // retry
-    console.log(`Retrying graphql fetch. Error: ${error.message}. Query: ${query}`)
+    console.log(`Retrying graphql fetch. Error: ${error.message}.`)
     const retry = future<T>()
-    retries > 0 ? setTimeout(
-      () =>
-        // reduce retries and duplicate delay time on each attempt
-        graphql<T>(url, query, retries - 1, retryDelay * 2).then((result) =>
-          retry.resolve(result)
-        ),
-      retryDelay
-    ) : retry.reject(error.message)
+    retries > 0 ?
+      setTimeout(
+        () =>
+          // reduce retries and duplicate delay time on each attempt
+          graphql<T>(url, query, retries - 1, retryDelay * 2).then((result) =>
+            retry.resolve(result)
+          ).catch(e => retry.reject(e)),
+        retryDelay)
+      : retry.reject(error)
+
     return retry
   }
 }

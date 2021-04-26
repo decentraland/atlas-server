@@ -1,4 +1,3 @@
-import future from 'fp-future'
 import { EventEmitter } from 'events'
 
 import { Tile, TileType } from '../map/types'
@@ -76,7 +75,6 @@ export async function createApiComponent(components: {
   const externalBaseUrl = await config.requireString('EXTERNAL_BASE_URL')
   const landContractAddress = await config.requireString('LAND_CONTRACT_ADDRESS')
   const estateContractAddress = await config.requireString('ESTATE_CONTRACT_ADDRESS')
-  const refreshInterval = await config.requireNumber('REFRESH_INTERVAL') * 1000
 
   // events
   const events = new EventEmitter()
@@ -161,10 +159,9 @@ export async function createApiComponent(components: {
   }
 
   async function fetchBatch(lastTokenId = '', page = 0) {
-    try {
-      const { nfts } = await graphql<{ nfts: ParcelFragment[] }>(
-        url,
-        `{
+    const { nfts } = await graphql<{ nfts: ParcelFragment[] }>(
+      url,
+      `{
         nfts(
           first: ${batchSize},
           skip: ${batchSize * page},
@@ -176,28 +173,21 @@ export async function createApiComponent(components: {
           }
         ) ${parcelFields}
       }`
-      )
-      return nfts.reduce<Batch>(
-        (batch, nft) => {
-          const tile = buildTile(nft)
-          const parcel = buildParcel(nft)
-          const estate = buildEstate(nft)
-          batch.tiles.push(tile)
-          batch.parcels.push(parcel)
-          if (estate) {
-            batch.estates.push(estate)
-          }
-          return batch
-        },
-        { tiles: [], parcels: [], estates: [] }
-      )
-    } catch (e) {
-      console.log(`Error fetching in batch: ${e.message}. Retying in ${refreshInterval}`)
-
-      const retry = future()
-      setTimeout(() => fetchBatch(lastTokenId, page).then(result => retry.resolve(result)), refreshInterval)
-      return retry
-    }
+    )
+    return nfts.reduce<Batch>(
+      (batch, nft) => {
+        const tile = buildTile(nft)
+        const parcel = buildParcel(nft)
+        const estate = buildEstate(nft)
+        batch.tiles.push(tile)
+        batch.parcels.push(parcel)
+        if (estate) {
+          batch.estates.push(estate)
+        }
+        return batch
+      },
+      { tiles: [], parcels: [], estates: [] }
+    )
   }
 
   async function fetchUpdatedData(updatedAfter: number) {
@@ -284,11 +274,7 @@ export async function createApiComponent(components: {
 
       return result
     } catch (e) {
-      console.log(`Error fetching update data: ${e.message}. Retying in ${refreshInterval}`)
-
-      const retry = future()
-      setTimeout(() => fetchUpdatedData(updatedAfter).then(result => retry.resolve(result)), refreshInterval)
-      return retry
+      throw new Error(`Failed to fetch update data: ${e.message}`)
     }
   }
 
