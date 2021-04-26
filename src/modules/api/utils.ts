@@ -9,7 +9,7 @@ import proximities from './data/proximity.json'
 import fetch from 'node-fetch'
 
 // helper to do GraphQL queries with retry logic
-export async function graphql<T>(url: string, query: string, retryDelay = 500) {
+export async function graphql<T>(url: string, query: string, retries = 5, retryDelay = 500) {
   try {
     const result: { data: T } = await fetch(url, {
       method: 'post',
@@ -24,15 +24,16 @@ export async function graphql<T>(url: string, query: string, retryDelay = 500) {
     return result.data
   } catch (error) {
     // retry
+    console.log(`Retrying graphql fetch. Error: ${error.message}. Query: ${query}`)
     const retry = future<T>()
-    setTimeout(
+    retries ? setTimeout(
       () =>
-        // duplicate delay time on each attempt
-        graphql<T>(url, query, retryDelay * 2).then((result) =>
+        // reduce retries and duplicate delay time on each attempt
+        graphql<T>(url, query, retries - 1, retryDelay * 2).then((result) =>
           retry.resolve(result)
         ),
       retryDelay
-    )
+    ) : retry.reject(error.message)
     return retry
   }
 }
