@@ -334,6 +334,7 @@ export async function createApiComponent(components: {
 
     if (activeOrder && !isExpired(activeOrder)) {
       tile.price = Math.round(parseInt(activeOrder.price) / 1e18)
+      tile.expiresAt = Math.round(parseInt(activeOrder.expiresAt, 10) / 1000)
     }
 
     if (tokenId) {

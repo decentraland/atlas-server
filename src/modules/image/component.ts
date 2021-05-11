@@ -1,7 +1,7 @@
 import { createCanvas } from 'canvas'
 import { Coord, Layer, getViewport, renderMap } from '../render'
 import { IMapComponent, Tile, TileType } from '../map/types'
-import { coordsToId } from '../map/utils'
+import { coordsToId, isExpired } from '../map/utils'
 import { IImageComponent } from './types'
 
 export function createImageComponent(components: {
@@ -42,14 +42,14 @@ export function createImageComponent(components: {
       const tile = tiles[id]
       const result = tile
         ? {
-            color: showOnSale && tile.price ? '#1FBCFF' : getColor(tile),
-            top: tile.top,
-            left: tile.left,
-            topLeft: tile.topLeft,
-          }
+          color: showOnSale && tile.price && !isExpired(tile) ? '#1FBCFF' : getColor(tile),
+          top: tile.top,
+          left: tile.left,
+          topLeft: tile.topLeft,
+        }
         : {
-            color: (x + y) % 2 === 0 ? '#110e13' : '#0d0b0e',
-          }
+          color: (x + y) % 2 === 0 ? '#110e13' : '#0d0b0e',
+        }
       return result
     }
     const layers = [layer]

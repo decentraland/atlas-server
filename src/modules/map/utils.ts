@@ -54,8 +54,12 @@ function fromSpecialTile(specialTile: SpecialTile): Tile {
 export function addSpecialTiles(tiles: Record<string, Tile>) {
   for (const specialTile of Object.values(specialTiles)) {
     tiles[specialTile.id] = specialTile.id in tiles
-        ? tiles[specialTile.id]
-        : fromSpecialTile(specialTile)
+      ? tiles[specialTile.id]
+      : fromSpecialTile(specialTile)
   }
   return tiles
+}
+
+export function isExpired(tile: Tile) {
+  return tile && tile.expiresAt && tile.expiresAt <= (Date.now() / 1000)
 }

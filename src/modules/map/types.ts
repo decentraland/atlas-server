@@ -46,6 +46,7 @@ export type Tile = {
   estateId?: string
   tokenId?: string
   price?: number
+  expiresAt?: number
 }
 
 export const tileFields = [
@@ -62,6 +63,7 @@ export const tileFields = [
   'estateId',
   'tokenId',
   'price',
+  'expiresAt'
 ]
 
 export type SpecialTile = {
