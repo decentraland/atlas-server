@@ -7,7 +7,7 @@ import { EventEmitter } from 'events'
 import future from 'fp-future'
 import { IApiComponent, NFT } from '../api/types'
 import { IMapComponent, Tile, MapEvents, MapConfig } from './types'
-import { addSpecialTiles, computeEstate } from './utils'
+import { addSpecialTiles, computeEstate, isExpired } from './utils'
 
 export async function createMapComponent(components: {
   config: IConfigComponent
@@ -92,6 +92,23 @@ export async function createMapComponent(components: {
     return oldTokens
   }
 
+  function expireOrders(tiles: Record<string, Tile>) {
+    const newTiles: Record<string, Tile> = {}
+
+    for (const id in tiles) {
+      const tile = tiles[id]
+      const notExpired = !isExpired(tile)
+
+      newTiles[id] = {
+        ...tile,
+        price: notExpired ? tile.price : undefined,
+        expiresAt: notExpired ? tile.expiresAt : undefined
+      }
+    }
+
+    return newTiles
+  }
+
   const lifeCycle: IBaseComponent = {
     // IBaseComponent.start lifecycle
     async start() {
@@ -152,7 +169,7 @@ export async function createMapComponent(components: {
       if (result.tiles.length > 0) {
         // update tiles
         const oldTiles = await tiles
-        const newTiles = addTiles(result.tiles, oldTiles)
+        const newTiles = expireOrders(addTiles(result.tiles, oldTiles))
         tiles = future()
         tiles.resolve(newTiles)
 
