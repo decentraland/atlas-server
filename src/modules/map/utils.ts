@@ -61,5 +61,5 @@ export function addSpecialTiles(tiles: Record<string, Tile>) {
 }
 
 export function isExpired(tile: Tile) {
-  return !tile.expiresAt || tile.expiresAt <= Date.now()
+  return tile && tile.expiresAt && tile.expiresAt <= Date.now()
 }

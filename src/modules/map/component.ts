@@ -97,12 +97,13 @@ export async function createMapComponent(components: {
 
     for (const id in tiles) {
       const tile = tiles[id]
-      const notExpired = !isExpired(tile)
 
-      newTiles[id] = {
-        ...tile,
-        price: notExpired ? tile.price : undefined,
-        expiresAt: notExpired ? tile.expiresAt : undefined
+      if (isExpired(tile)) {
+        newTiles[id] = { ...tile }
+        delete newTiles[id].price
+        delete newTiles[id].expiresAt
+      } else {
+        newTiles[id] = tile
       }
     }
 
