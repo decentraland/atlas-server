@@ -20,6 +20,7 @@ import {
   buildFromEstates,
 } from './utils'
 import { coordsToId, specialTiles } from '../map/utils'
+import { AppComponents } from '../../types'
 
 const parcelFields = `{
   name
@@ -62,10 +63,13 @@ const parcelFields = `{
   }
 }`
 
-export async function createApiComponent(components: {
-  config: IConfigComponent
-}): Promise<IApiComponent> {
-  const { config } = components
+export async function createApiComponent(
+  components: Pick<AppComponents, 'config' | 'fetch'>
+): Promise<IApiComponent> {
+  const {
+    config,
+    fetch: { fetch },
+  } = components
 
   // config
   const url = await config.requireString('API_URL')
@@ -73,8 +77,12 @@ export async function createApiComponent(components: {
   const concurrency = await config.requireNumber('API_CONCURRENCY')
   const imageBaseUrl = await config.requireString('IMAGE_BASE_URL')
   const externalBaseUrl = await config.requireString('EXTERNAL_BASE_URL')
-  const landContractAddress = await config.requireString('LAND_CONTRACT_ADDRESS')
-  const estateContractAddress = await config.requireString('ESTATE_CONTRACT_ADDRESS')
+  const landContractAddress = await config.requireString(
+    'LAND_CONTRACT_ADDRESS'
+  )
+  const estateContractAddress = await config.requireString(
+    'ESTATE_CONTRACT_ADDRESS'
+  )
 
   // events
   const events = new EventEmitter()
@@ -160,6 +168,7 @@ export async function createApiComponent(components: {
 
   async function fetchBatch(lastTokenId = '', page = 0) {
     const { nfts } = await graphql<{ nfts: ParcelFragment[] }>(
+      fetch,
       url,
       `{
         nfts(
@@ -196,6 +205,7 @@ export async function createApiComponent(components: {
         parcels: ParcelFragment[]
         estates: EstateFragment[]
       }>(
+        fetch,
         url,
         `{
         parcels: nfts(
@@ -313,8 +323,8 @@ export async function createApiComponent(components: {
       type: specialTile
         ? specialTile.type
         : owner
-          ? TileType.OWNED
-          : TileType.UNOWNED,
+        ? TileType.OWNED
+        : TileType.UNOWNED,
       top: specialTile ? specialTile.top : false,
       left: specialTile ? specialTile.left : false,
       topLeft: specialTile ? specialTile.topLeft : false,

@@ -6,10 +6,10 @@ import {
   Proximity,
 } from './types'
 import proximities from './data/proximity.json'
-import fetch from 'node-fetch'
+import { IFetchComponent } from '@well-known-components/http-server'
 
 // helper to do GraphQL queries with retry logic
-export async function graphql<T>(url: string, query: string, retries = 5, retryDelay = 500) {
+export async function graphql<T>(fetch: IFetchComponent['fetch'], url: string, query: string, retries = 5, retryDelay = 500) {
   try {
     const result: { data: T } = await fetch(url, {
       method: 'post',
@@ -30,7 +30,7 @@ export async function graphql<T>(url: string, query: string, retries = 5, retryD
       setTimeout(
         () =>
           // reduce retries and duplicate delay time on each attempt
-          graphql<T>(url, query, retries - 1, retryDelay * 2).then((result) =>
+          graphql<T>(fetch, url, query, retries - 1, retryDelay * 2).then((result) =>
             retry.resolve(result)
           ).catch(e => retry.reject(e)),
         retryDelay)

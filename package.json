@@ -5,6 +5,7 @@
   "main": "index.js",
   "scripts": {
     "start": "node dist",
+    "test": "mocha",
     "build": "tsc"
   },
   "prettier": {
@@ -26,5 +27,8 @@
     "cli-progress": "^3.9.0",
     "fp-future": "^1.0.1",
     "typescript": "^4.2.4"
+  },
+  "devDependencies": {
+    "@well-known-components/test-helpers": "^1.1.0-20210427222307.commit-d92c3ed"
   }
 }

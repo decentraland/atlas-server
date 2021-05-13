@@ -15,6 +15,7 @@ RUN npm ci
 COPY . /app
 
 RUN npm run build
+RUN npm run test
 
 FROM node:12
 

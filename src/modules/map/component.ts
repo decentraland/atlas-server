@@ -94,21 +94,32 @@ export async function createMapComponent(components: {
 
   const lifeCycle: IBaseComponent = {
     // IBaseComponent.start lifecycle
-    async start() {
+    async start(program) {
       events.emit(MapEvents.INIT)
-      try {
-        const result = await api.fetchData()
-        lastUpdatedAt = result.updatedAt
-        tiles.resolve(addSpecialTiles(addTiles(result.tiles, {})))
-        parcels.resolve(addParcels(result.parcels, {}))
-        estates.resolve(addEstates(result.estates, {}))
-        tokens.resolve(addTokens(result.parcels, result.estates, {}))
-        ready = true
-        setTimeout(poll, refreshInterval)
-        events.emit(MapEvents.READY, result)
-      } catch (error) {
-        tiles.reject(error)
+
+      async function synchronize() {
+        try {
+          const result = await api.fetchData()
+          lastUpdatedAt = result.updatedAt
+          tiles.resolve(addSpecialTiles(addTiles(result.tiles, {})))
+          parcels.resolve(addParcels(result.parcels, {}))
+          estates.resolve(addEstates(result.estates, {}))
+          tokens.resolve(addTokens(result.parcels, result.estates, {}))
+          ready = true
+          setTimeout(poll, refreshInterval)
+          events.emit(MapEvents.READY, result)
+        } catch (error) {
+          tiles.reject(error)
+        }
       }
+
+      // asynchronously start fetching data,
+      // that way the server start responding to requests.
+      // the load balancer should consider the endpoint "not ready" until the
+      // readinessProbe resolves (isReady: Future)
+      synchronize().catch((err) => {
+        /*noop*/
+      })
     },
   }
 

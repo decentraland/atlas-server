@@ -2,3 +2,5 @@ node_modules
 src/data
 dist
 .env
+
+**/.DS_Store

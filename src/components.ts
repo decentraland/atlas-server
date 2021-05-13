@@ -11,6 +11,7 @@ import { createImageComponent } from './modules/image/component'
 import { createMapComponent } from './modules/map/component'
 import { AppComponents, GlobalContext } from './types'
 import { metricDeclarations } from './metrics'
+import { createFetchComponent } from './ports/fetch'
 
 export async function initComponents(): Promise<AppComponents> {
   const config = await createDotEnvConfigComponent(
@@ -23,7 +24,8 @@ export async function initComponents(): Promise<AppComponents> {
     method: await config.getString('CORS_METHOD'),
   }
 
-  const api = await createApiComponent({ config })
+  const fetch = await createFetchComponent()
+  const api = await createApiComponent({ config, fetch })
   const map = await createMapComponent({ config, api })
   const logs = createLogComponent()
   const server = await createServerComponent<GlobalContext>(
@@ -48,5 +50,6 @@ export async function initComponents(): Promise<AppComponents> {
     image,
     district,
     statusChecks,
+    fetch,
   }
 }

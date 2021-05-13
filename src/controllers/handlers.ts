@@ -2,6 +2,7 @@ import { AppComponents } from '../types'
 import { toLegacyTiles } from '../adapters/legacy-tiles'
 import { cacheWrapper } from '../logic/cache-wrapper'
 import { extractParams, getFilterFromUrl } from '../logic/filter-params'
+import { isModuleBlock } from 'typescript'
 
 export const createTilesRequestHandler = (
   components: Pick<AppComponents, 'map'>
@@ -34,7 +35,10 @@ export const createLegacyTilesRequestHandler = (
       const tiles = await map.getTiles()
       return {
         status: 200,
-        body: { ok: true, data: toLegacyTiles(getFilterFromUrl(context.url, tiles)) },
+        body: {
+          ok: true,
+          data: toLegacyTiles(getFilterFromUrl(context.url, tiles)),
+        },
       }
     },
     [map.getLastUpdatedAt]
