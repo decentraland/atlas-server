@@ -30,7 +30,7 @@ export async function graphql<T>(url: string, query: string, retries = 5, retryD
 
     if (retries > 0) {
       // retry
-      await sleep(500)
+      await sleep(retryDelay)
       return graphql<T>(url, query, retries - 1, retryDelay * 2)
     } else {
       throw error // bubble up
