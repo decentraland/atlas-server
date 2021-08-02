@@ -123,7 +123,7 @@ export async function createMapComponent(components: {
         tokens.resolve(addTokens(result.parcels, result.estates, {}))
         ready = true
         await sleep(refreshInterval)
-        await poll()
+        poll()
         events.emit(MapEvents.READY, result)
       } catch (error) {
         tiles.reject(error)
@@ -203,7 +203,7 @@ export async function createMapComponent(components: {
     }
 
     await sleep(refreshInterval)
-    await poll()
+    poll()
   }
 
   function getTiles() {
