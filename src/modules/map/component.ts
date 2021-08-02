@@ -6,8 +6,8 @@ import {
 import { EventEmitter } from 'events'
 import future from 'fp-future'
 import { IApiComponent, NFT } from '../api/types'
-import { IMapComponent, Tile, MapEvents, MapConfig } from './types'
-import { addSpecialTiles, computeEstate, isExpired } from './utils'
+import { IMapComponent, Tile, MapEvents } from './types'
+import { addSpecialTiles, computeEstate, isExpired, sleep } from './utils'
 
 export async function createMapComponent(components: {
   config: IConfigComponent
@@ -122,8 +122,9 @@ export async function createMapComponent(components: {
         estates.resolve(addEstates(result.estates, {}))
         tokens.resolve(addTokens(result.parcels, result.estates, {}))
         ready = true
-        setTimeout(poll, refreshInterval)
         events.emit(MapEvents.READY, result)
+        await sleep(refreshInterval)
+        poll()
       } catch (error) {
         tiles.reject(error)
       }
@@ -201,7 +202,8 @@ export async function createMapComponent(components: {
       events.emit(MapEvents.ERROR, e)
     }
 
-    setTimeout(poll, refreshInterval)
+    await sleep(refreshInterval)
+    poll()
   }
 
   function getTiles() {
