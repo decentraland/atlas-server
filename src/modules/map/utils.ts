@@ -63,3 +63,7 @@ export function addSpecialTiles(tiles: Record<string, Tile>) {
 export function isExpired(tile: Tile) {
   return tile && tile.expiresAt && tile.expiresAt <= (Date.now() / 1000)
 }
+
+export async function sleep(ms: number) {
+  return new Promise<void>((resolve) => setTimeout(resolve, ms))
+}

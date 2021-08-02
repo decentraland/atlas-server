@@ -1,4 +1,3 @@
-import future from 'fp-future'
 import {
   EstateFragment,
   ParcelFragment,
@@ -7,9 +6,10 @@ import {
 } from './types'
 import proximities from './data/proximity.json'
 import fetch from 'node-fetch'
+import { sleep } from '../map/utils'
 
 // helper to do GraphQL queries with retry logic
-export async function graphql<T>(url: string, query: string, retries = 5, retryDelay = 500) {
+export async function graphql<T>(url: string, query: string, retries = 5, retryDelay = 500): Promise<T> {
   try {
     const result: { data: T } = await fetch(url, {
       method: 'post',
@@ -18,25 +18,23 @@ export async function graphql<T>(url: string, query: string, retries = 5, retryD
         query,
       }),
     }).then((resp) => resp.json())
+
     if (!result || !result.data || Object.keys(result.data).length === 0) {
       throw new Error('Invalid response')
     }
+
     return result.data
   } catch (error) {
     // retry
     console.log(`Retrying graphql fetch. Error: ${error.message}.`)
-    const retry = future<T>()
-    retries > 0 ?
-      setTimeout(
-        () =>
-          // reduce retries and duplicate delay time on each attempt
-          graphql<T>(url, query, retries - 1, retryDelay * 2).then((result) =>
-            retry.resolve(result)
-          ).catch(e => retry.reject(e)),
-        retryDelay)
-      : retry.reject(error)
 
-    return retry
+    if (retries > 0) {
+      // retry
+      await sleep(500)
+      return graphql<T>(url, query, retries - 1, retryDelay * 2)
+    } else {
+      throw error // bubble up
+    }
   }
 }
 
