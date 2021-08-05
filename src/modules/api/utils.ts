@@ -20,7 +20,7 @@ export async function graphql<T>(url: string, query: string, retries = 5, retryD
     }).then((resp) => resp.json())
 
     if (!result || !result.data || Object.keys(result.data).length === 0) {
-      throw new Error('Invalid response')
+      throw new Error(`Invalid response. Result: ${JSON.stringify(result)}`)
     }
 
     return result.data
