@@ -11,16 +11,22 @@ import { sleep } from '../map/utils'
 // helper to do GraphQL queries with retry logic
 export async function graphql<T>(url: string, query: string, retries = 5, retryDelay = 500): Promise<T> {
   try {
-    const result: { data: T } = await fetch(url, {
+    const res = await fetch(url, {
       method: 'post',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         query,
       }),
-    }).then((resp) => resp.json())
+    })
+
+    if (!res.ok) {
+      throw new Error(`Failed to fetch TheGraph: ${await res.text()}`)
+    }
+
+    const result: { data: T } = await res.json()
 
     if (!result || !result.data || Object.keys(result.data).length === 0) {
-      throw new Error('Invalid response')
+      throw new Error(`Invalid response. Result: ${JSON.stringify(result)}`)
     }
 
     return result.data

@@ -13,9 +13,14 @@ export const createTilesRequestHandler = (
         return { status: 503, body: 'Not ready' }
       }
       const tiles = await map.getTiles()
+      const data = getFilterFromUrl(context.url, tiles)
+
       return {
         status: 200,
-        body: { ok: true, data: getFilterFromUrl(context.url, tiles) },
+        headers: {
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({ ok: true, data }),
       }
     },
     [map.getLastUpdatedAt]
@@ -32,9 +37,14 @@ export const createLegacyTilesRequestHandler = (
         return { status: 503, body: 'Not ready' }
       }
       const tiles = await map.getTiles()
+      const data = toLegacyTiles(getFilterFromUrl(context.url, tiles))
+
       return {
         status: 200,
-        body: { ok: true, data: toLegacyTiles(getFilterFromUrl(context.url, tiles)) },
+        headers: {
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({ ok: true, data })
       }
     },
     [map.getLastUpdatedAt]
