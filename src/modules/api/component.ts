@@ -226,6 +226,15 @@ export async function createApiComponent(components: {
       }`
       )
 
+      if (!parcels.length && !estates.length) {
+        return {
+          tiles: [],
+          parcels: [],
+          estates: [],
+          updatedAt: updatedAfter
+        }
+      }
+
       const updatedTiles = parcels.map(buildTile)
       const updatedParcels = parcels.map(buildParcel)
       const updatedEstates = parcels
