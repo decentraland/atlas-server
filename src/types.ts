@@ -10,6 +10,7 @@ import {
 } from '@well-known-components/interfaces'
 import { metricDeclarations } from './metrics'
 import { IFetchComponent } from '@well-known-components/http-server'
+import { DeployedScenesComponent } from './ports/deployed-scenes'
 
 export type GlobalContext = {
   components: BaseComponents
@@ -27,6 +28,7 @@ export type BaseComponents = {
   district: IDistrictComponent
   metrics: IMetricsComponent<keyof typeof metricDeclarations>
   fetcher: IFetchComponent
+  deployedScenes: DeployedScenesComponent
 }
 
 // production components
