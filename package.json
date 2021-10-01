@@ -4,8 +4,9 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "start": "node dist",
-    "build": "tsc"
+    "start": "node --abort-on-uncaught-exception --unhandled-rejections=strict dist/index.js",
+    "build": "tsc",
+    "test": "jest --forceExit --detectOpenHandles --coverage --verbose"
   },
   "prettier": {
     "semi": false,
@@ -17,14 +18,17 @@
   "license": "Apache-2.0",
   "dependencies": {
     "@types/cli-progress": "^3.9.1",
-    "@well-known-components/env-config-provider": "^1.1.0",
-    "@well-known-components/http-server": "^1.0.0",
+    "@well-known-components/env-config-provider": "^1.1.1",
+    "@well-known-components/http-server": "^1.1.0",
     "@well-known-components/interfaces": "^1.1.0",
-    "@well-known-components/logger": "^1.0.0",
-    "@well-known-components/metrics": "^1.1.1",
+    "@well-known-components/logger": "^1.1.0",
+    "@well-known-components/metrics": "^1.1.2",
     "canvas": "^2.7.0",
     "cli-progress": "^3.9.0",
     "fp-future": "^1.0.1",
-    "typescript": "^4.2.4"
+    "typescript": "^4.4.3"
+  },
+  "devDependencies": {
+    "@well-known-components/test-helpers": "^1.2.0"
   }
 }

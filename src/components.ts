@@ -11,6 +11,7 @@ import { createImageComponent } from './modules/image/component'
 import { createMapComponent } from './modules/map/component'
 import { AppComponents, GlobalContext } from './types'
 import { metricDeclarations } from './metrics'
+import { createFetchComponent } from './ports/fetch'
 
 export async function initComponents(): Promise<AppComponents> {
   const config = await createDotEnvConfigComponent(
@@ -36,7 +37,8 @@ export async function initComponents(): Promise<AppComponents> {
     server,
     config,
   })
-  const statusChecks = await createStatusCheckComponent({ server })
+  const statusChecks = await createStatusCheckComponent({ server, config })
+  const fetcher = await createFetchComponent()
 
   return {
     config,
@@ -48,5 +50,6 @@ export async function initComponents(): Promise<AppComponents> {
     image,
     district,
     statusChecks,
+    fetcher
   }
 }
