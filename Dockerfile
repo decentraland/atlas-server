@@ -1,6 +1,6 @@
 ARG RUN
 
-FROM node:12 as builder
+FROM node:lts as builder
 
 WORKDIR /app
 
@@ -16,7 +16,7 @@ COPY . /app
 
 RUN npm run build
 
-FROM node:12
+FROM node:lts
 
 WORKDIR /app
 
