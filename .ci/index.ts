@@ -1,14 +1,15 @@
 import * as pulumi from '@pulumi/pulumi'
 import { createFargateTask } from 'dcl-ops-lib/createFargateTask'
+import { prometheusStack } from 'dcl-ops-lib/prometheus'
 import { env, envTLD, publicTLD } from 'dcl-ops-lib/domain'
-
-const prometheusStack = new pulumi.StackReference(`prometheus-${env}`)
 
 export = async function main() {
   const revision = process.env['CI_COMMIT_SHA']
   const image = `decentraland/atlas-server:${revision}`
 
   const hostname = `api.decentraland.${env === 'prd' ? publicTLD : envTLD}`
+
+  const prometheus = await prometheusStack()
 
   const api = await createFargateTask(
     `api`,
@@ -55,7 +56,7 @@ export = async function main() {
       { name: 'CORS_METHOD', value: '*' },
       {
         name: 'WKC_METRICS_BEARER_TOKEN',
-        value: prometheusStack.getOutput('serviceMetricsBearerToken'),
+        value: prometheus.getOutput('serviceMetricsBearerToken'),
       },
     ],
     hostname,
