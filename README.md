@@ -125,3 +125,9 @@ Example:
 - `/v2/districts/:id`: Returns a specific district by `id`.
 
 - `/v2/addresses/:address/contributions`: Returns a list of contributions made by specific address. Each contribution includes the amount of parcels and the district `id` they were contributed to.
+
+### Troubleshooting
+
+- Installing `node-canvas` on Apple M1:
+
+If the `npm install` fails on the dependency `node-canvas` and you are running on an Apple M1 chip, try installing these dependencies via brew: `brew install pkg-config cairo pango libpng jpeg giflib librsvg`.

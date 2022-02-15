@@ -53,7 +53,10 @@ export = async function main() {
       },
       { name: 'CORS_ORIGIN', value: '*' },
       { name: 'CORS_METHOD', value: '*' },
-      { name: 'WKC_METRICS_BEARER_TOKEN', value: prometheusStack.getOutput('serviceMetricsBearerToken') },
+      {
+        name: 'WKC_METRICS_BEARER_TOKEN',
+        value: prometheusStack.getOutput('serviceMetricsBearerToken'),
+      },
     ],
     hostname,
     {
@@ -75,6 +78,7 @@ export = async function main() {
       extraExposedServiceOptions: {
         createCloudflareProxiedSubdomain: true,
       },
+      team: 'dapps',
     }
   )
 
