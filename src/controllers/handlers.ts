@@ -148,6 +148,16 @@ export const estateMapPngRequestHandler = async (context: {
     const selected = Object.values(tiles).filter(
       (tile) => tile.estateId && tile.estateId === estateId
     )
+    if (selected.length === 0) {
+      const  headers: Record<string, string> = {
+        'content-type': 'image/png',
+        'location': 'https://ui.decentraland.org/dissolved_estate.png'
+      }
+      return {
+        status: 301,
+        headers
+      }
+    }
     const xs = selected.map((coords) => coords.x).sort()
     const ys = selected.map((coords) => coords.y).sort()
     const x = xs[(xs.length / 2) | 0] || 0
