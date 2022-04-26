@@ -44,7 +44,7 @@ export const createLegacyTilesRequestHandler = (
         headers: {
           'content-type': 'application/json',
         },
-        body: JSON.stringify({ ok: true, data })
+        body: JSON.stringify({ ok: true, data }),
       }
     },
     [map.getLastUpdatedAt]
@@ -148,6 +148,15 @@ export const estateMapPngRequestHandler = async (context: {
     const selected = Object.values(tiles).filter(
       (tile) => tile.estateId && tile.estateId === estateId
     )
+    if (selected.length === 0) {
+      const headers: Record<string, string> = {
+        location: 'https://ui.decentraland.org/dissolved_estate.png',
+      }
+      return {
+        status: 302,
+        headers,
+      }
+    }
     const xs = selected.map((coords) => coords.x).sort()
     const ys = selected.map((coords) => coords.y).sort()
     const x = xs[(xs.length / 2) | 0] || 0

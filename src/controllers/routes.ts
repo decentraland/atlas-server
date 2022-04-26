@@ -10,7 +10,7 @@ import {
   createTilesRequestHandler,
   tokenRequestHandler,
   pingRequestHandler,
-  tilesInfoRequestHandler
+  tilesInfoRequestHandler,
 } from './handlers'
 
 import { Router } from '@well-known-components/http-server'
@@ -62,7 +62,10 @@ export async function setupRouter(
 
   router.get('/v2/addresses/:address/contributions', async (req) => ({
     status: 200,
-    body: { ok: true, data: district.getContributionsByAddress(req.params.address) },
+    body: {
+      ok: true,
+      data: district.getContributionsByAddress(req.params.address),
+    },
   }))
 
   return router
