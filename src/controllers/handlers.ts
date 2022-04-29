@@ -226,10 +226,10 @@ export const estateRequestHandler = async (context: {
 }
 
 export const tokenRequestHandler = async (context: {
-  components: Pick<AppComponents, 'map'>
+  components: Pick<AppComponents, 'map' | 'config'>
   params: { address: string; id: string }
 }) => {
-  const { map } = context.components
+  const { map, config } = context.components
   const { address, id } = context.params
 
   if (!map.isReady()) {
@@ -239,7 +239,16 @@ export const tokenRequestHandler = async (context: {
   const token = await map.getToken(address, id)
 
   if (token) {
-    return { status: 200, body: token }
+    const headers: Record<string, string> = {}
+    const landContractAddress = await config.requireString(
+      'LAND_CONTRACT_ADDRESS'
+    )
+
+    if (address === landContractAddress) {
+      headers['cache-control'] = 'public, max-age=604800, immutable'
+    }
+
+    return { status: 200, headers, body: token }
   } else {
     return { status: 404, body: { ok: false, error: 'Not Found' } }
   }
