@@ -3,9 +3,13 @@ import {
   IConfigComponent,
   IStatusCheckCapableComponent,
 } from '@well-known-components/interfaces'
+import { SingleBar } from 'cli-progress'
 import { EventEmitter } from 'events'
 import future from 'fp-future'
+import { Estate } from '../../entity/Estate'
 import { LastSync } from '../../entity/LastSync'
+import { Parcel } from '../../entity/Parcel'
+import { Tile as TileEntity } from '../../entity/Tile'
 import { IApiComponent, NFT } from '../api/types'
 import { IDatabaseComponent } from '../database/types'
 import { IMapComponent, Tile, MapEvents } from './types'
@@ -119,7 +123,6 @@ export async function createMapComponent(components: {
       events.emit(MapEvents.INIT)
       const lastSyncRepo = await database.appDataSource.getRepository(LastSync);
       let lastSync = await lastSyncRepo.findOneBy({ id: 1 });
-      console.log(lastSync);
 
       // continue to poll if it's synced
       if (lastSync !== null && lastSync.updatedAt > 0) {
@@ -146,15 +149,19 @@ export async function createMapComponent(components: {
 
           const _tiles = addSpecialTiles(addTiles(result.tiles, {}))
           tiles.resolve(_tiles)
+          await importTiles(_tiles)
 
           const _parcels = addParcels(result.parcels, {})
           parcels.resolve(_parcels)
+          await importParcels(_parcels)
 
           const _estates = addEstates(result.estates, {})
           estates.resolve(_estates)
+          await importEstates(_estates)
 
           const _tokens = addTokens(result.parcels, result.estates, {})
           tokens.resolve(_tokens)
+          await importTokens(_tokens)
 
           ready = true
           events.emit(MapEvents.READY, result, _tiles, _parcels, _estates, _tokens)
@@ -203,7 +210,7 @@ export async function createMapComponent(components: {
 
   async function poll() {
     console.log("Polling...");
-    
+
     try {
       const result = await api.fetchUpdatedData(lastUpdatedAt)
       if (result.tiles.length > 0) {
@@ -246,6 +253,108 @@ export async function createMapComponent(components: {
 
     await sleep(refreshInterval)
     poll()
+  }
+
+  async function importTiles(tiles: Record<string, Tile>) {
+    const tileRepo = await database.appDataSource.getRepository(TileEntity)
+
+    console.log("\nImporting tiles...")
+    const bar = new SingleBar({ format: '[{bar}] {percentage}%' })
+    bar.start(100, 0)
+    const total = Object.entries(tiles).length
+    let counter = 0
+
+    for (const [_, _tile] of Object.entries(tiles)) {
+      counter++
+
+      let tile = await tileRepo.findOneBy({ id: _tile.id })
+      if (tile === null) {
+        // create new
+        tile = new TileEntity()
+      }
+      // update
+      tile.id = _tile.id
+      tile.x = _tile.x
+      tile.y = _tile.y
+      tile.type = _tile.type
+      tile.top = _tile.top
+      tile.left = _tile.left
+      tile.topLeft = _tile.topLeft
+      tile.updatedAt = _tile.updatedAt
+      tile.name = _tile.name
+      tile.owner = _tile.owner
+      tile.estateId = _tile.estateId
+      tile.tokenId = _tile.tokenId
+      tile.price = _tile.price?.toString()
+      tile.expiresAt = _tile.expiresAt?.toString()
+      await tileRepo.save(tile)
+      const progress = (counter / total) * 100
+      bar.update(progress)
+    }
+  }
+
+  async function importParcels(parcels: Record<string, NFT>) {
+    const parcelRepo = await database.appDataSource.getRepository(Parcel)
+    
+    console.log("\nImporting parcels...")
+    const bar = new SingleBar({ format: '[{bar}] {percentage}%' })
+    bar.start(100, 0)
+    const total = Object.entries(parcels).length
+    let counter = 0
+    
+    for (const [_, _parcel] of Object.entries(parcels)) {
+      counter++
+      let parcel = await parcelRepo.findOneBy({ id: _parcel.id })
+      if (parcel === null) {
+        // create new
+        parcel = new Parcel()
+      }
+      // update
+      parcel.id = _parcel.id
+      parcel.name = _parcel.name
+      parcel.description = _parcel.description
+      parcel.image = _parcel.image
+      parcel.external_url = _parcel.external_url
+      parcel.background_color = _parcel.background_color
+      parcel.attributes = _parcel.attributes
+      await parcelRepo.save(parcel)
+      const progress = (counter / total) * 100
+      bar.update(progress)
+    }
+  }
+
+  async function importEstates(estates: Record<string, NFT>) {
+    const estateRepo = await database.appDataSource.getRepository(Estate)
+    
+    console.log("\nImporting estates...")
+    const bar = new SingleBar({ format: '[{bar}] {percentage}%' })
+    bar.start(100, 0)
+    const total = Object.entries(estates).length
+    let counter = 0
+    
+    for (const [_, _estate] of Object.entries(estates)) {
+      counter++
+      let estate = await estateRepo.findOneBy({ id: _estate.id })
+      if (estate === null) {
+        // create new
+        estate = new Estate()
+      }
+      // update
+      estate.id = _estate.id
+      estate.name = _estate.name
+      estate.description = _estate.description
+      estate.image = _estate.image
+      estate.external_url = _estate.external_url
+      estate.background_color = _estate.background_color
+      estate.attributes = _estate.attributes
+      await estateRepo.save(estate)
+      const progress = (counter / total) * 100
+      bar.update(progress)
+    }
+  }
+
+  async function importTokens(tokens: Record<string, NFT>) {
+
   }
 
   function getTiles() {
