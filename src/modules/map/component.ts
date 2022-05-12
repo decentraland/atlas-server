@@ -5,15 +5,18 @@ import {
 } from '@well-known-components/interfaces'
 import { EventEmitter } from 'events'
 import future from 'fp-future'
+import { LastSync } from '../../entity/LastSync'
 import { IApiComponent, NFT } from '../api/types'
+import { IDatabaseComponent } from '../database/types'
 import { IMapComponent, Tile, MapEvents } from './types'
 import { addSpecialTiles, computeEstate, isExpired, sleep } from './utils'
 
 export async function createMapComponent(components: {
   config: IConfigComponent
+  database: IDatabaseComponent,
   api: IApiComponent
 }): Promise<IMapComponent & IBaseComponent & IStatusCheckCapableComponent> {
-  const { config, api } = components
+  const { config, database, api } = components
 
   // config
   const refreshInterval =
@@ -114,19 +117,52 @@ export async function createMapComponent(components: {
     // IBaseComponent.start lifecycle
     async start() {
       events.emit(MapEvents.INIT)
-      try {
-        const result = await api.fetchData()
-        lastUpdatedAt = result.updatedAt
-        tiles.resolve(addSpecialTiles(addTiles(result.tiles, {})))
-        parcels.resolve(addParcels(result.parcels, {}))
-        estates.resolve(addEstates(result.estates, {}))
-        tokens.resolve(addTokens(result.parcels, result.estates, {}))
-        ready = true
-        events.emit(MapEvents.READY, result)
-        await sleep(refreshInterval)
+      const lastSyncRepo = await database.appDataSource.getRepository(LastSync);
+      let lastSync = await lastSyncRepo.findOneBy({ id: 1 });
+      console.log(lastSync);
+
+      // continue to poll if it's synced
+      if (lastSync !== null && lastSync.updatedAt > 0) {
+        lastUpdatedAt = lastSync.updatedAt
+
+        // turn into the poll loop
         poll()
-      } catch (error) {
-        tiles.reject(error)
+      } else {
+        console.log('Sync from beginning...')
+
+        // add new last sync
+        if (lastSync === null) {
+          lastSync = new LastSync()
+          lastSync.updatedAt = 0
+          lastSyncRepo.save(lastSync)
+        }
+
+        // sync from the beginning
+        try {
+          const result = await api.fetchData()
+          lastUpdatedAt = result.updatedAt
+          lastSync.updatedAt = result.updatedAt
+          lastSyncRepo.save(lastSync)
+
+          const _tiles = addSpecialTiles(addTiles(result.tiles, {}))
+          tiles.resolve(_tiles)
+
+          const _parcels = addParcels(result.parcels, {})
+          parcels.resolve(_parcels)
+
+          const _estates = addEstates(result.estates, {})
+          estates.resolve(_estates)
+
+          const _tokens = addTokens(result.parcels, result.estates, {})
+          tokens.resolve(_tokens)
+
+          ready = true
+          events.emit(MapEvents.READY, result, _tiles, _parcels, _estates, _tokens)
+          await sleep(refreshInterval)
+          poll()
+        } catch (error) {
+          tiles.reject(error)
+        }
       }
     },
   }
@@ -166,9 +202,9 @@ export async function createMapComponent(components: {
   }
 
   async function poll() {
+    console.log("Polling...");
+    
     try {
-      // TODO: LNP change here
-
       const result = await api.fetchUpdatedData(lastUpdatedAt)
       if (result.tiles.length > 0) {
         // update tiles
@@ -197,6 +233,10 @@ export async function createMapComponent(components: {
 
         // update lastUpdatedAt
         lastUpdatedAt = result.updatedAt
+        const lastSyncRepo = await database.appDataSource.getRepository(LastSync);
+        let lastSync = await lastSyncRepo.findOneBy({ id: 1 });
+        lastSync.updatedAt = result.updatedAt
+        lastSyncRepo.save(lastSync)
 
         events.emit(MapEvents.UPDATE, result)
       }

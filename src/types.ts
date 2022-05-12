@@ -9,6 +9,7 @@ import {
   IMetricsComponent,
 } from '@well-known-components/interfaces'
 import { metricDeclarations } from './metrics'
+import { IDatabaseComponent } from './modules/database/types'
 
 export type GlobalContext = {
   components: BaseComponents
@@ -18,6 +19,7 @@ export type AppConfig = ApiConfig & MapConfig
 
 export type BaseComponents = {
   config: IConfigComponent
+  database: IDatabaseComponent
   api: IApiComponent
   map: IMapComponent
   server: IHttpServerComponent<GlobalContext>
