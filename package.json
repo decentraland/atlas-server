@@ -1,30 +1,40 @@
 {
-  "name": "atlas-server",
-  "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
-  "scripts": {
-    "start": "node dist",
-    "build": "tsc"
-  },
-  "prettier": {
-    "semi": false,
-    "singleQuote": true,
-    "printWidth": 80
-  },
-  "keywords": [],
-  "author": "",
-  "license": "Apache-2.0",
-  "dependencies": {
-    "@types/cli-progress": "^3.9.1",
-    "@well-known-components/env-config-provider": "^1.1.0",
-    "@well-known-components/http-server": "^1.0.0",
-    "@well-known-components/interfaces": "^1.1.0",
-    "@well-known-components/logger": "^1.0.0",
-    "@well-known-components/metrics": "^1.1.1",
-    "canvas": "^2.7.0",
-    "cli-progress": "^3.9.0",
-    "fp-future": "^1.0.1",
-    "typescript": "^4.2.4"
-  }
+   "name": "atlas-server",
+   "version": "1.0.0",
+   "description": "",
+   "main": "index.js",
+   "scripts": {
+      "start": "ts-node src/index.ts",
+      "build": "tsc",
+      "typeorm": "typeorm-ts-node-commonjs"
+   },
+   "prettier": {
+      "semi": false,
+      "singleQuote": true,
+      "printWidth": 80
+   },
+   "keywords": [],
+   "author": "",
+   "license": "Apache-2.0",
+   "dependencies": {
+      "@types/cli-progress": "^3.9.1",
+      "@well-known-components/env-config-provider": "^1.1.0",
+      "@well-known-components/http-server": "^1.0.0",
+      "@well-known-components/interfaces": "^1.1.0",
+      "@well-known-components/logger": "^1.0.0",
+      "@well-known-components/metrics": "^1.1.1",
+      "axios": "^0.27.2",
+      "canvas": "^2.7.0",
+      "cli-progress": "^3.9.0",
+      "fp-future": "^1.0.1",
+      "pg": "^8.4.0",
+      "reflect-metadata": "^0.1.13",
+      "typeorm": "0.3.6",
+      "typescript": "^4.2.4"
+   },
+   "devDependencies": {
+      "@types/node": "^16.11.10",
+      "ts-node": "10.7.0",
+      "typescript": "4.5.2"
+   }
 }

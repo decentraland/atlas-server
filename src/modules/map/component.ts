@@ -167,6 +167,8 @@ export async function createMapComponent(components: {
 
   async function poll() {
     try {
+      // TODO: LNP change here
+
       const result = await api.fetchUpdatedData(lastUpdatedAt)
       if (result.tiles.length > 0) {
         // update tiles

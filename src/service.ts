@@ -1,5 +1,6 @@
 import { setupLogs } from "./controllers/logs"
 import { setupRouter } from "./controllers/routes"
+import { setupStores } from "./controllers/stores"
 import { AppComponents, GlobalContext, TestComponents } from "./types"
 
 // this function wires the business logic (adapters & controllers) with the components (ports)
@@ -14,4 +15,5 @@ export async function main(components: AppComponents | TestComponents) {
   components.server.setContext(globalContext)
 
   setupLogs(components)
+  setupStores(components)
 }
