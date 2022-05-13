@@ -221,7 +221,12 @@ export const estateRequestHandler = async (context: {
   if (estate) {
     return { status: 200, body: estate }
   } else {
-    return { status: 404, body: { ok: false, error: 'Not Found' } }
+    const dissolvedEstate = await map.getDissolvedEstate(id)
+    if (dissolvedEstate) {
+      return { status: 200, body: dissolvedEstate }
+    } else {
+      return { status: 404, body: { ok: false, error: 'Not Found' } }
+    }
   }
 }
 
@@ -250,6 +255,16 @@ export const tokenRequestHandler = async (context: {
 
     return { status: 200, headers, body: token }
   } else {
+    const estateContractAddress = await config.requireString(
+      'ESTATE_CONTRACT_ADDRESS'
+    )
+
+    if (address === estateContractAddress) {
+      const dissolvedEstate = await map.getDissolvedEstate(id)
+      if (dissolvedEstate) {
+        return { status: 200, body: dissolvedEstate }
+      }
+    }
     return { status: 404, body: { ok: false, error: 'Not Found' } }
   }
 }
