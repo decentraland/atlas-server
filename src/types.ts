@@ -9,6 +9,7 @@ import {
   IMetricsComponent,
 } from '@well-known-components/interfaces'
 import { metricDeclarations } from './metrics'
+import { IFetchComponent } from '@well-known-components/http-server'
 
 export type GlobalContext = {
   components: BaseComponents
@@ -25,6 +26,7 @@ export type BaseComponents = {
   image: IImageComponent
   district: IDistrictComponent
   metrics: IMetricsComponent<keyof typeof metricDeclarations>
+  fetcher: IFetchComponent
 }
 
 // production components
@@ -33,4 +35,6 @@ export type AppComponents = BaseComponents & {
 }
 
 // test environment components
-export type TestComponents = BaseComponents & {}
+export type TestComponents = BaseComponents & {
+  localFetch: IFetchComponent
+}

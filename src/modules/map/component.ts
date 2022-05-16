@@ -125,7 +125,7 @@ export async function createMapComponent(components: {
         events.emit(MapEvents.READY, result)
         await sleep(refreshInterval)
         poll()
-      } catch (error) {
+      } catch (error: any) {
         tiles.reject(error)
       }
     },
