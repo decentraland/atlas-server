@@ -8,7 +8,7 @@ export const setupLogs = (
 ) => {
   const { config, map, api } = components
 
-  const bar = new SingleBar({ format: '[{bar}] {percentage}% {}' })
+  const bar = new SingleBar({ format: '[{bar}] {percentage}%' })
 
   map.events.on(MapEvents.INIT, async () => {
     console.log(`Fetching data...`)

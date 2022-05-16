@@ -13,9 +13,12 @@ export type ApiConfig = {
 
 export enum ApiEvents {
   PROGRESS = 'progress',
-  INSERT_BATCH_TILES = 'insert_batch_tiles',
-  INSERT_BATCH_PARCELS = 'insert_batch_parcels',
-  INSERT_BATCH_ESTATES = 'insert_batch_estates',
+  UNSAFE_INSERT_BATCH_TILES = 'insert_batch_tiles',
+  UNSAFE_INSERT_BATCH_PARCELS = 'insert_batch_parcels',
+  UNSAFE_INSERT_BATCH_ESTATES = 'insert_batch_estates',
+  INSERT_OR_UPDATE_BATCH_TILES = 'update_batch_tiles',
+  INSERT_OR_UPDATE_BATCH_PARCELS = 'update_batch_parcels',
+  INSERT_OR_UPDATE_BATCH_ESTATES = 'update_batch_estates',
   LAST_UPDATED_AT = 'last_updated_at'
 }
 

@@ -1,4 +1,4 @@
-import { Entity, PrimaryGeneratedColumn, Column } from "typeorm"
+import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, DeleteDateColumn, UpdateDateColumn } from "typeorm"
 
 @Entity()
 export class LastSync {
@@ -6,5 +6,14 @@ export class LastSync {
     id: number
 
     @Column()
-    updatedAt: number
+    lastSyncedAt: number
+
+    @CreateDateColumn({ nullable: true })
+    createdAt?: Date
+
+    @UpdateDateColumn({ nullable: true })
+    modifiedAt?: Date
+
+    @DeleteDateColumn({ nullable: true })
+    deletedAt?: Date
 }

@@ -130,8 +130,8 @@ export async function createMapComponent(components: {
       const lastSync = allLastSync.length > 0 ? allLastSync[0] : null
 
       // continue to poll if it's synced
-      if (lastSync !== null && lastSync.updatedAt > 0) {
-        lastUpdatedAt = lastSync.updatedAt
+      if (lastSync !== null && lastSync.lastSyncedAt > 0) {
+        lastUpdatedAt = lastSync.lastSyncedAt
 
         // turn into the poll loop
         poll()
@@ -233,10 +233,6 @@ export async function createMapComponent(components: {
 
         // update lastUpdatedAt
         lastUpdatedAt = result.updatedAt
-        const lastSyncRepo = await database.appDataSource.getRepository(LastSync);
-        let lastSync = await lastSyncRepo.findOneBy({ id: 1 });
-        lastSync.updatedAt = result.updatedAt
-        lastSyncRepo.save(lastSync)
 
         events.emit(MapEvents.UPDATE, result)
       }

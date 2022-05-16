@@ -83,7 +83,7 @@ export async function createApiComponent(components: {
   async function fetchData() {
     const tiles: Tile[] = []
     const parcels: NFT[] = []
-    const estates: NFT[] = []
+    let estates: NFT[] = []
 
     // auxiliars for fetching in batches
 
@@ -96,9 +96,8 @@ export async function createApiComponent(components: {
       // fetch batch
       const batch = fetchBatch(lastTokenId, batches.length).then((batch) => {
         // insert batch to database
-        events.emit(ApiEvents.INSERT_BATCH_TILES, batch.tiles)
-        events.emit(ApiEvents.INSERT_BATCH_PARCELS, batch.parcels)
-        events.emit(ApiEvents.INSERT_BATCH_ESTATES, batch.estates)
+        events.emit(ApiEvents.INSERT_OR_UPDATE_BATCH_TILES, batch.tiles)
+        events.emit(ApiEvents.INSERT_OR_UPDATE_BATCH_PARCELS, batch.parcels)
 
         // merge results
         for (const tile of batch.tiles) {
@@ -144,8 +143,17 @@ export async function createApiComponent(components: {
       (lastUpdatedAt, tile) => Math.max(lastUpdatedAt, tile.updatedAt),
       0
     )
-
     events.emit(ApiEvents.LAST_UPDATED_AT, updatedAt)
+
+    // remove duplicates
+    estates = Array.from(
+      estates.reduce<Map<string, NFT>>(
+        (map, nft) => map.set(nft.id, nft),
+        new Map()
+      ),
+      ([_key, value]) => value
+    )
+    events.emit(ApiEvents.UNSAFE_INSERT_BATCH_ESTATES, estates)
 
     // final progress update
     events.emit(ApiEvents.PROGRESS, 100)
@@ -154,13 +162,7 @@ export async function createApiComponent(components: {
       tiles,
       parcels,
       // remove duplicates
-      estates: Array.from(
-        estates.reduce<Map<string, NFT>>(
-          (map, nft) => map.set(nft.id, nft),
-          new Map()
-        ),
-        ([_key, value]) => value
-      ),
+      estates,
       updatedAt,
     }
 
@@ -284,6 +286,12 @@ export async function createApiComponent(components: {
       )
 
       const updatedAt = Math.max(tilesLastUpdatedAt, estatesLastUpdatedAt)
+
+      // update in db
+      events.emit(ApiEvents.LAST_UPDATED_AT, updatedAt)
+      events.emit(ApiEvents.INSERT_OR_UPDATE_BATCH_TILES, batch.tiles)
+      events.emit(ApiEvents.INSERT_OR_UPDATE_BATCH_PARCELS, batch.parcels)
+      events.emit(ApiEvents.INSERT_OR_UPDATE_BATCH_ESTATES, batch.estates)
 
       const result: Result = {
         ...batch,

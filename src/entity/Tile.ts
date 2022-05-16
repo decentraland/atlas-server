@@ -1,4 +1,4 @@
-import { Entity, Column, PrimaryColumn } from "typeorm"
+import { Entity, Column, PrimaryColumn, CreateDateColumn, DeleteDateColumn, UpdateDateColumn } from "typeorm"
 import { TileType } from "../modules/map/types"
 
 @Entity()
@@ -49,5 +49,13 @@ export class Tile {
 
     @Column({ nullable: true })
     expiresAt?: string
+    
+    @CreateDateColumn({ nullable: true })
+    createdAt?: Date
 
+    @UpdateDateColumn({ nullable: true })
+    modifiedAt?: Date
+
+    @DeleteDateColumn({ nullable: true })
+    deletedAt?: Date
 }

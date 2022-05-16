@@ -1,4 +1,4 @@
-import { Entity, Column, PrimaryColumn } from "typeorm"
+import { Entity, Column, PrimaryColumn, CreateDateColumn, DeleteDateColumn, UpdateDateColumn } from "typeorm"
 import { Attribute } from "../modules/api/types"
 
 @Entity()
@@ -25,4 +25,12 @@ export class Token {
     @Column({ type: "json" })
     attributes: Attribute[]
 
+    @CreateDateColumn({ nullable: true })
+    createdAt?: Date
+
+    @UpdateDateColumn({ nullable: true })
+    modifiedAt?: Date
+
+    @DeleteDateColumn({ nullable: true })
+    deletedAt?: Date
 }

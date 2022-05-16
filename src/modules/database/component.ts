@@ -59,19 +59,19 @@ export async function createDatabaseComponent(components: {
         if (lastSync === null) {
             // create a new one
             lastSync = new LastSync()
-            lastSync.updatedAt = updatedAt
+            lastSync.lastSyncedAt = updatedAt
             await lastSyncRepo.save(lastSync)
         } else {
             await dataSource
                 .createQueryBuilder()
                 .update(LastSync)
-                .set({ updatedAt: updatedAt })
+                .set({ lastSyncedAt: updatedAt })
                 .where("id = :id", { id: lastSync.id })
                 .execute()
         }
     })
 
-    events.on(ApiEvents.INSERT_BATCH_TILES, async (_tiles: Tile[]) => {
+    events.on(ApiEvents.UNSAFE_INSERT_BATCH_TILES, async (_tiles: Tile[]) => {
         await dataSource
             .createQueryBuilder()
             .insert()
@@ -99,7 +99,7 @@ export async function createDatabaseComponent(components: {
             .execute()
     })
 
-    events.on(ApiEvents.INSERT_BATCH_PARCELS, async (_parcels: NFT[]) => {
+    events.on(ApiEvents.UNSAFE_INSERT_BATCH_PARCELS, async (_parcels: NFT[]) => {
         await dataSource
             .createQueryBuilder()
             .insert()
@@ -120,7 +120,7 @@ export async function createDatabaseComponent(components: {
             .execute()
     })
 
-    events.on(ApiEvents.INSERT_BATCH_ESTATES, async (_estates: NFT[]) => {
+    events.on(ApiEvents.UNSAFE_INSERT_BATCH_ESTATES, async (_estates: NFT[]) => {
         await dataSource
             .createQueryBuilder()
             .insert()
@@ -139,6 +139,80 @@ export async function createDatabaseComponent(components: {
             }))
             .orIgnore()
             .execute()
+    })
+
+    events.on(ApiEvents.INSERT_OR_UPDATE_BATCH_TILES, async (_tiles: Tile[]) => {
+        const tileRepo = await dataSource.getRepository(TileEntity)
+
+        for (const _tile of _tiles) {
+            // _tiles.forEach(async (_tile) => {
+            let tile = await tileRepo.findOneBy({ id: _tile.id })
+            if (tile === null) {
+                // create new
+                tile = new TileEntity()
+            }
+            // update
+            tile.id = _tile.id
+            tile.x = _tile.x
+            tile.y = _tile.y
+            tile.type = _tile.type
+            tile.top = _tile.top
+            tile.left = _tile.left
+            tile.topLeft = _tile.topLeft
+            tile.updatedAt = _tile.updatedAt
+            tile.name = _tile.name
+            tile.owner = _tile.owner
+            tile.estateId = _tile.estateId
+            tile.tokenId = _tile.tokenId
+            tile.price = _tile.price?.toString()
+            tile.expiresAt = _tile.expiresAt?.toString()
+            await tileRepo.save(tile)
+        }
+        // })
+    })
+
+    events.on(ApiEvents.INSERT_OR_UPDATE_BATCH_PARCELS, async (_parcels: NFT[]) => {
+        const parcelRepo = await dataSource.getRepository(Parcel)
+
+        for (const _parcel of _parcels) {
+            // _parcels.forEach(async (_parcel) => {
+            let parcel = await parcelRepo.findOneBy({ id: _parcel.id })
+            if (parcel === null) {
+                // create new
+                parcel = new Parcel()
+            }
+            // update
+            parcel.id = _parcel.id
+            parcel.name = _parcel.name
+            parcel.description = _parcel.description
+            parcel.image = _parcel.image
+            parcel.external_url = _parcel.external_url
+            parcel.background_color = _parcel.background_color
+            parcel.attributes = _parcel.attributes
+            await parcelRepo.save(parcel)
+            // })
+        }
+    })
+
+    events.on(ApiEvents.INSERT_OR_UPDATE_BATCH_ESTATES, async (_estates: NFT[]) => {
+        const estateRepo = await dataSource.getRepository(Estate)
+
+        for (const _estate of _estates) {
+            let estate = await estateRepo.findOneBy({ id: _estate.id })
+            if (estate === null) {
+                // create new
+                estate = new Estate()
+            }
+            // update
+            estate.id = _estate.id
+            estate.name = _estate.name
+            estate.description = _estate.description
+            estate.image = _estate.image
+            estate.external_url = _estate.external_url
+            estate.background_color = _estate.background_color
+            estate.attributes = _estate.attributes
+            await estateRepo.save(estate)
+        }
     })
 
     return {
