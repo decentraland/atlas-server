@@ -5,7 +5,7 @@ import {
 } from '@well-known-components/interfaces'
 import { EventEmitter } from 'events'
 import future from 'fp-future'
-import { IApiComponent, NFT } from '../api/types'
+import { IApiComponent, NFT, Result } from '../api/types'
 import { IMapComponent, Tile, MapEvents } from './types'
 import { addSpecialTiles, computeEstate, isExpired, sleep } from './utils'
 
@@ -198,8 +198,8 @@ export async function createMapComponent(components: {
 
         events.emit(MapEvents.UPDATE, result)
       }
-    } catch (e) {
-      events.emit(MapEvents.ERROR, e)
+    } catch (error) {
+      events.emit(MapEvents.ERROR, error)
     }
 
     await sleep(refreshInterval)
@@ -222,6 +222,47 @@ export async function createMapComponent(components: {
   async function getEstate(id: string): Promise<NFT | null> {
     const result = (await estates)[id]
     return result || null
+  }
+
+  async function getLastEstateId() {
+    const ids = Object.values(await estates)
+      .map((estate) => Number(estate.id))
+      .sort((a, b) => (a > b ? 1 : -1))
+    return ids.pop()!
+  }
+
+  const notFoundDissolvedEstateIds = new Set<string>()
+  async function getDissolvedEstate(id: string) {
+    // if this id has been queried already return before hitting the subgraph
+    if (notFoundDissolvedEstateIds.has(id)) {
+      return null
+    }
+    // if id goes beyond last id in memory return before hitting the subgraph
+    const lastEstateId = await getLastEstateId()
+    if (Number(id) > lastEstateId) {
+      return null
+    }
+    // fetch dissolved estate from subgraph
+    const estate = await api.getDissolvedEstate(id)
+    if (estate) {
+      // update estates with the dissolved estate for future requests
+      const result: Result = {
+        tiles: [],
+        parcels: [],
+        estates: [estate],
+        updatedAt: lastUpdatedAt, // we keep the lastUpdatedAt when inserting a dissolved estate since this is added on demand
+      }
+      const oldEstates = await estates
+      const newEstates = addEstates(result.estates, oldEstates)
+      estates = future()
+      estates.resolve(newEstates)
+      events.emit(MapEvents.UPDATE, result)
+    } else {
+      // keep track of ids that don't exist
+      notFoundDissolvedEstateIds.add(id)
+    }
+
+    return estate
   }
 
   async function getToken(
@@ -248,6 +289,7 @@ export async function createMapComponent(components: {
     getTiles,
     getParcel,
     getEstate,
+    getDissolvedEstate,
     getToken,
     isReady,
     getLastUpdatedAt,

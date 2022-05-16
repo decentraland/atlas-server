@@ -19,6 +19,7 @@ export interface IMapComponent {
   getTiles: () => Promise<Record<string, Tile>>
   getParcel: (x: string | number, y: string | number) => Promise<NFT | null>
   getEstate: (id: string) => Promise<NFT | null>
+  getDissolvedEstate: (id: string) => Promise<NFT | null>
   getToken: (contractAddress: string, tokenId: string) => Promise<NFT | null>
   isReady: () => boolean
   getLastUpdatedAt: () => number
@@ -63,7 +64,7 @@ export const tileFields = [
   'estateId',
   'tokenId',
   'price',
-  'expiresAt'
+  'expiresAt',
 ]
 
 export type SpecialTile = {

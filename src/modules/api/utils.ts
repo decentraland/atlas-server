@@ -9,7 +9,12 @@ import fetch from 'node-fetch'
 import { sleep } from '../map/utils'
 
 // helper to do GraphQL queries with retry logic
-export async function graphql<T>(url: string, query: string, retries = 5, retryDelay = 500): Promise<T> {
+export async function graphql<T>(
+  url: string,
+  query: string,
+  retries = 5,
+  retryDelay = 500
+): Promise<T> {
   try {
     const res = await fetch(url, {
       method: 'post',

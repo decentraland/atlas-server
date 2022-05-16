@@ -11,6 +11,7 @@ import {
   Attribute,
   EstateFragment,
   Result,
+  DissolvedEstateFragment,
 } from './types'
 import {
   isExpired,
@@ -73,8 +74,12 @@ export async function createApiComponent(components: {
   const concurrency = await config.requireNumber('API_CONCURRENCY')
   const imageBaseUrl = await config.requireString('IMAGE_BASE_URL')
   const externalBaseUrl = await config.requireString('EXTERNAL_BASE_URL')
-  const landContractAddress = await config.requireString('LAND_CONTRACT_ADDRESS')
-  const estateContractAddress = await config.requireString('ESTATE_CONTRACT_ADDRESS')
+  const landContractAddress = await config.requireString(
+    'LAND_CONTRACT_ADDRESS'
+  )
+  const estateContractAddress = await config.requireString(
+    'ESTATE_CONTRACT_ADDRESS'
+  )
 
   // events
   const events = new EventEmitter()
@@ -231,7 +236,7 @@ export async function createApiComponent(components: {
           tiles: [],
           parcels: [],
           estates: [],
-          updatedAt: updatedAfter
+          updatedAt: updatedAfter,
         }
       }
 
@@ -322,8 +327,8 @@ export async function createApiComponent(components: {
       type: specialTile
         ? specialTile.type
         : owner
-          ? TileType.OWNED
-          : TileType.UNOWNED,
+        ? TileType.OWNED
+        : TileType.UNOWNED,
       top: specialTile ? specialTile.top : false,
       left: specialTile ? specialTile.left : false,
       topLeft: specialTile ? specialTile.topLeft : false,
@@ -436,9 +441,52 @@ export async function createApiComponent(components: {
     }
   }
 
+  async function getDissolvedEstate(estateId: string): Promise<NFT | null> {
+    const { nfts } = await graphql<{ nfts: DissolvedEstateFragment[] }>(
+      url,
+      `{
+        nfts(
+          where: {
+            tokenId: ${estateId}
+            category: estate
+            searchEstateSize: 0
+          }
+        ) {
+          name
+          estate {
+            data {
+              description
+            }
+          }
+        }
+      }`
+    )
+    if (nfts.length === 1) {
+      const nft = nfts[0]
+      return {
+        id: estateId,
+        name: nft.name,
+        description: nft.estate.data.description || '',
+        image: `${imageBaseUrl}/estates/${estateId}/map.png?size=24&width=1024&height=1024`,
+        external_url: `${externalBaseUrl}/contracts/${estateContractAddress}/tokens/${estateId}`,
+        attributes: [
+          {
+            trait_type: 'Size',
+            value: 0,
+            display_type: 'number',
+          },
+        ],
+        background_color: '000000',
+      }
+    } else {
+      return null
+    }
+  }
+
   return {
     events,
     fetchData,
     fetchUpdatedData,
+    getDissolvedEstate
   }
 }

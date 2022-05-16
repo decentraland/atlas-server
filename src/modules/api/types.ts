@@ -38,6 +38,7 @@ export interface IApiComponent {
   events: EventEmitter
   fetchData: () => Promise<Result>
   fetchUpdatedData: (updatedAfter: number) => Promise<Result>
+  getDissolvedEstate: (estateId: string) => Promise<NFT | null>
 }
 
 export type OrderFragment = {
@@ -80,6 +81,15 @@ export type ParcelFragment = {
         updatedAt: string
       }
     } | null
+  }
+}
+
+export type DissolvedEstateFragment = {
+  name: string
+  estate: {
+    data: {
+      description: string
+    }
   }
 }
 
