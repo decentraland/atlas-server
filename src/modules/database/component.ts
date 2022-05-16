@@ -1,15 +1,19 @@
 import { IBaseComponent, IConfigComponent } from "@well-known-components/interfaces";
+import EventEmitter from "events";
 import { DataSource } from "typeorm";
 import { Estate } from "../../entity/Estate";
 import { LastSync } from "../../entity/LastSync";
 import { Parcel } from "../../entity/Parcel";
-import { Tile } from "../../entity/Tile";
+import { Tile as TileEntity } from "../../entity/Tile";
+import { ApiEvents, NFT } from "../api/types";
+import { Tile } from "../map/types";
 import { IDatabaseComponent } from "./types";
 
 export async function createDatabaseComponent(components: {
-    config: IConfigComponent
+    events: EventEmitter,
+    config: IConfigComponent,
 }): Promise<IDatabaseComponent & IBaseComponent> {
-    const { config } = components
+    const { events, config } = components
 
     const pgHost = await config.requireString('POSTGRES_HOST')
     const pgPort = await config.requireNumber('POSTGRES_PORT')
@@ -30,7 +34,7 @@ export async function createDatabaseComponent(components: {
             LastSync,
             Parcel,
             Estate,
-            Tile,
+            TileEntity,
         ],
         migrations: [],
         subscribers: [],
@@ -40,6 +44,102 @@ export async function createDatabaseComponent(components: {
         console.log("initializing database...");
         await dataSource.initialize()
     }
+
+    events.on(ApiEvents.LAST_UPDATED_AT, async (updatedAt: number) => {
+        const lastSyncRepo = await dataSource.getRepository(LastSync);
+        let allLastSync = await lastSyncRepo.find({
+            order: {
+                id: "DESC"
+            }
+        });
+
+        // take the latest if any
+        let lastSync = allLastSync.length > 0 ? allLastSync[0] : null
+
+        if (lastSync === null) {
+            // create a new one
+            lastSync = new LastSync()
+            lastSync.updatedAt = updatedAt
+            await lastSyncRepo.save(lastSync)
+        } else {
+            await dataSource
+                .createQueryBuilder()
+                .update(LastSync)
+                .set({ updatedAt: updatedAt })
+                .where("id = :id", { id: lastSync.id })
+                .execute()
+        }
+    })
+
+    events.on(ApiEvents.INSERT_BATCH_TILES, async (_tiles: Tile[]) => {
+        await dataSource
+            .createQueryBuilder()
+            .insert()
+            .into(TileEntity)
+            .values(_tiles.map<TileEntity>((_tile) => {
+                let tile = new TileEntity()
+                tile.id = _tile.id
+                tile.x = _tile.x
+                tile.y = _tile.y
+                tile.type = _tile.type
+                tile.top = _tile.top
+                tile.left = _tile.left
+                tile.topLeft = _tile.topLeft
+                tile.updatedAt = _tile.updatedAt
+                tile.name = _tile.name
+                tile.owner = _tile.owner
+                tile.estateId = _tile.estateId
+                tile.tokenId = _tile.tokenId
+                tile.price = _tile.price?.toString()
+                tile.expiresAt = _tile.expiresAt?.toString()
+
+                return tile
+            }))
+            .orIgnore()
+            .execute()
+    })
+
+    events.on(ApiEvents.INSERT_BATCH_PARCELS, async (_parcels: NFT[]) => {
+        await dataSource
+            .createQueryBuilder()
+            .insert()
+            .into(Parcel)
+            .values(_parcels.map<NFT>((_parcel) => {
+                let parcel = new Parcel()
+                parcel.id = _parcel.id
+                parcel.name = _parcel.name
+                parcel.description = _parcel.description
+                parcel.image = _parcel.image
+                parcel.external_url = _parcel.external_url
+                parcel.background_color = _parcel.background_color
+                parcel.attributes = _parcel.attributes
+
+                return parcel
+            }))
+            .orIgnore()
+            .execute()
+    })
+
+    events.on(ApiEvents.INSERT_BATCH_ESTATES, async (_estates: NFT[]) => {
+        await dataSource
+            .createQueryBuilder()
+            .insert()
+            .into(Estate)
+            .values(_estates.map<NFT>((_parcel) => {
+                let parcel = new Estate()
+                parcel.id = _parcel.id
+                parcel.name = _parcel.name
+                parcel.description = _parcel.description
+                parcel.image = _parcel.image
+                parcel.external_url = _parcel.external_url
+                parcel.background_color = _parcel.background_color
+                parcel.attributes = _parcel.attributes
+
+                return parcel
+            }))
+            .orIgnore()
+            .execute()
+    })
 
     return {
         appDataSource: dataSource

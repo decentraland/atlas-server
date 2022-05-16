@@ -95,6 +95,11 @@ export async function createApiComponent(components: {
     while (!complete) {
       // fetch batch
       const batch = fetchBatch(lastTokenId, batches.length).then((batch) => {
+        // insert batch to database
+        events.emit(ApiEvents.INSERT_BATCH_TILES, batch.tiles)
+        events.emit(ApiEvents.INSERT_BATCH_PARCELS, batch.parcels)
+        events.emit(ApiEvents.INSERT_BATCH_ESTATES, batch.estates)
+
         // merge results
         for (const tile of batch.tiles) {
           tiles.push(tile)
@@ -135,6 +140,13 @@ export async function createApiComponent(components: {
       }
     }
 
+    const updatedAt = tiles.reduce<number>(
+      (lastUpdatedAt, tile) => Math.max(lastUpdatedAt, tile.updatedAt),
+      0
+    )
+
+    events.emit(ApiEvents.LAST_UPDATED_AT, updatedAt)
+
     // final progress update
     events.emit(ApiEvents.PROGRESS, 100)
 
@@ -149,10 +161,7 @@ export async function createApiComponent(components: {
         ),
         ([_key, value]) => value
       ),
-      updatedAt: tiles.reduce<number>(
-        (lastUpdatedAt, tile) => Math.max(lastUpdatedAt, tile.updatedAt),
-        0
-      ),
+      updatedAt,
     }
 
     return result

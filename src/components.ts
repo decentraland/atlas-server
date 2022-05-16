@@ -26,7 +26,7 @@ export async function initComponents(): Promise<AppComponents> {
 
   const api = await createApiComponent({ config })
   const logs = createLogComponent()
-  const database = await createDatabaseComponent({ config })
+  const database = await createDatabaseComponent({ events: api.events, config })
   const map = await createMapComponent({ config, database, api })
   const server = await createServerComponent<GlobalContext>(
     { config, logs },
