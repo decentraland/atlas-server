@@ -145,7 +145,6 @@ export async function createDatabaseComponent(components: {
         const tileRepo = await dataSource.getRepository(TileEntity)
 
         for (const _tile of _tiles) {
-            // _tiles.forEach(async (_tile) => {
             let tile = await tileRepo.findOneBy({ id: _tile.id })
             if (tile === null) {
                 // create new
@@ -168,14 +167,12 @@ export async function createDatabaseComponent(components: {
             tile.expiresAt = _tile.expiresAt?.toString()
             await tileRepo.save(tile)
         }
-        // })
     })
 
     events.on(ApiEvents.INSERT_OR_UPDATE_BATCH_PARCELS, async (_parcels: NFT[]) => {
         const parcelRepo = await dataSource.getRepository(Parcel)
 
         for (const _parcel of _parcels) {
-            // _parcels.forEach(async (_parcel) => {
             let parcel = await parcelRepo.findOneBy({ id: _parcel.id })
             if (parcel === null) {
                 // create new
@@ -190,7 +187,6 @@ export async function createDatabaseComponent(components: {
             parcel.background_color = _parcel.background_color
             parcel.attributes = _parcel.attributes
             await parcelRepo.save(parcel)
-            // })
         }
     })
 

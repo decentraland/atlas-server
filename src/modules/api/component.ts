@@ -96,8 +96,8 @@ export async function createApiComponent(components: {
       // fetch batch
       const batch = fetchBatch(lastTokenId, batches.length).then((batch) => {
         // insert batch to database
-        events.emit(ApiEvents.INSERT_OR_UPDATE_BATCH_TILES, batch.tiles)
-        events.emit(ApiEvents.INSERT_OR_UPDATE_BATCH_PARCELS, batch.parcels)
+        events.emit(ApiEvents.UNSAFE_INSERT_BATCH_TILES, batch.tiles)
+        events.emit(ApiEvents.UNSAFE_INSERT_BATCH_PARCELS, batch.parcels)
 
         // merge results
         for (const tile of batch.tiles) {
