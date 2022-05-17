@@ -8,8 +8,6 @@ export const setupLogs = (
 ) => {
   const { config, map, api } = components
 
-  const bar = new SingleBar({ format: '[{bar}] {percentage}%' })
-
   map.events.on(MapEvents.INIT, async () => {
     console.log(`Fetching data...`)
     // TODO: it may be better to ask configurations to the specific component like
@@ -18,13 +16,13 @@ export const setupLogs = (
     console.log(`URL: ${await config.getString('API_URL')}`)
     console.log(`Concurrency: ${await config.getString('API_CONCURRENCY')}`)
     console.log(`Batch Size: ${await config.getString('API_BATCH_SIZE')}`)
-    bar.start(100, 0)
+    console.log("0%")
   })
 
-  api.events.on(ApiEvents.PROGRESS, (progress: number) => bar.update(progress))
+  api.events.on(ApiEvents.PROGRESS, (progress: number) => console.log(`${progress}%`))
 
   map.events.on(MapEvents.READY, async (result: Result) => {
-    bar.stop()
+    console.log("100%")
     console.log(`Total: ${result.tiles.length.toLocaleString()} tiles`)
     console.log(`Parcels: ${result.parcels.length.toLocaleString()}`)
     console.log(`Estates: ${result.estates.length.toLocaleString()}`)

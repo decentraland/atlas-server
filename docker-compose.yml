@@ -1,16 +1,44 @@
 version: '3.8'
 services:
+  extended-atlas-server:
+    build: .
+    restart: always
+    environment:
+      - POSTGRES_HOST=db
+      - HTTP_SERVER_PORT=${HTTP_SERVER_PORT}
+      - HTTP_SERVER_HOST=${HTTP_SERVER_HOST}
+      - CORS_ORIGIN=${CORS_ORIGIN}
+      - CORS_METHOD=${CORS_METHOD}
+      - API_URL=${API_URL}
+      - API_BATCH_SIZE=${API_BATCH_SIZE}
+      - API_CONCURRENCY=${API_CONCURRENCY}
+      - REFRESH_INTERVAL=${REFRESH_INTERVAL}
+      - IMAGE_BASE_URL=${IMAGE_BASE_URL}
+      - EXTERNAL_BASE_URL=${EXTERNAL_BASE_URL}
+      - LAND_CONTRACT_ADDRESS=${LAND_CONTRACT_ADDRESS}
+      - ESTATE_CONTRACT_ADDRESS=${ESTATE_CONTRACT_ADDRESS}
+      - POSTGRES_PORT=${POSTGRES_PORT}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PWD=${POSTGRES_PWD}
+      - POSTGRES_DB_NAME=${POSTGRES_DB_NAME}
+    ports:
+    - '${HTTP_SERVER_PORT}:${HTTP_SERVER_PORT}'
+    depends_on: 
+    - db
+
   db:
     image: postgres:14.1-alpine
     restart: always
     environment:
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=postgres
-      - DB_NAME=decentraland
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PWD}
+      - POSTGRES_DB=${POSTGRES_DB_NAME}
     ports:
-      - '5432:5432'
+      - '${POSTGRES_PORT}:${POSTGRES_PORT}'
     volumes:
       - db:/var/lib/postgresql/data
+    env_file:
+      - .env
 volumes:
   db:
     driver: local
