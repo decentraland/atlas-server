@@ -4,9 +4,9 @@ import { MapEvents } from '../modules/map/types'
 import { AppComponents } from '../types'
 
 export const setupLogs = (
-  components: Pick<AppComponents, 'config' | 'map' | 'api'>
+  components: Pick<AppComponents, 'config' | 'map' | 'batchApi'>
 ) => {
-  const { config, map, api } = components
+  const { config, map, batchApi } = components
 
   const bar = new SingleBar({ format: '[{bar}] {percentage}%' })
 
@@ -21,7 +21,9 @@ export const setupLogs = (
     bar.start(100, 0)
   })
 
-  api.events.on(ApiEvents.PROGRESS, (progress: number) => bar.update(progress))
+  batchApi.events.on(ApiEvents.PROGRESS, (progress: number) =>
+    bar.update(progress)
+  )
 
   map.events.on(MapEvents.READY, async (result: Result) => {
     bar.stop()

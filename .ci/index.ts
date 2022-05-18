@@ -25,7 +25,7 @@ export = async function main() {
             : 'https://api.thegraph.com/subgraphs/name/decentraland/marketplace-ropsten',
       },
       {
-        name: 'SUBGRAPH_COMPONENT_QUERY_TIMEOUT',
+        name: 'SUBGRAPH_COMPONENT_QUERY_TIMEOUT_WAIT',
         value: '30000',
       },
       {

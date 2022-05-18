@@ -435,8 +435,7 @@ export async function createApiComponent(components: {
   }
 
   async function getDissolvedEstate(estateId: string): Promise<NFT | null> {
-    const { nfts } = await graphql<{ nfts: DissolvedEstateFragment[] }>(
-      url,
+    const { nfts } = await subgraph.query<{ nfts: DissolvedEstateFragment[] }>(
       `{
         nfts(
           where: {
@@ -480,6 +479,6 @@ export async function createApiComponent(components: {
     events,
     fetchData,
     fetchUpdatedData,
-    getDissolvedEstate
+    getDissolvedEstate,
   }
 }

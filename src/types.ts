@@ -18,6 +18,7 @@ export type GlobalContext = {
 export type BaseComponents = {
   config: IConfigComponent
   api: IApiComponent
+  batchApi: IApiComponent
   subgraph: ISubgraphComponent
   map: IMapComponent
   server: IHttpServerComponent<GlobalContext>

@@ -29,6 +29,14 @@ export async function initComponents(): Promise<AppComponents> {
 
   const fetch: IFetchComponent = { fetch: nodeFetch.default }
   const logs = createLogComponent()
+  const batchLogs = {
+    getLogger(name: string) {
+      const logger = logs.getLogger(name)
+      // We don't want to show info for each batched subgraph query
+      return { ...logger, info: () => {} }
+    },
+  }
+
   const server = await createServerComponent<GlobalContext>(
     { config, logs },
     { cors, compression: {} }
@@ -43,8 +51,15 @@ export async function initComponents(): Promise<AppComponents> {
     fetch,
     metrics,
   })
+  const batchSubgraph = await createSubgraphComponent(subgraphURL, {
+    config,
+    logs: batchLogs,
+    fetch,
+    metrics,
+  })
   const api = await createApiComponent({ config, subgraph })
-  const map = await createMapComponent({ config, api })
+  const batchApi = await createApiComponent({ config, subgraph: batchSubgraph })
+  const map = await createMapComponent({ config, api, batchApi })
   const image = createImageComponent({ map })
   const district = createDistrictComponent()
   const statusChecks = await createStatusCheckComponent({ server })
@@ -52,6 +67,7 @@ export async function initComponents(): Promise<AppComponents> {
   return {
     config,
     api,
+    batchApi,
     subgraph,
     map,
     metrics,
