@@ -62,7 +62,7 @@ export async function initComponents(): Promise<AppComponents> {
   const map = await createMapComponent({ config, api, batchApi })
   const image = createImageComponent({ map })
   const district = createDistrictComponent()
-  const statusChecks = await createStatusCheckComponent({ server })
+  const statusChecks = await createStatusCheckComponent({ server, config })
 
   return {
     config,
