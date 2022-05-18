@@ -15,7 +15,7 @@ The env variables and their default values are the following:
 ```
 PORT=5000
 HOST=0.0.0.0
-API_URL=https://api.thegraph.com/subgraphs/name/decentraland/marketplace
+SUBGRAPH_URL=https://api.thegraph.com/subgraphs/name/decentraland/marketplace
 API_BATCH_SIZE=1000
 API_CONCURRENCY=10
 REFRESH_INTERVAL=60

@@ -1,5 +1,6 @@
-import { ApiConfig, IApiComponent } from './modules/api/types'
-import { IMapComponent, MapConfig } from './modules/map/types'
+import { ISubgraphComponent } from '@well-known-components/thegraph-component'
+import { IApiComponent } from './modules/api/types'
+import { IMapComponent } from './modules/map/types'
 import { IImageComponent } from './modules/image/types'
 import { IDistrictComponent } from './modules/district/types'
 import {
@@ -14,11 +15,10 @@ export type GlobalContext = {
   components: BaseComponents
 }
 
-export type AppConfig = ApiConfig & MapConfig
-
 export type BaseComponents = {
   config: IConfigComponent
   api: IApiComponent
+  subgraph: ISubgraphComponent
   map: IMapComponent
   server: IHttpServerComponent<GlobalContext>
   logs: ILoggerComponent

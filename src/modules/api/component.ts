@@ -2,6 +2,7 @@ import { EventEmitter } from 'events'
 
 import { Tile, TileType } from '../map/types'
 import { IConfigComponent } from '@well-known-components/interfaces'
+import { ISubgraphComponent } from '@well-known-components/thegraph-component'
 import {
   ApiEvents,
   Batch,
@@ -13,13 +14,7 @@ import {
   Result,
   DissolvedEstateFragment,
 } from './types'
-import {
-  isExpired,
-  getProximity,
-  graphql,
-  capitalize,
-  buildFromEstates,
-} from './utils'
+import { isExpired, getProximity, capitalize, buildFromEstates } from './utils'
 import { coordsToId, specialTiles } from '../map/utils'
 
 const parcelFields = `{
@@ -65,11 +60,11 @@ const parcelFields = `{
 
 export async function createApiComponent(components: {
   config: IConfigComponent
+  subgraph: ISubgraphComponent
 }): Promise<IApiComponent> {
-  const { config } = components
+  const { config, subgraph } = components
 
   // config
-  const url = await config.requireString('API_URL')
   const batchSize = await config.requireNumber('API_BATCH_SIZE')
   const concurrency = await config.requireNumber('API_CONCURRENCY')
   const imageBaseUrl = await config.requireString('IMAGE_BASE_URL')
@@ -164,8 +159,7 @@ export async function createApiComponent(components: {
   }
 
   async function fetchBatch(lastTokenId = '', page = 0) {
-    const { nfts } = await graphql<{ nfts: ParcelFragment[] }>(
-      url,
+    const { nfts } = await subgraph.query<{ nfts: ParcelFragment[] }>(
       `{
         nfts(
           first: ${batchSize},
@@ -197,11 +191,10 @@ export async function createApiComponent(components: {
 
   async function fetchUpdatedData(updatedAfter: number) {
     try {
-      const { parcels, estates } = await graphql<{
+      const { parcels, estates } = await subgraph.query<{
         parcels: ParcelFragment[]
         estates: EstateFragment[]
       }>(
-        url,
         `{
         parcels: nfts(
           first: ${batchSize},
