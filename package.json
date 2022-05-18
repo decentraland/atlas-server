@@ -23,7 +23,7 @@
     "@well-known-components/logger": "^1.0.0",
     "@well-known-components/metrics": "^1.1.1",
     "@well-known-components/thegraph-component": "^1.0.0-20220516220029.commit-c57e3ee",
-    "canvas": "^2.7.0",
+    "canvas": "^2.9.1",
     "cli-progress": "^3.9.0",
     "fp-future": "^1.0.1",
     "node-fetch": "^2.6.1",

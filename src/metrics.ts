@@ -1,5 +1,6 @@
 import { IMetricsComponent } from '@well-known-components/interfaces'
 import { validateMetricsDeclaration } from '@well-known-components/metrics'
+import { metricDeclarations as thegraphMetrics } from '@well-known-components/thegraph-component'
 
 export const metricDeclarations = {
   dcl_map_render_time: {
@@ -8,6 +9,7 @@ export const metricDeclarations = {
     type: IMetricsComponent.HistogramType,
     labelNames: ['status'],
   },
+  ...thegraphMetrics,
 }
 
 // type assertions
