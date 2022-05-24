@@ -45,18 +45,14 @@ export async function initComponents(): Promise<AppComponents> {
     server,
     config,
   })
-  const subgraph = await createSubgraphComponent(subgraphURL, {
-    config,
-    logs,
-    fetch,
-    metrics,
-  })
-  const batchSubgraph = await createSubgraphComponent(subgraphURL, {
-    config,
-    logs: batchLogs,
-    fetch,
-    metrics,
-  })
+  const subgraph = await createSubgraphComponent(
+    { config, logs, fetch, metrics },
+    subgraphURL
+  )
+  const batchSubgraph = await createSubgraphComponent(
+    { config, logs: batchLogs, fetch, metrics },
+    subgraphURL
+  )
   const api = await createApiComponent({ config, subgraph })
   const batchApi = await createApiComponent({ config, subgraph: batchSubgraph })
   const map = await createMapComponent({ config, api, batchApi })
