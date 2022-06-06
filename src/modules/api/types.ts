@@ -1,16 +1,6 @@
 import { EventEmitter } from 'events'
 import { Tile } from '../map/types'
 
-export type ApiConfig = {
-  API_URL: string
-  API_BATCH_SIZE: number
-  API_CONCURRENCY: number
-  IMAGE_BASE_URL: string
-  EXTERNAL_BASE_URL: string
-  LAND_CONTRACT_ADDRESS: string
-  ESTATE_CONTRACT_ADDRESS: string
-}
-
 export enum ApiEvents {
   PROGRESS = 'progress',
 }

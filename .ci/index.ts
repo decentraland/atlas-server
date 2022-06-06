@@ -18,11 +18,15 @@ export = async function main() {
     [
       { name: 'NODE_ENV', value: 'production' },
       {
-        name: 'API_URL',
+        name: 'SUBGRAPH_URL',
         value:
           env === 'prd' || env === 'stg'
             ? 'https://api.thegraph.com/subgraphs/name/decentraland/marketplace'
             : 'https://api.thegraph.com/subgraphs/name/decentraland/marketplace-ropsten',
+      },
+      {
+        name: 'SUBGRAPH_COMPONENT_QUERY_TIMEOUT',
+        value: '30000',
       },
       {
         name: 'IMAGE_BASE_URL',

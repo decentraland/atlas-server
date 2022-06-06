@@ -5,49 +5,6 @@ import {
   Proximity,
 } from './types'
 import proximities from './data/proximity.json'
-import fetch from 'node-fetch'
-import { sleep } from '../map/utils'
-
-// helper to do GraphQL queries with retry logic
-export async function graphql<T>(
-  url: string,
-  query: string,
-  retries = 5,
-  retryDelay = 500
-): Promise<T> {
-  try {
-    const res = await fetch(url, {
-      method: 'post',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        query,
-      }),
-    })
-
-    if (!res.ok) {
-      throw new Error(`Failed to fetch TheGraph: ${await res.text()}`)
-    }
-
-    const result: { data: T } = await res.json()
-
-    if (!result || !result.data || Object.keys(result.data).length === 0) {
-      throw new Error(`Invalid response. Result: ${JSON.stringify(result)}`)
-    }
-
-    return result.data
-  } catch (error) {
-    // retry
-    console.log(`Retrying graphql fetch. Error: ${error.message}.`)
-
-    if (retries > 0) {
-      // retry
-      await sleep(retryDelay)
-      return graphql<T>(url, query, retries - 1, retryDelay * 2)
-    } else {
-      throw error // bubble up
-    }
-  }
-}
 
 export function isExpired(order: OrderFragment) {
   return parseInt(order.expiresAt) <= Date.now()

@@ -4,24 +4,26 @@ import { MapEvents } from '../modules/map/types'
 import { AppComponents } from '../types'
 
 export const setupLogs = (
-  components: Pick<AppComponents, 'config' | 'map' | 'api'>
+  components: Pick<AppComponents, 'config' | 'map' | 'batchApi'>
 ) => {
-  const { config, map, api } = components
+  const { config, map, batchApi } = components
 
   const bar = new SingleBar({ format: '[{bar}] {percentage}%' })
 
   map.events.on(MapEvents.INIT, async () => {
     console.log(`Fetching data...`)
     // TODO: it may be better to ask configurations to the specific component like
-    //     console.log(`URL: ${map.API_URL}`)
+    //     console.log(`URL: ${map.SUBGRAPH_URL}`)
     // to avoid using config with hardcoded keys everywhere
-    console.log(`URL: ${await config.getString('API_URL')}`)
+    console.log(`URL: ${await config.getString('SUBGRAPH_URL')}`)
     console.log(`Concurrency: ${await config.getString('API_CONCURRENCY')}`)
     console.log(`Batch Size: ${await config.getString('API_BATCH_SIZE')}`)
     bar.start(100, 0)
   })
 
-  api.events.on(ApiEvents.PROGRESS, (progress: number) => bar.update(progress))
+  batchApi.events.on(ApiEvents.PROGRESS, (progress: number) =>
+    bar.update(progress)
+  )
 
   map.events.on(MapEvents.READY, async (result: Result) => {
     bar.stop()
@@ -30,7 +32,9 @@ export const setupLogs = (
     console.log(`Estates: ${result.estates.length.toLocaleString()}`)
     console.log(`Last timestamp:`, result.updatedAt)
     console.log(
-      `Polling changes every ${await config.getNumber('REFRESH_INTERVAL')} seconds`
+      `Polling changes every ${await config.getNumber(
+        'REFRESH_INTERVAL'
+      )} seconds`
     )
   })
 

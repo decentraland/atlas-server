@@ -12,8 +12,9 @@ import { addSpecialTiles, computeEstate, isExpired, sleep } from './utils'
 export async function createMapComponent(components: {
   config: IConfigComponent
   api: IApiComponent
+  batchApi: IApiComponent
 }): Promise<IMapComponent & IBaseComponent & IStatusCheckCapableComponent> {
-  const { config, api } = components
+  const { config, api, batchApi } = components
 
   // config
   const refreshInterval =
@@ -115,7 +116,7 @@ export async function createMapComponent(components: {
     async start() {
       events.emit(MapEvents.INIT)
       try {
-        const result = await api.fetchData()
+        const result = await batchApi.fetchData()
         lastUpdatedAt = result.updatedAt
         tiles.resolve(addSpecialTiles(addTiles(result.tiles, {})))
         parcels.resolve(addParcels(result.parcels, {}))
@@ -126,7 +127,7 @@ export async function createMapComponent(components: {
         await sleep(refreshInterval)
         poll()
       } catch (error) {
-        tiles.reject(error)
+        tiles.reject(error as Error)
       }
     },
   }
