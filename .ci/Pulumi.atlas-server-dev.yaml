@@ -1,3 +1,5 @@
 encryptionsalt: v1:H6RzXVTq1mk=:v1:4xTHlUgDjkaznu/T:pffHURYMXKVyoeLboaixgYHkHHGacg==
 config:
+  atlas-server:SUBGRAPH_URL:
+    secure: v1:cbzwjLhC+zBDS/6+:zTJU6gzLgDh5CFSZqtQo3j6NUmMTHYU6TYAw//irZ3xJQX2uPq8Hw5VgQAHpmOPlQ9784vpfPaOqEKVM/iwRYMlws2mgsPAskzmCmUvuY6c=
   supra:stack-id: blue
