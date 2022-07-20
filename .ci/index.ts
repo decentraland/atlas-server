@@ -22,7 +22,7 @@ export = async function main() {
         value:
           env === 'prd' || env === 'stg'
             ? 'https://api.thegraph.com/subgraphs/name/decentraland/marketplace'
-            : 'https://api.thegraph.com/subgraphs/name/decentraland/marketplace-ropsten',
+            : 'https://api.thegraph.com/subgraphs/name/decentraland/marketplace-goerli',
       },
       {
         name: 'SUBGRAPH_COMPONENT_QUERY_TIMEOUT',
@@ -47,14 +47,14 @@ export = async function main() {
         value:
           env === 'prd' || env === 'stg'
             ? '0xf87e31492faf9a91b02ee0deaad50d51d56d5d4d'
-            : '0x7a73483784ab79257bb11b96fd62a2c3ae4fb75b',
+            : '0x25b6B4bac4aDB582a0ABd475439dA6730777Fbf7',
       },
       {
         name: 'ESTATE_CONTRACT_ADDRESS',
         value:
           env === 'prd' || env === 'stg'
             ? '0x959e104e1a4db6317fa58f8295f586e1a978c297'
-            : '0x124bf28a423b2ca80b3846c3aa0eb944fe7ebb95',
+            : '0xC9A46712E6913c24d15b46fF12221a79c4e251DC',
       },
       { name: 'CORS_ORIGIN', value: '*' },
       { name: 'CORS_METHOD', value: '*' },
