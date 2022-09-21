@@ -458,7 +458,7 @@ export async function createApiComponent(components: {
       return {
         id: estateId,
         name: nft.name,
-        description: nft.estate.data.description || '',
+        description: nft.estate.data?.description || '',
         image: `${imageBaseUrl}/estates/${estateId}/map.png?size=24&width=1024&height=1024`,
         external_url: `${externalBaseUrl}/contracts/${estateContractAddress}/tokens/${estateId}`,
         attributes: [
