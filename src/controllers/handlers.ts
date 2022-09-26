@@ -250,7 +250,7 @@ export const tokenRequestHandler = async (context: {
     )
 
     if (address === landContractAddress) {
-      headers['cache-control'] = 'public, max-age=604800,s-maxage=604800, immutable'
+      headers['cache-control'] = 'public, max-age=3600,s-maxage=3600, immutable'
     }
 
     return { status: 200, headers, body: token }
