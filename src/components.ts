@@ -1,6 +1,9 @@
 import * as nodeFetch from 'node-fetch'
 import { createDotEnvConfigComponent } from '@well-known-components/env-config-provider'
-import { createMetricsComponent } from '@well-known-components/metrics'
+import {
+  createMetricsComponent,
+  instrumentHttpServerWithMetrics,
+} from '@well-known-components/metrics'
 import {
   createServerComponent,
   createStatusCheckComponent,
@@ -14,6 +17,7 @@ import { createImageComponent } from './modules/image/component'
 import { createMapComponent } from './modules/map/component'
 import { AppComponents, GlobalContext } from './types'
 import { metricDeclarations } from './metrics'
+import { createMiniMapRendererComponent } from './adapters/mini-map-renderer'
 
 export async function initComponents(): Promise<AppComponents> {
   const config = await createDotEnvConfigComponent(
@@ -28,7 +32,10 @@ export async function initComponents(): Promise<AppComponents> {
   const subgraphURL = await config.requireString('SUBGRAPH_URL')
 
   const fetch: IFetchComponent = { fetch: nodeFetch.default }
-  const logs = createLogComponent()
+  const metrics = await createMetricsComponent(metricDeclarations, {
+    config,
+  })
+  const logs = await createLogComponent({ metrics })
   const batchLogs = {
     getLogger(name: string) {
       const logger = logs.getLogger(name)
@@ -39,12 +46,10 @@ export async function initComponents(): Promise<AppComponents> {
 
   const server = await createServerComponent<GlobalContext>(
     { config, logs },
-    { cors, compression: {} }
+    { cors }
   )
-  const metrics = await createMetricsComponent(metricDeclarations, {
-    server,
-    config,
-  })
+
+  await instrumentHttpServerWithMetrics({ metrics, server, config })
   const subgraph = await createSubgraphComponent(
     { config, logs, fetch, metrics },
     subgraphURL
@@ -59,6 +64,7 @@ export async function initComponents(): Promise<AppComponents> {
   const image = createImageComponent({ map })
   const district = createDistrictComponent()
   const statusChecks = await createStatusCheckComponent({ server, config })
+  const renderMiniMap = await createMiniMapRendererComponent({ map })
 
   return {
     config,
@@ -72,5 +78,6 @@ export async function initComponents(): Promise<AppComponents> {
     image,
     district,
     statusChecks,
+    renderMiniMap,
   }
 }
