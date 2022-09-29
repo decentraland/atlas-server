@@ -15,13 +15,12 @@ RUN chmod +x /tini
 
 # install dependencies
 COPY package.json /app/package.json
-COPY Makefile /app/Makefile
 COPY package-lock.json /app/package-lock.json
-RUN make install
+RUN npm ci
 
 # build the app
 COPY . /app
-RUN make build test
+RUN npm run build
 
 # remove devDependencies, keep only used dependencies
 RUN npm ci --only=production
