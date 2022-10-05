@@ -28,6 +28,7 @@ export type BaseComponents = {
   district: IDistrictComponent
   metrics: IMetricsComponent<keyof typeof metricDeclarations>
   renderMiniMap: MiniMapRendererComponent
+  renderEstateMiniMap: MiniMapRendererComponent
 }
 
 // production components

@@ -17,7 +17,7 @@ import { createImageComponent } from './modules/image/component'
 import { createMapComponent } from './modules/map/component'
 import { AppComponents, GlobalContext } from './types'
 import { metricDeclarations } from './metrics'
-import { createMiniMapRendererComponent } from './adapters/mini-map-renderer'
+import { createEstatesRendererComponent, createMiniMapRendererComponent } from './adapters/mini-map-renderer'
 
 export async function initComponents(): Promise<AppComponents> {
   const config = await createDotEnvConfigComponent(
@@ -65,6 +65,7 @@ export async function initComponents(): Promise<AppComponents> {
   const district = createDistrictComponent()
   const statusChecks = await createStatusCheckComponent({ server, config })
   const renderMiniMap = await createMiniMapRendererComponent({ map })
+  const renderEstateMiniMap = await createEstatesRendererComponent({ map })
 
   return {
     config,
@@ -79,5 +80,6 @@ export async function initComponents(): Promise<AppComponents> {
     district,
     statusChecks,
     renderMiniMap,
+    renderEstateMiniMap
   }
 }
