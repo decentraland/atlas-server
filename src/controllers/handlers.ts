@@ -64,7 +64,33 @@ export async function miniMapHandler(context: Context) {
       status: 200,
       headers: {
         'content-type': 'image/png',
-        'cache-control': 'public,s-maxage=120,max-age=120',
+        'cache-control': 'public,s-maxage=600,max-age=600',
+      },
+      body: stream,
+    }
+  } catch (error) {
+    timer.end({ status: 500 })
+    return {
+      status: 500,
+      body: { ok: false, error: error.message },
+    }
+  }
+}
+
+export async function estateMapHandler(context: Context) {
+  const { renderEstateMiniMap, map, metrics } = context.components
+  const timer = metrics.startTimer('dcl_mini_map_render_time')
+  try {
+    if (!map.isReady()) {
+      return { status: 503, body: 'Not ready' }
+    }
+    const stream = await renderEstateMiniMap.getStream()
+    timer.end({ status: 200 })
+    return {
+      status: 200,
+      headers: {
+        'content-type': 'image/png',
+        'cache-control': 'public,s-maxage=600,max-age=600',
       },
       body: stream,
     }

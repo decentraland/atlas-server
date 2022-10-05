@@ -12,6 +12,7 @@ import {
   pingRequestHandler,
   tilesInfoRequestHandler,
   miniMapHandler,
+  estateMapHandler,
 } from './handlers'
 
 import { Router } from '@well-known-components/http-server'
@@ -33,6 +34,7 @@ export async function setupRouter(
   router.get('/v2/tiles/info', tilesInfoRequestHandler)
   router.get('/v1/map.png', mapPngRequestHandler)
   router.get('/v1/minimap.png', miniMapHandler)
+  router.get('/v1/estatemap.png', estateMapHandler)
   router.get('/v1/parcels/:x/:y/map.png', parcelMapPngRequestHandler)
   router.get('/v1/estates/:estateId/map.png', estateMapPngRequestHandler)
   router.get('/v2/map.png', mapPngRequestHandler)
