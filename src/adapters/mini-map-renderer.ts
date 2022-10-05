@@ -8,8 +8,8 @@ export type MiniMapRendererComponent = {
 
 /**
  * This minimap encodes information of districts and neighbours into the visible channels
- * RED = (top & 1) << 3 || (left & 1) << 4 || (topLeft & 1) << 5
- * GREEN = (isDistrict & 1) << 5 || (isRoad & 1) << 6 || (isOwned & 1) << 7
+ * RED = (top & 1) << 3 | (left & 1) << 4 | (topLeft & 1) << 5
+ * GREEN = (isDistrict & 1) << 5 | (isRoad & 1) << 6 | (isOwned & 1) << 7
  * BLUE = 0
  */
 export async function createMiniMapRendererComponent(components: {
