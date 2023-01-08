@@ -1,5 +1,5 @@
-import { RentalListing } from '@dcl/schemas'
 import { EventEmitter } from 'events'
+import { TileRentalListing } from '../../adapters/rentals'
 import { Tile } from '../map/types'
 
 export enum ApiEvents {
@@ -17,7 +17,7 @@ export type NFT = {
   external_url: string
   background_color: string
   attributes: Attribute[]
-  rentalListing?: RentalListing
+  rentalListing?: TileRentalListing
 }
 
 export type Attribute = {

@@ -25,9 +25,10 @@ import {
   leftMerge,
 } from '../../logic/nfts'
 import {
-  convertRentalListingToShortenedRentalListing,
+  convertRentalListingToTileRentalListing,
   TileRentalListing,
 } from '../../adapters/rentals'
+import { isRentalListingOpen } from '../../logic/rental'
 
 const parcelFields = `{
   id
@@ -192,7 +193,7 @@ export async function createApiComponent(components: {
         await rentals.getRentalsListingsOfNFTs(nfts.map((nft) => nft.id))
       ).map(([key, value]) => [
         key,
-        convertRentalListingToShortenedRentalListing(value),
+        convertRentalListingToTileRentalListing(value),
       ])
     )
     console.log('Amount of rental listings', Object.keys(rentalListings).length)
@@ -304,37 +305,66 @@ export async function createApiComponent(components: {
         rentalListingsOfParcels
       ).map(([key, value]) => ({
         ...oldTiles[key],
-        rentalListing: value,
+        rentalListing: isRentalListingOpen(value)
+          ? convertRentalListingToTileRentalListing(value)
+          : undefined,
       }))
       const updatedParcelsByRentalListing: NFT[] = Object.entries(
         rentalListingsOfParcels
       ).map(([key, value]) => ({
         ...oldParcels[key],
-        rentalListing: value,
+        rentalListing: isRentalListingOpen(value)
+          ? convertRentalListingToTileRentalListing(value)
+          : undefined,
       }))
       const updatedEstatesByRentalListing: NFT[] = Object.entries(
         rentalListingsOfEstates
       ).map(([key, value]) => ({
         ...oldEstates[key],
-        rentalListing: value,
+        rentalListing: isRentalListingOpen(value)
+          ? convertRentalListingToTileRentalListing(value)
+          : undefined,
       }))
 
       const updatedTiles = leftMerge(
         updatedTilesByRentalListings,
         parcels.map((parcel) =>
-          buildTile(parcel, rentalListingByNftId[parcel.id])
+          buildTile(
+            parcel,
+            isRentalListingOpen(rentalListingByNftId[parcel.id])
+              ? convertRentalListingToTileRentalListing(
+                  rentalListingByNftId[parcel.id]
+                )
+              : undefined
+          )
         )
       )
       const updatedParcels = leftMerge(
         updatedParcelsByRentalListing,
         parcels.map((parcel) =>
-          buildParcel(parcel, rentalListingByNftId[parcel.id])
+          buildParcel(
+            parcel,
+            isRentalListingOpen(rentalListingByNftId[parcel.id])
+              ? convertRentalListingToTileRentalListing(
+                  rentalListingByNftId[parcel.id]
+                )
+              : undefined
+          )
         )
       )
       const updatedEstates = leftMerge(
         updatedEstatesByRentalListing,
         parcels
-          .map((parcel) => buildEstate(parcel, rentalListingByNftId[parcel.id]))
+          .map((parcel) =>
+            buildEstate(
+              parcel,
+              isRentalListingOpen(rentalListingByNftId[parcel.id])
+                ? convertRentalListingToTileRentalListing(
+                    rentalListingByNftId[parcel.id]
+                  )
+                : undefined
+            )
+          )
           .filter((estate) => estate !== null) as NFT[]
       )
 

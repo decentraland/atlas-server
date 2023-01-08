@@ -3,10 +3,10 @@ import { toLegacyTiles } from '../adapters/legacy-tiles'
 import { cacheWrapper } from '../logic/cache-wrapper'
 import { extractParams, getFilterFromUrl } from '../logic/filter-params'
 import { isErrorWithMessage } from '../logic/error'
-import {
-  shortenNFTRentalListing,
-  shortenRentalListing,
-} from '../adapters/rentals'
+// import {
+//   shortenNFTRentalListing,
+//   shortenRentalListing,
+// } from '../adapters/rentals'
 
 export const createTilesRequestHandler = (
   components: Pick<AppComponents, 'map'>
@@ -18,7 +18,7 @@ export const createTilesRequestHandler = (
         return { status: 503, body: 'Not ready' }
       }
       const tiles = await map.getTiles()
-      const data = shortenRentalListing(getFilterFromUrl(context.url, tiles))
+      const data = getFilterFromUrl(context.url, tiles)
 
       return {
         status: 200,
@@ -42,9 +42,7 @@ export const createLegacyTilesRequestHandler = (
         return { status: 503, body: 'Not ready' }
       }
       const tiles = await map.getTiles()
-      const data = shortenRentalListing(
-        toLegacyTiles(getFilterFromUrl(context.url, tiles))
-      )
+      const data = toLegacyTiles(getFilterFromUrl(context.url, tiles))
 
       return {
         status: 200,
@@ -284,7 +282,7 @@ export const parcelRequestHandler = async (context: {
   const parcel = await map.getParcel(x, y)
 
   if (parcel) {
-    return { status: 200, body: shortenNFTRentalListing(parcel) }
+    return { status: 200, body: parcel }
   } else {
     return { status: 404, body: { ok: false, error: 'Not Found' } }
   }
@@ -304,7 +302,7 @@ export const estateRequestHandler = async (context: {
   const estate = await map.getEstate(id)
 
   if (estate) {
-    return { status: 200, body: shortenNFTRentalListing(estate) }
+    return { status: 200, body: estate }
   } else {
     const dissolvedEstate = await map.getDissolvedEstate(id)
     if (dissolvedEstate) {
