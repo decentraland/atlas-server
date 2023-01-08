@@ -2,6 +2,11 @@ import { AppComponents, Context } from '../types'
 import { toLegacyTiles } from '../adapters/legacy-tiles'
 import { cacheWrapper } from '../logic/cache-wrapper'
 import { extractParams, getFilterFromUrl } from '../logic/filter-params'
+import { isErrorWithMessage } from '../logic/error'
+import {
+  shortenNFTRentalListing,
+  shortenRentalListing,
+} from '../adapters/rentals'
 
 export const createTilesRequestHandler = (
   components: Pick<AppComponents, 'map'>
@@ -13,7 +18,7 @@ export const createTilesRequestHandler = (
         return { status: 503, body: 'Not ready' }
       }
       const tiles = await map.getTiles()
-      const data = getFilterFromUrl(context.url, tiles)
+      const data = shortenRentalListing(getFilterFromUrl(context.url, tiles))
 
       return {
         status: 200,
@@ -37,7 +42,9 @@ export const createLegacyTilesRequestHandler = (
         return { status: 503, body: 'Not ready' }
       }
       const tiles = await map.getTiles()
-      const data = toLegacyTiles(getFilterFromUrl(context.url, tiles))
+      const data = shortenRentalListing(
+        toLegacyTiles(getFilterFromUrl(context.url, tiles))
+      )
 
       return {
         status: 200,
@@ -72,7 +79,10 @@ export async function miniMapHandler(context: Context) {
     timer.end({ status: 500 })
     return {
       status: 500,
-      body: { ok: false, error: error.message },
+      body: {
+        ok: false,
+        error: isErrorWithMessage(error) ? error.message : 'Unknown error',
+      },
     }
   }
 }
@@ -98,7 +108,10 @@ export async function estateMapHandler(context: Context) {
     timer.end({ status: 500 })
     return {
       status: 500,
-      body: { ok: false, error: error.message },
+      body: {
+        ok: false,
+        error: isErrorWithMessage(error) ? error.message : 'Unknown error',
+      },
     }
   }
 }
@@ -113,16 +126,23 @@ export const mapPngRequestHandler = async (context: {
     if (!map.isReady()) {
       return { status: 503, body: 'Not ready' }
     }
-    const { width, height, size, center, showOnSale, selected } = extractParams(
-      context.url
-    )
+    const {
+      width,
+      height,
+      size,
+      center,
+      showOnSale,
+      showListedForRent,
+      selected,
+    } = extractParams(context.url)
     const stream = await image.getStream(
       width,
       height,
       size,
       center,
       selected,
-      showOnSale
+      showOnSale,
+      showListedForRent
     )
     timer.end({ status: 200 })
     return {
@@ -136,7 +156,10 @@ export const mapPngRequestHandler = async (context: {
     timer.end({ status: 500 })
     return {
       status: 500,
-      body: { ok: false, error: error.message },
+      body: {
+        ok: false,
+        error: isErrorWithMessage(error) ? error.message : 'Unknown error',
+      },
     }
   }
 }
@@ -155,7 +178,8 @@ export const parcelMapPngRequestHandler = async (context: {
     if (!map.isReady()) {
       return { status: 503, body: 'Not ready' }
     }
-    const { width, height, size, showOnSale } = extractParams(context.url)
+    const { width, height, size, showOnSale, showListedForRent } =
+      extractParams(context.url)
     const center = {
       x: parseInt(params.x) || 0,
       y: parseInt(params.y) || 0,
@@ -167,7 +191,8 @@ export const parcelMapPngRequestHandler = async (context: {
       size,
       center,
       selected,
-      showOnSale
+      showOnSale,
+      showListedForRent
     )
     return {
       status: 200,
@@ -179,7 +204,10 @@ export const parcelMapPngRequestHandler = async (context: {
   } catch (error) {
     return {
       status: 500,
-      body: { ok: false, error: error.message },
+      body: {
+        ok: false,
+        error: isErrorWithMessage(error) ? error.message : 'Unknown error',
+      },
     }
   }
 }
@@ -194,7 +222,8 @@ export const estateMapPngRequestHandler = async (context: {
     if (!map.isReady()) {
       return { status: 503, body: 'Not ready' }
     }
-    const { width, height, size, showOnSale } = extractParams(context.url)
+    const { width, height, size, showOnSale, showListedForRent } =
+      extractParams(context.url)
     const { estateId } = context.params
     const tiles = await map.getTiles()
     const selected = Object.values(tiles).filter(
@@ -220,7 +249,8 @@ export const estateMapPngRequestHandler = async (context: {
       size,
       center,
       selected,
-      showOnSale
+      showOnSale,
+      showListedForRent
     )
     return {
       status: 200,
@@ -232,7 +262,10 @@ export const estateMapPngRequestHandler = async (context: {
   } catch (error) {
     return {
       status: 500,
-      body: { ok: false, error: error.message },
+      body: {
+        ok: false,
+        error: isErrorWithMessage(error) ? error.message : 'Unknown error',
+      },
     }
   }
 }
@@ -251,7 +284,7 @@ export const parcelRequestHandler = async (context: {
   const parcel = await map.getParcel(x, y)
 
   if (parcel) {
-    return { status: 200, body: parcel }
+    return { status: 200, body: shortenNFTRentalListing(parcel) }
   } else {
     return { status: 404, body: { ok: false, error: 'Not Found' } }
   }
@@ -271,7 +304,7 @@ export const estateRequestHandler = async (context: {
   const estate = await map.getEstate(id)
 
   if (estate) {
-    return { status: 200, body: estate }
+    return { status: 200, body: shortenNFTRentalListing(estate) }
   } else {
     const dissolvedEstate = await map.getDissolvedEstate(id)
     if (dissolvedEstate) {

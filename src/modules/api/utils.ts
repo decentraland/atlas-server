@@ -53,7 +53,10 @@ export function capitalize(text: string) {
 export function buildFromEstates<T extends { id: string }>(
   estates: EstateFragment[],
   list: T[],
-  build: (fragment: ParcelFragment) => T | null
+  build: (
+    fragment: ParcelFragment
+    // rentalListings: Record<string, ShortenedRentalListing>
+  ) => T | null
 ) {
   // keep track of entries already added to the list
   const alreadyAdded = new Set<string>(list.map((entry) => entry.id))

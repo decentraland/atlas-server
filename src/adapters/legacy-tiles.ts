@@ -1,4 +1,4 @@
-import { TileType, Tile, LegacyTile } from "../modules/map/types"
+import { TileType, Tile, LegacyTile } from '../modules/map/types'
 
 export function getLegacyTile(tile: Partial<Tile>): number {
   if (tile.price != null) {
@@ -19,7 +19,6 @@ export function getLegacyTile(tile: Partial<Tile>): number {
       return -1
   }
 }
-
 
 // helpers to convert to legacy format
 export function toLegacyTiles(tiles: Record<string, Partial<Tile>>) {
@@ -42,7 +41,7 @@ function toLegacyTile(tile: Partial<Tile>): Partial<LegacyTile> {
   if (tile.name) legacyTile.name = tile.name
   if (tile.estateId) legacyTile.estate_id = tile.estateId
   if (tile.price) legacyTile.price = tile.price
+  if (tile.rentalListing) legacyTile.rentalListing = tile.rentalListing
 
   return legacyTile
 }
-

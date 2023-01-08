@@ -1,3 +1,4 @@
+import { RentalListing } from '@dcl/schemas'
 import { EventEmitter } from 'events'
 import { Tile } from '../map/types'
 
@@ -16,6 +17,7 @@ export type NFT = {
   external_url: string
   background_color: string
   attributes: Attribute[]
+  rentalListing?: RentalListing
 }
 
 export type Attribute = {
@@ -27,7 +29,12 @@ export type Attribute = {
 export interface IApiComponent {
   events: EventEmitter
   fetchData: () => Promise<Result>
-  fetchUpdatedData: (updatedAfter: number) => Promise<Result>
+  fetchUpdatedData: (
+    updatedAfter: number,
+    oldTiles: Record<string, Tile>,
+    oldParcels: Record<string, NFT>,
+    oldEstates: Record<string, NFT>
+  ) => Promise<Result>
   getDissolvedEstate: (estateId: string) => Promise<NFT | null>
 }
 
@@ -46,6 +53,7 @@ export type EstateFragment = {
 }
 
 export type ParcelFragment = {
+  id: string
   name: string | null
   owner: { id: string } | null
   searchParcelX: string

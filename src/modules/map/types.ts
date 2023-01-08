@@ -1,3 +1,4 @@
+import { RentalListing } from '@dcl/schemas'
 import { EventEmitter } from 'events'
 import { NFT } from '../api/types'
 
@@ -48,6 +49,7 @@ export type Tile = {
   tokenId?: string
   price?: number
   expiresAt?: number
+  rentalListing?: RentalListing
 }
 
 export const tileFields = [
@@ -87,4 +89,5 @@ export type LegacyTile = {
   left?: number
   topLeft?: number
   price?: number
+  rentalListing?: RentalListing
 }

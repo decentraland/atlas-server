@@ -33,14 +33,14 @@ export = async function main() {
         value:
           env === 'prd' || env === 'stg'
             ? 'https://api.decentraland.org/v2'
-            : 'https://api.decentraland.io/v2',
+            : 'https://api.decentraland.zone/v2',
       },
       {
         name: 'EXTERNAL_BASE_URL',
         value:
           env === 'prd' || env === 'stg'
             ? 'https://market.decentraland.org'
-            : 'https://market.decentraland.io',
+            : 'https://market.decentraland.zone',
       },
       {
         name: 'LAND_CONTRACT_ADDRESS',
@@ -61,6 +61,10 @@ export = async function main() {
       {
         name: 'WKC_METRICS_BEARER_TOKEN',
         value: prometheus.getOutput('serviceMetricsBearerToken'),
+      },
+      {
+        name: 'SIGNATURES_SERVER_URL',
+        value: `https://signatures-api.decentraland.${publicTLD}`,
       },
     ],
     hostname,
