@@ -10,6 +10,7 @@ import {
 
 const HTTP_MAX_URL_LENGTH = 2048
 const MAX_CONCURRENT_REQUEST = 2
+const LIMIT_RENTAL_LISTINGS = 100
 
 export async function createRentalsComponent(components: {
   config: IConfigComponent
@@ -105,14 +106,13 @@ export async function createRentalsComponent(components: {
   async function getUpdatedRentalListings(
     updatedAfter: number
   ): Promise<RentalListing[]> {
-    const baseUrl = `${signaturesServerURL}/v1/rentals-listings?updatedAfter=${updatedAfter}`
     let remainingRentalListings = 0
     let rentalListings: RentalListing[] = []
     do {
       const updatedRentalListings = await fetchRentalListings(
-        `${baseUrl}&limit=100&skip=100`
+        `/v1/rentals-listings?updatedAfter=${updatedAfter}&limit=${LIMIT_RENTAL_LISTINGS}&offset=${rentalListings.length}`
       )
-      rentalListings = updatedRentalListings.data.results.concat(rentalListings)
+      rentalListings = rentalListings.concat(updatedRentalListings.data.results)
       remainingRentalListings =
         updatedRentalListings.data.total - rentalListings.length
     } while (remainingRentalListings > 0)
