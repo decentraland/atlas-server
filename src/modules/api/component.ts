@@ -196,7 +196,6 @@ export async function createApiComponent(components: {
         convertRentalListingToTileRentalListing(value),
       ])
     )
-    console.log('Amount of rental listings', Object.keys(rentalListings).length)
     return nfts.reduce<Batch>(
       (batch, nft) => {
         const rentalListing = rentalListings[nft.id]

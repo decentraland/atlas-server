@@ -3,10 +3,6 @@ import { toLegacyTiles } from '../adapters/legacy-tiles'
 import { cacheWrapper } from '../logic/cache-wrapper'
 import { extractParams, getFilterFromUrl } from '../logic/filter-params'
 import { isErrorWithMessage } from '../logic/error'
-// import {
-//   shortenNFTRentalListing,
-//   shortenRentalListing,
-// } from '../adapters/rentals'
 
 export const createTilesRequestHandler = (
   components: Pick<AppComponents, 'map'>
