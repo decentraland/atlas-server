@@ -21,6 +21,10 @@ export async function createRentalsComponent(components: {
     'SIGNATURES_SERVER_URL'
   )
 
+  /** Gets the rental listings from the given path.
+   * @param path The signatures' server path to be used when querying rental listings.
+   * @throws An error if the request fails.
+   */
   async function fetchRentalListings(
     path: string
   ): Promise<SignaturesServerPaginatedResponse<RentalListing[]>> {
@@ -58,6 +62,10 @@ export async function createRentalsComponent(components: {
     return parsedResult
   }
 
+  /** Gets the open rental listings of the NFTs identified by the given NFT ids.
+   * @param nftIds The ids of the NFTs to get the rental listings for.
+   * @throws An error if the request fails.
+   */
   async function getRentalsListingsOfNFTs(
     nftIds: string[]
   ): Promise<Record<string, RentalListing>> {
@@ -103,6 +111,10 @@ export async function createRentalsComponent(components: {
       }, {})
   }
 
+  /** Gets the updated rental listings that were updated after the given date.
+   * @param updatedAfter A UTC timestamp in milliseconds of the rental listings update time.
+   * @throws An error if the request fails.
+   */
   async function getUpdatedRentalListings(
     updatedAfter: number
   ): Promise<RentalListing[]> {
