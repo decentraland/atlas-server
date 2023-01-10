@@ -1,5 +1,4 @@
 import { EventEmitter } from 'events'
-import { TileRentalListing } from '../../adapters/rentals'
 import { Tile } from '../map/types'
 
 export enum ApiEvents {
@@ -17,7 +16,6 @@ export type NFT = {
   external_url: string
   background_color: string
   attributes: Attribute[]
-  rentalListing?: TileRentalListing
 }
 
 export type Attribute = {
@@ -31,9 +29,7 @@ export interface IApiComponent {
   fetchData: () => Promise<Result>
   fetchUpdatedData: (
     updatedAfter: number,
-    oldTiles: Record<string, Tile>,
-    oldParcels: Record<string, NFT>,
-    oldEstates: Record<string, NFT>
+    oldTiles: Record<string, Tile>
   ) => Promise<Result>
   getDissolvedEstate: (estateId: string) => Promise<NFT | null>
 }
@@ -70,10 +66,12 @@ export type ParcelFragment = {
     estate: {
       tokenId: string
       size: number
+      data: {
+        description: string | null
+      }
       parcels: { x: string; y: string }[]
       nft: {
         name: string
-        description: string | null
         owner: { id: string } | null
         activeOrder: OrderFragment | null
         updatedAt: string

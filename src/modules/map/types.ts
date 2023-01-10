@@ -35,20 +35,35 @@ export enum TileType {
 }
 
 export type Tile = {
+  /** The coordinate of the tile expressed as "x,y". */
   id: string
+  /** The coordinate X of the tile. */
   x: number
+  /** The coordinate Y of the tile. */
   y: number
+  /** The tile type. */
   type: TileType
+  /** True if it has a tile on its top. */
   top: boolean
+  /** True if it has a tile on its left. */
   left: boolean
+  /** True if it has a tile on its top left. */
   topLeft: boolean
+  /** UTC timestamp of the last time the tile was updated. */
   updatedAt: number
+  /** The name of the tile, taken either from the estate or from the parcel it belongs to. */
   name?: string
+  /** The owner of the tile. */
   owner?: string
+  /** The estate id, if the tile belongs to a state. */
   estateId?: string
+  /** The estate id, if the tile represents a parcel. */
   tokenId?: string
+  /** The UTC time */
   price?: number
+  /** The UTC time */
   expiresAt?: number
+  /** The rental listing associated with the parcel ir represents or estate that the tile is in. */
   rentalListing?: TileRentalListing
 }
 

@@ -174,9 +174,9 @@ export async function createMapComponent(components: {
 
       const result = await api.fetchUpdatedData(
         lastUpdatedAt,
-        oldTiles,
-        oldParcels,
-        oldEstates
+        oldTiles
+        // oldParcels,
+        // oldEstates
       )
       if (result.tiles.length > 0) {
         // update tiles

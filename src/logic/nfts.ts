@@ -19,6 +19,20 @@ export function getTokenIdFromNftId(nftId: string): string | undefined {
   return nftId.split('-')[2]
 }
 
+// export function buildEstateNftId(
+//   tokenId: string,
+//   contractAddress: string
+// ): string {
+//   return `estate-${contractAddress.toLowerCase()}-${tokenId}`
+// }
+
+// export function buildParcelNftId(
+//   tokenId: string,
+//   contractAddress: string
+// ): string {
+//   return `parcel-${contractAddress.toLowerCase()}-${tokenId}`
+// }
+
 /** Performs a left merge of an array, removing duplicates by id, favouring the items on the right array.
  * @param leftItems An array of items
  * @param rightItems An array of items
