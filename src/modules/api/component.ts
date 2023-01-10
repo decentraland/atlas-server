@@ -37,7 +37,6 @@ import {
 import { isRentalListingOpen } from '../../logic/rental'
 
 const parcelFields = `{
-  id
   name
   owner {
     id
@@ -68,7 +67,6 @@ const parcelFields = `{
       }
       nft {
         name
-        description
         owner {
           id
         }
