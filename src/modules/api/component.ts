@@ -313,6 +313,12 @@ export async function createApiComponent(components: {
       // Creates the tiles that are being updated given the updated rental listings
       const updatedTilesByRentalListings: Tile[] = rentalListings
         .flatMap((rentalListing) => {
+          if (!rentalListing.nftId) {
+            console.error(
+              `Rental listing has a wrong nft id: ${rentalListing.nftId}`
+            )
+            return null
+          }
           const tokenId = getTokenIdFromNftId(rentalListing.nftId)
           if (!tokenId) {
             throw new Error(
