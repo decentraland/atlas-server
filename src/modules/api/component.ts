@@ -311,8 +311,8 @@ export async function createApiComponent(components: {
         return acc
       }, {} as Record<string, Tile>)
       // Creates the tiles that are being updated given the updated rental listings
-      const updatedTilesByRentalListings: Tile[] = rentalListings.flatMap(
-        (rentalListing) => {
+      const updatedTilesByRentalListings: Tile[] = rentalListings
+        .flatMap((rentalListing) => {
           const tokenId = getTokenIdFromNftId(rentalListing.nftId)
           if (!tokenId) {
             throw new Error(
@@ -341,9 +341,9 @@ export async function createApiComponent(components: {
                 : undefined,
             }))
           }
-          throw new Error('Unrecognized rented NFT')
-        }
-      )
+          return null
+        })
+        .filter((tile) => tile !== null) as Tile[]
       // Creates the tiles that are being updated given the updated parcels
       const updatedTilesByUpdatedParcels = parcels.map((parcel) =>
         buildTile(
