@@ -276,17 +276,13 @@ export async function createApiComponent(components: {
       ])
 
       // Gets the rental listings by nft id to use them more efficiently later.
-      const rentalListingByNftId = rentalListings.reduce(
-        (prev, current) => ({
-          ...prev,
-          [current.nftId]:
-            prev[current.nftId] &&
-            prev[current.nftId].updatedAt > current.updatedAt
-              ? prev[current.nftId]
-              : current,
-        }),
-        {} as Record<string, RentalListing>
-      )
+      const rentalListingByNftId = rentalListings.reduce((acc, curr) => {
+        acc[curr.nftId] =
+          acc[curr.nftId] && acc[curr.nftId].updatedAt > curr.updatedAt
+            ? acc[curr.nftId]
+            : curr
+        return acc
+      }, {} as Record<string, RentalListing>)
 
       if (!parcels.length && !estates.length && !rentalListings.length) {
         return {
@@ -300,9 +296,9 @@ export async function createApiComponent(components: {
       // Gets the tiles by estate id to use them more efficiently later.
       const tilesByEstateId = Object.values(oldTiles).reduce((acc, curr) => {
         if (curr.estateId && acc[curr.estateId]) {
-          return { ...acc, [curr.estateId]: acc[curr.estateId].concat([curr]) }
+          acc[curr.estateId] = acc[curr.estateId].concat([curr])
         } else if (curr.estateId && !acc[curr.estateId]) {
-          return { ...acc, [curr.estateId]: [curr] }
+          acc[curr.estateId] = [curr]
         }
         return acc
       }, {} as Record<string, Tile[]>)
@@ -310,7 +306,7 @@ export async function createApiComponent(components: {
       // Gets the tiles by token id to use them more efficiently later.
       const tilesByTokenId = Object.values(oldTiles).reduce((acc, curr) => {
         if (curr.tokenId) {
-          return { ...acc, [curr.tokenId]: curr }
+          acc[curr.tokenId] = curr
         }
         return acc
       }, {} as Record<string, Tile>)
