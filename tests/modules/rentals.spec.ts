@@ -185,7 +185,7 @@ describe('when getting the updated rental listings', () => {
   let responses: SignaturesServerPaginatedResponse<RentalListing[]>[]
   let result: RentalListing[]
 
-  describe('and the are no updated rental listings', () => {
+  describe('and there are no updated rental listings', () => {
     beforeEach(async () => {
       responses = [
         {
@@ -217,7 +217,7 @@ describe('when getting the updated rental listings', () => {
     })
   })
 
-  describe('and the are no updated rental listings', () => {
+  describe('and there are no updated rental listings', () => {
     beforeEach(async () => {
       responses = [
         {
