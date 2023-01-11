@@ -4,6 +4,8 @@ import {
   TileRentalListing,
 } from '../../adapters/rentals'
 import { getTokenIdFromNftId } from '../../logic/nfts'
+import { isRentalListingOpen } from '../../logic/rental'
+import { Tile } from '../map/types'
 import {
   EstateFragment,
   ParcelFragment,
@@ -11,8 +13,6 @@ import {
   Proximity,
 } from './types'
 import proximities from './data/proximity.json'
-import { isRentalListingOpen } from '../../logic/rental'
-import { Tile } from '../map/types'
 
 export function isExpired(order: OrderFragment) {
   return parseInt(order.expiresAt) <= Date.now()

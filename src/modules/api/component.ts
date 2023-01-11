@@ -1,7 +1,19 @@
 import { EventEmitter } from 'events'
+import { RentalListing } from '@dcl/schemas'
 import { IConfigComponent } from '@well-known-components/interfaces'
 import { ISubgraphComponent } from '@well-known-components/thegraph-component'
 import { isErrorWithMessage } from '../../logic/error'
+import {
+  getTokenIdFromNftId,
+  isNftIdFromEstate,
+  isNftIdFromParcel,
+  leftMerge,
+} from '../../logic/nfts'
+import {
+  convertRentalListingToTileRentalListing,
+  TileRentalListing,
+} from '../../adapters/rentals'
+import { isRentalListingOpen } from '../../logic/rental'
 import { Tile, TileType } from '../map/types'
 import { coordsToId, specialTiles } from '../map/utils'
 import { IRentalsComponent } from '../rentals/types'
@@ -23,18 +35,6 @@ import {
   buildFromEstates,
   getParcelFragmentRentalListing,
 } from './utils'
-import { RentalListing } from '@dcl/schemas'
-import {
-  getTokenIdFromNftId,
-  isNftIdFromEstate,
-  isNftIdFromParcel,
-  leftMerge,
-} from '../../logic/nfts'
-import {
-  convertRentalListingToTileRentalListing,
-  TileRentalListing,
-} from '../../adapters/rentals'
-import { isRentalListingOpen } from '../../logic/rental'
 
 const parcelFields = `{
   name
