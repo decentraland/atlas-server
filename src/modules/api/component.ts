@@ -269,12 +269,13 @@ export async function createApiComponent(components: {
       const updatedRentalListings =
         rentals.getUpdatedRentalListings(updatedAfter)
 
-      // Gets the latest parcels, estates and rental listings
+      // Gets the latest parcels, estates and rental listings.
       const [{ parcels, estates }, rentalListings] = await Promise.all([
         updatedLand,
         updatedRentalListings,
       ])
 
+      // Gets the rental listings by nft id to use them more efficiently later.
       const rentalListingByNftId = rentalListings.reduce(
         (prev, current) => ({
           ...prev,
@@ -296,6 +297,7 @@ export async function createApiComponent(components: {
         }
       }
 
+      // Gets the tiles by estate id to use them more efficiently later.
       const tilesByEstateId = Object.values(oldTiles).reduce((acc, curr) => {
         if (curr.estateId && acc[curr.estateId]) {
           return { ...acc, [curr.estateId]: acc[curr.estateId].concat([curr]) }
@@ -304,13 +306,16 @@ export async function createApiComponent(components: {
         }
         return acc
       }, {} as Record<string, Tile[]>)
+
+      // Gets the tiles by token id to use them more efficiently later.
       const tilesByTokenId = Object.values(oldTiles).reduce((acc, curr) => {
         if (curr.tokenId) {
           return { ...acc, [curr.tokenId]: curr }
         }
         return acc
       }, {} as Record<string, Tile>)
-      // Creates the tiles that are being updated given the updated rental listings
+
+      // Creates the tiles that are being updated because of a new / updated rental listings.
       const updatedTilesByRentalListings: Tile[] = rentalListings
         .flatMap((rentalListing) => {
           if (!rentalListing.nftId) {
@@ -350,7 +355,8 @@ export async function createApiComponent(components: {
           return null
         })
         .filter((tile) => tile !== null) as Tile[]
-      // Creates the tiles that are being updated given the updated parcels
+
+      // Creates the tiles that are being updated given the updated parcels.
       const updatedTilesByUpdatedParcels = parcels.map((parcel) =>
         buildTile(
           parcel,
@@ -362,11 +368,16 @@ export async function createApiComponent(components: {
         )
       )
 
+      // Merges the updates tiles whose change was originated from the rental listings with the ones that came from the graph.
       const updatedTiles = leftMerge(
         updatedTilesByRentalListings,
         updatedTilesByUpdatedParcels
       )
+
+      // Build the updated parcels from the updates parcels that came from the graph.
       const updatedParcels = parcels.map((parcel) => buildParcel(parcel))
+
+      // Build the estates from the updates estates that came from the graph.
       const updatedEstates = parcels
         .map((parcel) => buildEstate(parcel))
         .filter((estate) => estate !== null) as NFT[]
