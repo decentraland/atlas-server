@@ -37,6 +37,7 @@ import {
 } from './utils'
 
 const parcelFields = `{
+  id
   name
   owner {
     id
