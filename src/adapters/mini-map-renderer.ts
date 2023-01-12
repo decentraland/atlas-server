@@ -17,7 +17,7 @@ export async function createMiniMapRendererComponent(components: {
 }): Promise<MiniMapRendererComponent> {
   const dimension = 512
   const canvas = createCanvas(dimension, dimension)
-  const ctx = canvas.getContext('2d') as CanvasRenderingContext2D
+  const ctx = canvas.getContext('2d')
 
   const picture = ctx.createImageData(dimension, dimension)
 
@@ -75,7 +75,7 @@ export async function createEstatesRendererComponent(components: {
 }): Promise<MiniMapRendererComponent> {
   const dimension = 512
   const canvas = createCanvas(dimension, dimension)
-  const ctx = canvas.getContext('2d') as CanvasRenderingContext2D
+  const ctx = canvas.getContext('2d')
 
   const picture = ctx.createImageData(dimension, dimension)
 

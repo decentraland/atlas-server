@@ -37,7 +37,7 @@ export function createImageComponent(components: {
     const pan = { x: 0, y: 0 }
     const { nw, se } = getViewport({ width, height, center, size, padding: 1 })
     const canvas = createCanvas(width, height)
-    const ctx = canvas.getContext('2d') as CanvasRenderingContext2D
+    const ctx = canvas.getContext('2d')
     const tiles = await map.getTiles()
     const layer: Layer = (x, y) => {
       const id = coordsToId(x, y)
