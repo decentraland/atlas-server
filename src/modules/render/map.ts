@@ -1,3 +1,4 @@
+import { CanvasRenderingContext2D } from 'canvas'
 import { renderTile } from './tile'
 import { Coord, Layer } from './types'
 

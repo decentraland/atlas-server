@@ -1,3 +1,5 @@
+import { CanvasRenderingContext2D } from 'canvas'
+
 export function renderTile(args: {
   ctx: CanvasRenderingContext2D
   x: number
@@ -11,7 +13,8 @@ export function renderTile(args: {
   topLeft?: boolean
   scale?: number
 }) {
-  const { ctx, x, y, size, padding, offset, color, left, top, topLeft, scale } = args
+  const { ctx, x, y, size, padding, offset, color, left, top, topLeft, scale } =
+    args
 
   ctx.fillStyle = color
 

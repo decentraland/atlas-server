@@ -3,7 +3,7 @@
  * https://jestjs.io/docs/configuration
  */
 
-export default {
+module.exports = {
   // Automatically clear mock calls, instances, contexts and results before every test
   clearMocks: true,
   // An array of glob patterns indicating a set of files for which coverage information should be collected
@@ -14,4 +14,5 @@ export default {
   coverageProvider: 'v8',
   // A preset that is used as a base for Jest's configuration
   preset: 'ts-jest',
+  testMatch: ['<rootDir>/tests/**/?(*.)+(spec|test).[jt]s?(x)'],
 }
