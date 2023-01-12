@@ -49,7 +49,7 @@ export type Tile = {
   left: boolean
   /** True if it has a tile on its top left. */
   topLeft: boolean
-  /** UTC timestamp of the last time the tile was updated. */
+  /** UTC timestamp in seconds of the last time the tile was updated. */
   updatedAt: number
   /** The name of the tile, taken either from the estate or from the parcel it belongs to. */
   name?: string
@@ -59,9 +59,9 @@ export type Tile = {
   estateId?: string
   /** The estate id, if the tile represents a parcel. */
   tokenId?: string
-  /** The UTC time */
+  /** The price, in ethers of the parcel / estate order. */
   price?: number
-  /** The UTC time */
+  /** The UTC time in seconds of when the sell order expires. */
   expiresAt?: number
   /** The rental listing associated with the parcel ir represents or estate that the tile is in. */
   rentalListing?: TileRentalListing
@@ -104,5 +104,5 @@ export type LegacyTile = {
   left?: number
   topLeft?: number
   price?: number
-  rentalListing?: TileRentalListing
+  rentalPricePerDay?: string
 }
