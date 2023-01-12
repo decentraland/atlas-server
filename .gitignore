@@ -1,6 +1,7 @@
 .DS_Store
 node_modules
 src/data
+tests/**/*.spec.js
 coverage
 dist
 .env
