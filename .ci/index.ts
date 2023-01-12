@@ -1,19 +1,19 @@
 import * as pulumi from '@pulumi/pulumi'
 import { createFargateTask } from 'dcl-ops-lib/createFargateTask'
+import { createImageFromContext } from 'dcl-ops-lib/createImageFromContext'
 import { prometheusStack } from 'dcl-ops-lib/prometheus'
 import { env, envTLD, publicTLD } from 'dcl-ops-lib/domain'
 
 export = async function main() {
   const revision = process.env['CI_COMMIT_SHA']
-  const image = `decentraland/atlas-server:${revision}`
-
+  const registry = createImageFromContext('atlas-server', '..', {})
   const hostname = `api.decentraland.${env === 'prd' ? publicTLD : envTLD}`
 
   const prometheus = await prometheusStack()
 
   const api = await createFargateTask(
     `api`,
-    image,
+    registry.image.imageName,
     5000,
     [
       { name: 'NODE_ENV', value: 'production' },
