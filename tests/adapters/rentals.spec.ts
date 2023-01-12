@@ -44,7 +44,6 @@ describe('when converting a rental listing to a tile rental listing', () => {
   it('should return the tile version of the rental listing', () => {
     expect(convertRentalListingToTileRentalListing(rentalListing)).toEqual({
       expiration: rentalListing.expiration,
-      createdAt: rentalListing.createdAt,
       periods: rentalListing.periods,
     })
   })
