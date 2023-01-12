@@ -1,3 +1,11 @@
+import { RentalListing } from '@dcl/schemas'
+import {
+  convertRentalListingToTileRentalListing,
+  TileRentalListing,
+} from '../../adapters/rentals'
+import { getTokenIdFromNftId } from '../../logic/nfts'
+import { isRentalListingOpen } from '../../logic/rental'
+import { Tile } from '../map/types'
 import {
   EstateFragment,
   ParcelFragment,
@@ -74,4 +82,28 @@ export function buildFromEstates<T extends { id: string }>(
         }, entries),
     []
   )
+}
+
+export function getParcelFragmentRentalListing(
+  parcel: ParcelFragment,
+  newRentalListings: Record<string, RentalListing>,
+  oldTilesByTokenId: Record<string, Tile>
+): TileRentalListing | undefined {
+  const nftId = parcel.searchParcelEstateId ?? parcel.id
+  const tokenId = getTokenIdFromNftId(nftId)
+
+  if (newRentalListings[nftId]) {
+    return newRentalListings[nftId] &&
+      isRentalListingOpen(newRentalListings[nftId])
+      ? convertRentalListingToTileRentalListing(newRentalListings[nftId])
+      : undefined
+  } else if (
+    tokenId &&
+    oldTilesByTokenId[tokenId] &&
+    oldTilesByTokenId[tokenId].rentalListing
+  ) {
+    return oldTilesByTokenId[parcel.id].rentalListing
+  }
+
+  return undefined
 }

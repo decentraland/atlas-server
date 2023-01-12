@@ -1,8 +1,22 @@
 import { EventEmitter } from 'events'
-
-import { Tile, TileType } from '../map/types'
+import { RentalListing } from '@dcl/schemas'
 import { IConfigComponent } from '@well-known-components/interfaces'
 import { ISubgraphComponent } from '@well-known-components/thegraph-component'
+import { isErrorWithMessage } from '../../logic/error'
+import {
+  getTokenIdFromNftId,
+  isNftIdFromEstate,
+  isNftIdFromParcel,
+  leftMerge,
+} from '../../logic/nfts'
+import {
+  convertRentalListingToTileRentalListing,
+  TileRentalListing,
+} from '../../adapters/rentals'
+import { isRentalListingOpen } from '../../logic/rental'
+import { Tile, TileType } from '../map/types'
+import { coordsToId, specialTiles } from '../map/utils'
+import { IRentalsComponent } from '../rentals/types'
 import {
   ApiEvents,
   Batch,
@@ -14,10 +28,16 @@ import {
   Result,
   DissolvedEstateFragment,
 } from './types'
-import { isExpired, getProximity, capitalize, buildFromEstates } from './utils'
-import { coordsToId, specialTiles } from '../map/utils'
+import {
+  isExpired,
+  getProximity,
+  capitalize,
+  buildFromEstates,
+  getParcelFragmentRentalListing,
+} from './utils'
 
 const parcelFields = `{
+  id
   name
   owner {
     id
@@ -37,6 +57,9 @@ const parcelFields = `{
       description
     }
     estate {
+      data {
+        description
+      }
       tokenId
       size
       parcels {
@@ -60,9 +83,10 @@ const parcelFields = `{
 
 export async function createApiComponent(components: {
   config: IConfigComponent
+  rentals: IRentalsComponent
   subgraph: ISubgraphComponent
 }): Promise<IApiComponent> {
-  const { config, subgraph } = components
+  const { config, subgraph, rentals } = components
 
   // config
   const batchSize = await config.requireNumber('API_BATCH_SIZE')
@@ -85,7 +109,7 @@ export async function createApiComponent(components: {
     const parcels: NFT[] = []
     const estates: NFT[] = []
 
-    // auxiliars for fetching in batches
+    // auxiliaries for fetching in batches
 
     let batches: Promise<Batch>[] = []
     let total = 0
@@ -120,17 +144,19 @@ export async function createApiComponent(components: {
       if (batches.length === Math.max(concurrency, 1)) {
         // ...wait for all the batches to finish
         const results = await Promise.all(batches)
-        // find last id
-        lastTokenId = results
-          .map((batch) => batch.tiles)
-          .filter((result) => result.length > 0)
-          .pop()!
-          .pop()!.tokenId!
-
         // prepare next iteration
         complete = results
           .map((batch) => batch.tiles)
           .some((result) => result.length === 0)
+
+        if (!complete) {
+          // find last id
+          lastTokenId = results
+            .map((batch) => batch.tiles)
+            .filter((result) => result.length > 0)
+            .pop()!
+            .pop()!.tokenId!
+        }
         batches = []
       }
     }
@@ -154,7 +180,6 @@ export async function createApiComponent(components: {
         0
       ),
     }
-
     return result
   }
 
@@ -173,9 +198,25 @@ export async function createApiComponent(components: {
         ) ${parcelFields}
       }`
     )
+    const rentalListings =
+      nfts.length > 0
+        ? Object.fromEntries(
+            Object.entries(
+              await rentals.getRentalsListingsOfNFTs(
+                Array.from(
+                  new Set(nfts.map((nft) => nft.searchParcelEstateId ?? nft.id))
+                )
+              )
+            ).map(([key, value]) => [
+              key,
+              convertRentalListingToTileRentalListing(value),
+            ])
+          )
+        : {}
     return nfts.reduce<Batch>(
       (batch, nft) => {
-        const tile = buildTile(nft)
+        const rentalListing = rentalListings[nft.searchParcelEstateId ?? nft.id]
+        const tile = buildTile(nft, rentalListing)
         const parcel = buildParcel(nft)
         const estate = buildEstate(nft)
         batch.tiles.push(tile)
@@ -189,9 +230,12 @@ export async function createApiComponent(components: {
     )
   }
 
-  async function fetchUpdatedData(updatedAfter: number) {
+  async function fetchUpdatedData(
+    updatedAfter: number,
+    oldTiles: Record<string, Tile>
+  ) {
     try {
-      const { parcels, estates } = await subgraph.query<{
+      const updatedLand = subgraph.query<{
         parcels: ParcelFragment[]
         estates: EstateFragment[]
       }>(
@@ -223,8 +267,25 @@ export async function createApiComponent(components: {
         }
       }`
       )
+      const updatedRentalListings =
+        rentals.getUpdatedRentalListings(updatedAfter)
 
-      if (!parcels.length && !estates.length) {
+      // Gets the latest parcels, estates and rental listings.
+      const [{ parcels, estates }, rentalListings] = await Promise.all([
+        updatedLand,
+        updatedRentalListings,
+      ])
+
+      // Gets the rental listings by nft id to use them more efficiently later.
+      const rentalListingByNftId = rentalListings.reduce((acc, curr) => {
+        acc[curr.nftId] =
+          acc[curr.nftId] && acc[curr.nftId].updatedAt > curr.updatedAt
+            ? acc[curr.nftId]
+            : curr
+        return acc
+      }, {} as Record<string, RentalListing>)
+
+      if (!parcels.length && !estates.length && !rentalListings.length) {
         return {
           tiles: [],
           parcels: [],
@@ -233,17 +294,104 @@ export async function createApiComponent(components: {
         }
       }
 
-      const updatedTiles = parcels.map(buildTile)
-      const updatedParcels = parcels.map(buildParcel)
+      // Gets the tiles by estate id to use them more efficiently later.
+      const tilesByEstateId = Object.values(oldTiles).reduce((acc, curr) => {
+        if (curr.estateId && acc[curr.estateId]) {
+          acc[curr.estateId] = acc[curr.estateId].concat([curr])
+        } else if (curr.estateId && !acc[curr.estateId]) {
+          acc[curr.estateId] = [curr]
+        }
+        return acc
+      }, {} as Record<string, Tile[]>)
+
+      // Gets the tiles by token id to use them more efficiently later.
+      const tilesByTokenId = Object.values(oldTiles).reduce((acc, curr) => {
+        if (curr.tokenId) {
+          acc[curr.tokenId] = curr
+        }
+        return acc
+      }, {} as Record<string, Tile>)
+
+      // Creates the tiles that are being updated because of a new / updated rental listings.
+      const updatedTilesByRentalListings: Tile[] = rentalListings
+        .flatMap((rentalListing) => {
+          if (!rentalListing.nftId) {
+            console.error(
+              `Rental listing has a wrong nft id: ${rentalListing.nftId}`
+            )
+            return null
+          }
+          const tokenId = getTokenIdFromNftId(rentalListing.nftId)
+          if (!tokenId) {
+            throw new Error(
+              `Could not retrieve token id from ${rentalListing.nftId}`
+            )
+          }
+
+          if (
+            isNftIdFromParcel(rentalListing.nftId) &&
+            tilesByTokenId[tokenId]
+          ) {
+            return {
+              ...tilesByTokenId[tokenId],
+              rentalListing: isRentalListingOpen(rentalListing)
+                ? convertRentalListingToTileRentalListing(rentalListing)
+                : undefined,
+            }
+          } else if (
+            isNftIdFromEstate(rentalListing.nftId) &&
+            tilesByEstateId[tokenId] !== undefined
+          ) {
+            return tilesByEstateId[tokenId].map((tile) => ({
+              ...tile,
+              rentalListing: isRentalListingOpen(rentalListing)
+                ? convertRentalListingToTileRentalListing(rentalListing)
+                : undefined,
+            }))
+          }
+          return null
+        })
+        .filter((tile) => tile !== null) as Tile[]
+
+      // Creates the tiles that are being updated given the updated parcels.
+      const updatedTilesByUpdatedParcels = parcels.map((parcel) =>
+        buildTile(
+          parcel,
+          getParcelFragmentRentalListing(
+            parcel,
+            rentalListingByNftId,
+            tilesByTokenId
+          )
+        )
+      )
+
+      // Merges the updates tiles whose change was originated from the rental listings with the ones that came from the graph.
+      const updatedTiles = leftMerge(
+        updatedTilesByRentalListings,
+        updatedTilesByUpdatedParcels
+      )
+
+      // Build the updated parcels from the updates parcels that came from the graph.
+      const updatedParcels = parcels.map((parcel) => buildParcel(parcel))
+
+      // Build the estates from the updates estates that came from the graph.
       const updatedEstates = parcels
-        .map(buildEstate)
+        .map((parcel) => buildEstate(parcel))
         .filter((estate) => estate !== null) as NFT[]
 
       // The following piece adds tiles from updated Estates. This is necessary only for an Estate that get listed or delisted on sale, since that doesn't change the lastUpdatedAt property of a Parcel.
       const updatedTilesFromEstates = buildFromEstates(
         estates,
         updatedTiles,
-        buildTile
+        (parcel) =>
+          buildTile(
+            parcel,
+            getParcelFragmentRentalListing(
+              parcel,
+              rentalListingByNftId,
+              tilesByTokenId
+            )
+          )
       )
       const updatedParcelsFromEstates = buildFromEstates(
         estates,
@@ -271,8 +419,27 @@ export async function createApiComponent(components: {
           Math.max(updatedAt, parseInt(estate.updatedAt, 10)),
         0
       )
+      const rentalListingsUpdatedAt = Object.values(
+        rentalListingByNftId
+      ).reduce<number>(
+        (updatedAt, rentalListing) =>
+          Math.max(updatedAt, rentalListing.updatedAt),
+        0
+      )
 
-      const updatedAt = Math.max(tilesLastUpdatedAt, estatesLastUpdatedAt)
+      // Gets the minimum last updated time or the original updatedAfter time.
+      // Getting the minimum is required due to the rental listings being fetched multiple times, making
+      // it possible to have an estate or parcel update in the meantime.
+      const updatedAt = Math.max(
+        Math.min(
+          tilesLastUpdatedAt === 0 ? Number.MAX_VALUE : tilesLastUpdatedAt,
+          estatesLastUpdatedAt === 0 ? Number.MAX_VALUE : estatesLastUpdatedAt,
+          rentalListingsUpdatedAt === 0
+            ? Number.MAX_VALUE
+            : rentalListingsUpdatedAt
+        ),
+        updatedAfter
+      )
 
       const result: Result = {
         ...batch,
@@ -281,11 +448,18 @@ export async function createApiComponent(components: {
 
       return result
     } catch (e) {
-      throw new Error(`Failed to fetch update data: ${e.message}`)
+      throw new Error(
+        `Failed to fetch update data: ${
+          isErrorWithMessage(e) ? e.message : 'Unknown error'
+        }`
+      )
     }
   }
 
-  function buildTile(fragment: ParcelFragment): Tile {
+  function buildTile(
+    fragment: ParcelFragment,
+    rentalListing?: TileRentalListing
+  ): Tile {
     const {
       owner: parcelOwner,
       name: parcelName,
@@ -348,6 +522,10 @@ export async function createApiComponent(components: {
       tile.tokenId = tokenId
     }
 
+    if (rentalListing) {
+      tile.rentalListing = rentalListing
+    }
+
     return tile
   }
 
@@ -403,8 +581,13 @@ export async function createApiComponent(components: {
     } = fragment
     if (!estate) return null
 
-    const { size, parcels, tokenId } = estate
-    const { name, description } = estate.nft
+    const {
+      size,
+      parcels,
+      tokenId,
+      data: { description },
+    } = estate
+    const { name } = estate.nft
     const attributes: Attribute[] = [
       {
         trait_type: 'Size',

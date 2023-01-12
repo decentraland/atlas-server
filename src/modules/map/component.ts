@@ -168,22 +168,23 @@ export async function createMapComponent(components: {
 
   async function poll() {
     try {
-      const result = await api.fetchUpdatedData(lastUpdatedAt)
+      const oldTiles = await tiles
+      const oldParcels = await parcels
+      const oldEstates = await estates
+
+      const result = await api.fetchUpdatedData(lastUpdatedAt, oldTiles)
       if (result.tiles.length > 0) {
         // update tiles
-        const oldTiles = await tiles
         const newTiles = expireOrders(addTiles(result.tiles, oldTiles))
         tiles = future()
         tiles.resolve(newTiles)
 
         // update parcels
-        const oldParcels = await parcels
         const newParcels = addParcels(result.parcels, oldParcels)
         parcels = future()
         parcels.resolve(newParcels)
 
         // update estates
-        const oldEstates = await estates
         const newEstates = addEstates(result.estates, oldEstates)
         estates = future()
         estates.resolve(newEstates)

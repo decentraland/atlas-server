@@ -1,7 +1,8 @@
 import { createCanvas } from 'canvas'
 import { Coord, Layer, getViewport, renderMap } from '../render'
 import { IMapComponent, Tile, TileType } from '../map/types'
-import { coordsToId, isExpired } from '../map/utils'
+import { coordsToId, isExpired as isOrderExpired } from '../map/utils'
+import { isExpired as isRentalExpired } from '../../logic/rental'
 import { IImageComponent } from './types'
 
 export function createImageComponent(components: {
@@ -30,7 +31,8 @@ export function createImageComponent(components: {
     size: number,
     center: Coord,
     selected: Coord[],
-    showOnSale: boolean
+    showOnSale: boolean,
+    showOnRent: boolean
   ) {
     const pan = { x: 0, y: 0 }
     const { nw, se } = getViewport({ width, height, center, size, padding: 1 })
@@ -40,16 +42,19 @@ export function createImageComponent(components: {
     const layer: Layer = (x, y) => {
       const id = coordsToId(x, y)
       const tile = tiles[id]
+      const isOnSale = showOnSale && tile.price && !isOrderExpired(tile)
+      const isListedForRent =
+        showOnRent && tile.rentalListing && !isRentalExpired(tile.rentalListing)
       const result = tile
         ? {
-          color: showOnSale && tile.price && !isExpired(tile) ? '#1FBCFF' : getColor(tile),
-          top: tile.top,
-          left: tile.left,
-          topLeft: tile.topLeft,
-        }
+            color: isOnSale || isListedForRent ? '#1FBCFF' : getColor(tile),
+            top: tile.top,
+            left: tile.left,
+            topLeft: tile.topLeft,
+          }
         : {
-          color: (x + y) % 2 === 0 ? '#110e13' : '#0d0b0e',
-        }
+            color: (x + y) % 2 === 0 ? '#110e13' : '#0d0b0e',
+          }
       return result
     }
     const layers = [layer]

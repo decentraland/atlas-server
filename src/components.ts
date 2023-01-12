@@ -15,9 +15,13 @@ import { createApiComponent } from './modules/api/component'
 import { createDistrictComponent } from './modules/district/component'
 import { createImageComponent } from './modules/image/component'
 import { createMapComponent } from './modules/map/component'
+import { createRentalsComponent } from './modules/rentals/component'
 import { AppComponents, GlobalContext } from './types'
 import { metricDeclarations } from './metrics'
-import { createEstatesRendererComponent, createMiniMapRendererComponent } from './adapters/mini-map-renderer'
+import {
+  createEstatesRendererComponent,
+  createMiniMapRendererComponent,
+} from './adapters/mini-map-renderer'
 
 export async function initComponents(): Promise<AppComponents> {
   const config = await createDotEnvConfigComponent(
@@ -58,8 +62,14 @@ export async function initComponents(): Promise<AppComponents> {
     { config, logs: batchLogs, fetch, metrics },
     subgraphURL
   )
-  const api = await createApiComponent({ config, subgraph })
-  const batchApi = await createApiComponent({ config, subgraph: batchSubgraph })
+
+  const rentals = await createRentalsComponent({ config, fetch })
+  const api = await createApiComponent({ config, subgraph, rentals })
+  const batchApi = await createApiComponent({
+    config,
+    subgraph: batchSubgraph,
+    rentals,
+  })
   const map = await createMapComponent({ config, api, batchApi })
   const image = createImageComponent({ map })
   const district = createDistrictComponent()
@@ -80,6 +90,6 @@ export async function initComponents(): Promise<AppComponents> {
     district,
     statusChecks,
     renderMiniMap,
-    renderEstateMiniMap
+    renderEstateMiniMap,
   }
 }

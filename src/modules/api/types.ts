@@ -27,7 +27,10 @@ export type Attribute = {
 export interface IApiComponent {
   events: EventEmitter
   fetchData: () => Promise<Result>
-  fetchUpdatedData: (updatedAfter: number) => Promise<Result>
+  fetchUpdatedData: (
+    updatedAfter: number,
+    oldTiles: Record<string, Tile>
+  ) => Promise<Result>
   getDissolvedEstate: (estateId: string) => Promise<NFT | null>
 }
 
@@ -46,6 +49,7 @@ export type EstateFragment = {
 }
 
 export type ParcelFragment = {
+  id: string
   name: string | null
   owner: { id: string } | null
   searchParcelX: string
@@ -62,10 +66,12 @@ export type ParcelFragment = {
     estate: {
       tokenId: string
       size: number
+      data: {
+        description: string | null
+      }
       parcels: { x: string; y: string }[]
       nft: {
         name: string
-        description: string | null
         owner: { id: string } | null
         activeOrder: OrderFragment | null
         updatedAt: string

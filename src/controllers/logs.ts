@@ -15,7 +15,12 @@ export const setupLogs = (
     // TODO: it may be better to ask configurations to the specific component like
     //     console.log(`URL: ${map.SUBGRAPH_URL}`)
     // to avoid using config with hardcoded keys everywhere
-    console.log(`URL: ${await config.getString('SUBGRAPH_URL')}`)
+    console.log(`Graph URL: ${await config.getString('SUBGRAPH_URL')}`)
+    console.log(
+      `Signatures server URL: ${await config.getString(
+        'SIGNATURES_SERVER_URL'
+      )}`
+    )
     console.log(`Concurrency: ${await config.getString('API_CONCURRENCY')}`)
     console.log(`Batch Size: ${await config.getString('API_BATCH_SIZE')}`)
     bar.start(100, 0)

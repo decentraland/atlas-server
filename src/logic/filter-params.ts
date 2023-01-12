@@ -1,14 +1,5 @@
 import { Tile, tileFields } from '../modules/map/types'
 
-type FilterQuery = {
-  x1?: string
-  x2?: string
-  y1?: string
-  y2?: string
-  include?: string
-  exclude?: string
-}
-
 const validFields = new Set(tileFields)
 
 export function getFilterFromUrl(
@@ -116,6 +107,7 @@ export function extractParams(url: URL) {
     : [0, 0]
   const center = { x, y }
   const showOnSale = url.searchParams.get('on-sale') === 'true'
+  const showListedForRent = url.searchParams.get('listed-for-rent') === 'true'
   const selected = url.searchParams.has('selected')
     ? (url.searchParams.get('selected') as string).split(';').map((id) => {
         const [x, y] = id.split(',').map((coord) => parseInt(coord))
@@ -128,6 +120,7 @@ export function extractParams(url: URL) {
     size,
     center,
     showOnSale,
+    showListedForRent,
     selected,
   }
 }
