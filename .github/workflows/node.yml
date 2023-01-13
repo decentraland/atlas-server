@@ -19,7 +19,7 @@ jobs:
         run: npm run build
         if: ${{ always() }}
       - name: Test
-        run: npm run test
+        run: npm run test -- --coverage
       - name: Report coverage
         uses: coverallsapp/github-action@master
         with:
