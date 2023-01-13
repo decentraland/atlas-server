@@ -581,17 +581,12 @@ export async function createApiComponent(components: {
     } = fragment
     if (!estate) return null
 
-    const {
-      size,
-      parcels,
-      tokenId,
-      data: { description },
-    } = estate
+    const { size, parcels, tokenId, data } = estate
     const { name } = estate.nft
     const attributes: Attribute[] = [
       {
         trait_type: 'Size',
-        value: size,
+        value: size ?? 0,
         display_type: 'number',
       },
     ]
@@ -609,7 +604,7 @@ export async function createApiComponent(components: {
     return {
       id: tokenId,
       name,
-      description: description || '',
+      description: data?.description || '',
       image: `${imageBaseUrl}/estates/${tokenId}/map.png?size=24&width=1024&height=1024`,
       external_url: `${externalBaseUrl}/contracts/${estateContractAddress}/tokens/${tokenId}`,
       attributes,
