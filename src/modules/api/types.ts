@@ -65,10 +65,10 @@ export type ParcelFragment = {
     } | null
     estate: {
       tokenId: string
-      size: number
+      size: number | null
       data: {
         description: string | null
-      }
+      } | null
       parcels: { x: string; y: string }[]
       nft: {
         name: string
