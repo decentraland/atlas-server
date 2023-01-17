@@ -62,7 +62,6 @@ export async function initComponents(): Promise<AppComponents> {
     { config, logs: batchLogs, fetch, metrics },
     subgraphURL
   )
-
   const rentals = await createRentalsComponent({ config, fetch })
   const api = await createApiComponent({ config, subgraph, rentals })
   const batchApi = await createApiComponent({
