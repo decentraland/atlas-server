@@ -1,0 +1,16 @@
+name: Docker
+
+on:
+  push:
+    branches:
+      - 'master'
+
+jobs:
+  cd-dev:
+    uses: decentraland/actions/.github/workflows/build-quay-main.yml@main
+    with:
+      service-name: atlas-server
+      deployment-environment: dev stg
+    secrets:
+      QUAY_USERNAME: ${{ secrets.QUAY_USERNAME }}
+      QUAY_TOKEN: ${{ secrets.QUAY_TOKEN }}
