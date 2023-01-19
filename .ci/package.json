@@ -1,9 +1,0 @@
-{
-  "name": "atlas-server-build",
-  "devDependencies": {
-    "@types/node": "^16.11.36"
-  },
-  "dependencies": {
-    "dcl-ops-lib": "^5.20.1"
-  }
-}
