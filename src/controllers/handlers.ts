@@ -248,11 +248,9 @@ export const parcelRequestHandler = async (context: {
     return { status: 503, body: 'Not ready' }
   }
 
-  if (x !== null && y !== null) {
-    const parsedCoords = [parseInt(x), parseInt(y)]
-    if (isNaN(parsedCoords[0]) || isNaN(parsedCoords[1])) {
-      return { status: 403, body: 'Invalid x or y' }
-    }
+  const parsedCoords = [parseInt(x), parseInt(y)]
+  if (isNaN(parsedCoords[0]) || isNaN(parsedCoords[1])) {
+    return { status: 403, body: 'Invalid x or y' }
   }
 
   const parcel = await map.getParcel(x, y)
