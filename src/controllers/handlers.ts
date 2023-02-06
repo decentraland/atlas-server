@@ -273,11 +273,9 @@ export const estateRequestHandler = async (context: {
     return { status: 503, body: 'Not ready' }
   }
 
-  if (id !== null) {
-    const parsed = parseInt(id)
-    if (isNaN(parsed)) {
-      return { status: 403, body: 'Invalid id' }
-    }
+  const parsedId = parseInt(id)
+  if (isNaN(parsedId)) {
+    return { status: 403, body: 'Invalid id' }
   }
 
   const estate = await map.getEstate(id)
