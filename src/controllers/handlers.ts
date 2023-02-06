@@ -248,6 +248,13 @@ export const parcelRequestHandler = async (context: {
     return { status: 503, body: 'Not ready' }
   }
 
+  if (x !== null && y !== null) {
+    const parsedCoords = [parseInt(x), parseInt(y)]
+    if (isNaN(parsedCoords[0]) || isNaN(parsedCoords[1])) {
+      return { status: 403, body: 'Invalid x or y' }
+    }
+  }
+
   const parcel = await map.getParcel(x, y)
 
   if (parcel) {
@@ -266,6 +273,13 @@ export const estateRequestHandler = async (context: {
 
   if (!map.isReady()) {
     return { status: 503, body: 'Not ready' }
+  }
+
+  if (id !== null) {
+    const parsed = parseInt(id)
+    if (isNaN(parsed)) {
+      return { status: 403, body: 'Invalid id' }
+    }
   }
 
   const estate = await map.getEstate(id)
