@@ -1,7 +1,10 @@
 import pLimit from 'p-limit'
 import { RentalStatus, RentalListing } from '@dcl/schemas'
 import { IFetchComponent } from '@well-known-components/http-server'
-import { IConfigComponent } from '@well-known-components/interfaces'
+import {
+  IConfigComponent,
+  ILoggerComponent,
+} from '@well-known-components/interfaces'
 import {
   IRentalsComponent,
   SignaturesServerPaginatedResponse,
@@ -15,8 +18,10 @@ const LIMIT_RENTAL_LISTINGS = 100
 export async function createRentalsComponent(components: {
   config: IConfigComponent
   fetch: IFetchComponent
+  logger: ILoggerComponent
 }): Promise<IRentalsComponent> {
-  const { config, fetch: fetchComponent } = components
+  const { config, fetch: fetchComponent, logger } = components
+  const componentLogger = logger.getLogger('Rentals component')
   const signaturesServerURL = await config.requireString(
     'SIGNATURES_SERVER_URL'
   )
@@ -71,7 +76,7 @@ export async function createRentalsComponent(components: {
   ): Promise<Record<string, RentalListing>> {
     const baseUrl = `/v1/rentals-listings?rentalStatus=${RentalStatus.OPEN}`
     const limit = pLimit(MAX_CONCURRENT_REQUEST)
-
+    componentLogger.info(`Getting rental listings for ${nftIds.length} NFTs`)
     // Build URLs to get all the queried NFTs
     let urls: string[] = []
     let url = baseUrl
@@ -91,16 +96,17 @@ export async function createRentalsComponent(components: {
 
     const results: SignaturesServerPaginatedResponse<RentalListing[]>[] =
       await Promise.all(
-        urls.map((url) =>
-          limit(async () =>
-            fetchRentalListings(url).catch((error) => {
+        urls.map((url, i) =>
+          limit(() => {
+            componentLogger.info(`Rental listings request ${i}: ${url}`)
+            return fetchRentalListings(url).catch((error) => {
               limit.clearQueue()
               throw error
             })
-          )
+          })
         )
       )
-
+    componentLogger.info(`Finished to get the NFTs rental listings`)
     return results
       .flatMap((result) => result.data.results)
       .reduce((rentalListings, rentalListing) => {
@@ -120,7 +126,11 @@ export async function createRentalsComponent(components: {
   ): Promise<RentalListing[]> {
     let remainingRentalListings = 0
     let rentalListings: RentalListing[] = []
+    componentLogger.info(`Starting to fetch the updated rental listings`)
     do {
+      componentLogger.info(
+        `Requesting rental listings: /v1/rentals-listings?updatedAfter=${updatedAfter}&limit=${LIMIT_RENTAL_LISTINGS}&offset=${rentalListings.length}`
+      )
       const updatedRentalListings = await fetchRentalListings(
         `/v1/rentals-listings?updatedAfter=${updatedAfter}&limit=${LIMIT_RENTAL_LISTINGS}&offset=${rentalListings.length}`
       )
@@ -128,7 +138,7 @@ export async function createRentalsComponent(components: {
       remainingRentalListings =
         updatedRentalListings.data.total - rentalListings.length
     } while (remainingRentalListings > 0)
-
+    componentLogger.info(`Finished to fetch the updated rental listings`)
     return rentalListings
   }
 
