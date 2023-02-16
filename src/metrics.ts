@@ -1,5 +1,8 @@
 import { IMetricsComponent } from '@well-known-components/interfaces'
-import { getDefaultHttpMetrics, validateMetricsDeclaration } from '@well-known-components/metrics'
+import {
+  getDefaultHttpMetrics,
+  validateMetricsDeclaration,
+} from '@well-known-components/metrics'
 import { metricDeclarations as theGraphMetrics } from '@well-known-components/thegraph-component'
 import { metricDeclarations as loggerMetrics } from '@well-known-components/logger'
 
@@ -19,7 +22,14 @@ export const metricDeclarations = {
     type: IMetricsComponent.HistogramType,
     labelNames: ['status'],
   },
+  dcl_map_update_failures: {
+    type: IMetricsComponent.CounterType,
+    help: 'Update failures',
+    labelNames: ['type'],
+  },
 }
+
+export type Metrics = typeof metricDeclarations
 
 // type assertions
 validateMetricsDeclaration(metricDeclarations)

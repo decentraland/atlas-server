@@ -82,11 +82,19 @@ export async function initComponents(): Promise<AppComponents> {
     subgraphURL
   )
   const rentals = await createRentalsComponent({ config, fetch, logger: logs })
-  const api = await createApiComponent({ config, subgraph, rentals })
+  const api = await createApiComponent({
+    config,
+    subgraph,
+    rentals,
+    logger: logs,
+    metrics,
+  })
   const batchApi = await createApiComponent({
     config,
     subgraph: batchSubgraph,
     rentals,
+    logger: logs,
+    metrics,
   })
   const map = await createMapComponent({ config, api, batchApi, tracer })
   const image = createImageComponent({ map })
