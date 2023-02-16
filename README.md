@@ -1,6 +1,6 @@
 # Atlas-server
 
-[![Coverage Status](https://coveralls.io/repos/github/decentraland/atlas-server/badge.svg?branch=main)](https://coveralls.io/github/decentraland/atlas-server?branch=main)
+[![Coverage Status](https://coveralls.io/repos/github/decentraland/atlas-server/badge.svg?branch=master)](https://coveralls.io/github/decentraland/atlas-server?branch=master)
 
 🗺 A server for the atlas map
 
@@ -134,4 +134,3 @@ Example:
 - Installing `node-canvas` on Apple M1:
 
 If the `npm install` fails on the dependency `node-canvas` and you are running on an Apple M1 chip, try installing these dependencies via brew: `brew install pkg-config cairo pango libpng jpeg giflib librsvg`.
-
