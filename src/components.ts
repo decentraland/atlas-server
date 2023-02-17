@@ -11,6 +11,8 @@ import {
 } from '@well-known-components/http-server'
 import { createSubgraphComponent } from '@well-known-components/thegraph-component'
 import { createLogComponent } from '@well-known-components/logger'
+import { createTracerComponent } from '@well-known-components/tracer-component'
+import { createHttpTracerComponent } from '@well-known-components/http-tracer-component'
 import { createApiComponent } from './modules/api/component'
 import { createDistrictComponent } from './modules/district/component'
 import { createImageComponent } from './modules/image/component'
@@ -35,11 +37,27 @@ export async function initComponents(): Promise<AppComponents> {
   }
   const subgraphURL = await config.requireString('SUBGRAPH_URL')
 
-  const fetch: IFetchComponent = { fetch: nodeFetch.default }
+  const fetch: IFetchComponent = {
+    fetch: (url: nodeFetch.RequestInfo, init?: nodeFetch.RequestInit) => {
+      const headers: nodeFetch.HeadersInit = { ...init?.headers }
+      const traceParent = tracer.isInsideOfTraceSpan()
+        ? tracer.getTraceChildString()
+        : null
+      if (traceParent) {
+        ;(headers as { [key: string]: string }).traceparent = traceParent
+        const traceState = tracer.getTraceStateString()
+        if (traceState) {
+          ;(headers as { [key: string]: string }).tracestate = traceState
+        }
+      }
+      return nodeFetch.default(url, { ...init, headers })
+    },
+  }
   const metrics = await createMetricsComponent(metricDeclarations, {
     config,
   })
-  const logs = await createLogComponent({ metrics })
+  const tracer = createTracerComponent()
+  const logs = await createLogComponent({ metrics, tracer })
   const batchLogs = {
     getLogger(name: string) {
       const logger = logs.getLogger(name)
@@ -52,6 +70,7 @@ export async function initComponents(): Promise<AppComponents> {
     { config, logs },
     { cors }
   )
+  createHttpTracerComponent({ server, tracer })
 
   await instrumentHttpServerWithMetrics({ metrics, server, config })
   const subgraph = await createSubgraphComponent(
@@ -62,14 +81,22 @@ export async function initComponents(): Promise<AppComponents> {
     { config, logs: batchLogs, fetch, metrics },
     subgraphURL
   )
-  const rentals = await createRentalsComponent({ config, fetch })
-  const api = await createApiComponent({ config, subgraph, rentals })
+  const rentals = await createRentalsComponent({ config, fetch, logger: logs })
+  const api = await createApiComponent({
+    config,
+    subgraph,
+    rentals,
+    logger: logs,
+    metrics,
+  })
   const batchApi = await createApiComponent({
     config,
     subgraph: batchSubgraph,
     rentals,
+    logger: logs,
+    metrics,
   })
-  const map = await createMapComponent({ config, api, batchApi })
+  const map = await createMapComponent({ config, api, batchApi, tracer })
   const image = createImageComponent({ map })
   const district = createDistrictComponent()
   const statusChecks = await createStatusCheckComponent({ server, config })

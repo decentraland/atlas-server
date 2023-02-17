@@ -1,6 +1,10 @@
 import { EventEmitter } from 'events'
 import { RentalListing } from '@dcl/schemas'
-import { IConfigComponent } from '@well-known-components/interfaces'
+import {
+  IConfigComponent,
+  ILoggerComponent,
+  IMetricsComponent,
+} from '@well-known-components/interfaces'
 import { ISubgraphComponent } from '@well-known-components/thegraph-component'
 import { isErrorWithMessage } from '../../logic/error'
 import {
@@ -14,6 +18,7 @@ import {
   TileRentalListing,
 } from '../../adapters/rentals'
 import { isRentalListingOpen } from '../../logic/rental'
+import { Metrics } from '../../metrics'
 import { Tile, TileType } from '../map/types'
 import { coordsToId, specialTiles } from '../map/utils'
 import { IRentalsComponent } from '../rentals/types'
@@ -85,8 +90,10 @@ export async function createApiComponent(components: {
   config: IConfigComponent
   rentals: IRentalsComponent
   subgraph: ISubgraphComponent
+  logger: ILoggerComponent
+  metrics: IMetricsComponent<keyof Metrics>
 }): Promise<IApiComponent> {
-  const { config, subgraph, rentals } = components
+  const { config, subgraph, rentals, logger, metrics } = components
 
   // config
   const batchSize = await config.requireNumber('API_BATCH_SIZE')
@@ -99,6 +106,7 @@ export async function createApiComponent(components: {
   const estateContractAddress = await config.requireString(
     'ESTATE_CONTRACT_ADDRESS'
   )
+  const componentLogger = logger.getLogger('API Component')
 
   // events
   const events = new EventEmitter()
@@ -270,11 +278,31 @@ export async function createApiComponent(components: {
       const updatedRentalListings =
         rentals.getUpdatedRentalListings(updatedAfter)
 
+      let parcels: ParcelFragment[] = []
+      let estates: EstateFragment[] = []
+      let rentalListings: RentalListing[] = []
       // Gets the latest parcels, estates and rental listings.
-      const [{ parcels, estates }, rentalListings] = await Promise.all([
-        updatedLand,
-        updatedRentalListings,
-      ])
+      const [landsSettlement, rentalListingsSettlement] =
+        await Promise.allSettled([updatedLand, updatedRentalListings])
+
+      if (landsSettlement.status === 'fulfilled') {
+        parcels = landsSettlement.value.parcels
+        estates = landsSettlement.value.estates
+      } else {
+        componentLogger.error(
+          `Failed to retrieve updated information about the lands: ${landsSettlement.reason}`
+        )
+        metrics.increment('dcl_map_update_failures', { type: 'land' })
+      }
+
+      if (rentalListingsSettlement.status === 'fulfilled') {
+        rentalListings = rentalListingsSettlement.value
+      } else {
+        componentLogger.error(
+          `Failed to retrieve updated information about the rental listings: ${rentalListingsSettlement.reason}`
+        )
+        metrics.increment('dcl_map_update_failures', { type: 'rental' })
+      }
 
       // Gets the rental listings by nft id to use them more efficiently later.
       const rentalListingByNftId = rentalListings.reduce((acc, curr) => {

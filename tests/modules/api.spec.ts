@@ -1,7 +1,12 @@
 import { RentalListing, RentalStatus } from '@dcl/schemas'
-import { IConfigComponent } from '@well-known-components/interfaces'
+import {
+  IConfigComponent,
+  ILoggerComponent,
+  IMetricsComponent,
+} from '@well-known-components/interfaces'
 import { ISubgraphComponent } from '@well-known-components/thegraph-component'
 import { convertRentalListingToTileRentalListing } from '../../src/adapters/rentals'
+import { Metrics } from '../../src/metrics'
 import { createApiComponent } from '../../src/modules/api/component'
 import {
   EstateFragment,
@@ -22,6 +27,8 @@ let apiComponent: IApiComponent
 let configComponentMock: IConfigComponent
 let rentalsComponentMock: IRentalsComponent
 let subgraphComponentMock: ISubgraphComponent
+let loggerComponentMock: ILoggerComponent
+let metricsComponentMock: IMetricsComponent<keyof Metrics>
 let defaultParcel: ParcelFragment
 let defaultFstParcelEstate: ParcelFragment
 let defaultSndParcelEstate: ParcelFragment
@@ -32,6 +39,8 @@ let defaultParcelTile: Tile
 let defaultFstParcelEstateTile: Tile
 let defaultSndParcelEstateTile: Tile
 let fstEstateNFT: NFT
+let loggerErrorMock: jest.Mock
+let metricsIncrementMock: jest.Mock
 
 beforeEach(async () => {
   defaultParcel = {
@@ -273,15 +282,44 @@ beforeEach(async () => {
   subgraphComponentMock = {
     query: jest.fn(),
   }
+  loggerErrorMock = jest.fn()
+  metricsIncrementMock = jest.fn()
+  loggerComponentMock = {
+    getLogger: () => ({
+      info: () => undefined,
+      error: loggerErrorMock,
+      warn: () => undefined,
+      log: () => undefined,
+      debug: () => undefined,
+    }),
+  }
+  metricsComponentMock = {
+    increment: metricsIncrementMock,
+    decrement: () => undefined,
+    startTimer: () => ({ end: () => undefined }),
+    observe: () => undefined,
+    getValue: () =>
+      Promise.resolve({
+        help: '',
+        name: '',
+        type: IMetricsComponent.CounterType,
+        values: [],
+        aggregator: '',
+      }),
+    resetAll: () => undefined,
+    reset: () => undefined,
+  }
   apiComponent = await createApiComponent({
     config: configComponentMock,
     rentals: rentalsComponentMock,
     subgraph: subgraphComponentMock,
+    logger: loggerComponentMock,
+    metrics: metricsComponentMock,
   })
 })
 
 describe('when fetching data', () => {
-  describe('and fetching the graph fails', () => {
+  describe('and fetching the graph fails but the rental listings', () => {
     beforeEach(() => {
       subgraphComponentMock.query = jest
         .fn()
@@ -766,21 +804,35 @@ describe('when fetching update data', () => {
     } as RentalListing
   })
 
-  describe('and fetching the graph fails', () => {
+  describe("and fetching the graph fails but the rental listings fetch doesn't", () => {
     beforeEach(() => {
       subgraphComponentMock.query = jest
         .fn()
         .mockRejectedValueOnce(new Error('An error ocurred'))
+      rentalsComponentMock.getUpdatedRentalListings = jest
+        .fn()
+        .mockResolvedValueOnce([])
     })
 
-    it('should throw an error', () => {
-      return expect(apiComponent.fetchUpdatedData(0, {})).rejects.toThrowError(
-        'An error ocurred'
+    it('should continue with the update and log the error', async () => {
+      await expect(apiComponent.fetchUpdatedData(0, {})).resolves.toEqual({
+        tiles: [],
+        parcels: [],
+        estates: [],
+        updatedAt: 0,
+      })
+
+      expect(loggerErrorMock).toHaveBeenCalledWith(
+        `Failed to retrieve updated information about the lands: Error: An error ocurred`
       )
+
+      expect(metricsIncrementMock).toBeCalledWith('dcl_map_update_failures', {
+        type: 'land',
+      })
     })
   })
 
-  describe('and fetching the rental listings fails', () => {
+  describe("and fetching the rental listings fails but the graph fetch doesn't", () => {
     beforeEach(() => {
       subgraphComponentMock.query = jest
         .fn()
@@ -790,10 +842,54 @@ describe('when fetching update data', () => {
         .mockRejectedValueOnce(new Error('An error ocurred'))
     })
 
-    it('should throw an error', () => {
-      return expect(apiComponent.fetchUpdatedData(0, {})).rejects.toThrowError(
-        'An error ocurred'
+    it('should continue with the update and log the error', async () => {
+      await expect(apiComponent.fetchUpdatedData(0, {})).resolves.toEqual({
+        tiles: [],
+        parcels: [],
+        estates: [],
+        updatedAt: 0,
+      })
+
+      expect(loggerErrorMock).toHaveBeenCalledWith(
+        `Failed to retrieve updated information about the rental listings: Error: An error ocurred`
       )
+
+      expect(metricsIncrementMock).toBeCalledWith('dcl_map_update_failures', {
+        type: 'rental',
+      })
+    })
+  })
+
+  describe('and both the graph and the rental listings fetch fail', () => {
+    beforeEach(() => {
+      subgraphComponentMock.query = jest
+        .fn()
+        .mockRejectedValueOnce(new Error('An error ocurred'))
+      rentalsComponentMock.getUpdatedRentalListings = jest
+        .fn()
+        .mockRejectedValueOnce(new Error('An error ocurred'))
+    })
+
+    it('should end the update and log the errors', async () => {
+      await expect(apiComponent.fetchUpdatedData(0, {})).resolves.toEqual({
+        tiles: [],
+        parcels: [],
+        estates: [],
+        updatedAt: 0,
+      })
+
+      expect(loggerErrorMock).toHaveBeenCalledWith(
+        `Failed to retrieve updated information about the rental listings: Error: An error ocurred`
+      )
+      expect(loggerErrorMock).toHaveBeenCalledWith(
+        `Failed to retrieve updated information about the lands: Error: An error ocurred`
+      )
+      expect(metricsIncrementMock).toBeCalledWith('dcl_map_update_failures', {
+        type: 'land',
+      })
+      expect(metricsIncrementMock).toBeCalledWith('dcl_map_update_failures', {
+        type: 'rental',
+      })
     })
   })
 

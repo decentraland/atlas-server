@@ -3,6 +3,7 @@ import {
   IConfigComponent,
   IStatusCheckCapableComponent,
 } from '@well-known-components/interfaces'
+import { ITracerComponent } from '@well-known-components/tracer-component'
 import { EventEmitter } from 'events'
 import future from 'fp-future'
 import { IApiComponent, NFT, Result } from '../api/types'
@@ -13,8 +14,9 @@ export async function createMapComponent(components: {
   config: IConfigComponent
   api: IApiComponent
   batchApi: IApiComponent
+  tracer: ITracerComponent
 }): Promise<IMapComponent & IBaseComponent & IStatusCheckCapableComponent> {
-  const { config, api, batchApi } = components
+  const { config, api, batchApi, tracer } = components
 
   // config
   const refreshInterval =
@@ -167,45 +169,52 @@ export async function createMapComponent(components: {
   }
 
   async function poll() {
-    try {
-      const oldTiles = await tiles
-      const oldParcels = await parcels
-      const oldEstates = await estates
+    while (true) {
+      await tracer.span('Polling loop', async () => {
+        try {
+          const oldTiles = await tiles
+          const oldParcels = await parcels
+          const oldEstates = await estates
 
-      const result = await api.fetchUpdatedData(lastUpdatedAt, oldTiles)
-      if (result.tiles.length > 0) {
-        // update tiles
-        const newTiles = expireOrders(addTiles(result.tiles, oldTiles))
-        tiles = future()
-        tiles.resolve(newTiles)
+          const result = await api.fetchUpdatedData(lastUpdatedAt, oldTiles)
+          if (result.tiles.length > 0) {
+            // update tiles
+            const newTiles = expireOrders(addTiles(result.tiles, oldTiles))
+            tiles = future()
+            tiles.resolve(newTiles)
 
-        // update parcels
-        const newParcels = addParcels(result.parcels, oldParcels)
-        parcels = future()
-        parcels.resolve(newParcels)
+            // update parcels
+            const newParcels = addParcels(result.parcels, oldParcels)
+            parcels = future()
+            parcels.resolve(newParcels)
 
-        // update estates
-        const newEstates = addEstates(result.estates, oldEstates)
-        estates = future()
-        estates.resolve(newEstates)
+            // update estates
+            const newEstates = addEstates(result.estates, oldEstates)
+            estates = future()
+            estates.resolve(newEstates)
 
-        // update token
-        const oldTokens = await tokens
-        const newTokens = addTokens(result.parcels, result.estates, oldTokens)
-        tokens = future()
-        tokens.resolve(newTokens)
+            // update token
+            const oldTokens = await tokens
+            const newTokens = addTokens(
+              result.parcels,
+              result.estates,
+              oldTokens
+            )
+            tokens = future()
+            tokens.resolve(newTokens)
 
-        // update lastUpdatedAt
-        lastUpdatedAt = result.updatedAt
+            // update lastUpdatedAt
+            lastUpdatedAt = result.updatedAt
 
-        events.emit(MapEvents.UPDATE, result)
-      }
-    } catch (error) {
-      events.emit(MapEvents.ERROR, error)
+            events.emit(MapEvents.UPDATE, result)
+          }
+        } catch (error) {
+          events.emit(MapEvents.ERROR, error)
+        }
+
+        await sleep(refreshInterval)
+      })
     }
-
-    await sleep(refreshInterval)
-    poll()
   }
 
   function getTiles() {
