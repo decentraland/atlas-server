@@ -1,6 +1,9 @@
 import { RentalListing } from '@dcl/schemas'
 import { IFetchComponent } from '@well-known-components/http-server'
-import { IConfigComponent } from '@well-known-components/interfaces'
+import {
+  IConfigComponent,
+  ILoggerComponent,
+} from '@well-known-components/interfaces'
 import {
   createRentalsComponent,
   IRentalsComponent,
@@ -11,6 +14,7 @@ const rentalsURL = 'http://rentals.com'
 const error = 'An error occurred'
 
 let fetchComponentMock: IFetchComponent
+let loggerComponentMock: ILoggerComponent
 let configComponentMock: IConfigComponent
 let fetchResponse: Response
 let rentalsComponent: IRentalsComponent
@@ -19,6 +23,12 @@ let rentalIds: string[]
 
 beforeEach(async () => {
   fetchMock = jest.fn()
+  loggerComponentMock = {
+    getLogger: () =>
+      ({
+        info: jest.fn(),
+      } as any),
+  }
   configComponentMock = {
     getNumber: jest.fn(),
     getString: jest.fn(),
@@ -31,6 +41,7 @@ beforeEach(async () => {
   rentalsComponent = await createRentalsComponent({
     config: configComponentMock,
     fetch: fetchComponentMock,
+    logger: loggerComponentMock,
   })
 })
 

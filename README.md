@@ -1,6 +1,6 @@
 # Atlas-server
 
-[![Coverage Status](https://coveralls.io/repos/github/decentraland/atlas-server/badge.svg?branch=main)](https://coveralls.io/github/decentraland/atlas-server?branch=main)
+[![Coverage Status](https://coveralls.io/repos/github/decentraland/atlas-server/badge.svg?branch=master)](https://coveralls.io/github/decentraland/atlas-server?branch=master)
 
 🗺 A server for the atlas map
 
