@@ -864,7 +864,7 @@ describe('when fetching update data', () => {
         status: 'failure',
       })
       expect(metricsIncrementMock).toBeCalledWith('dcl_map_update', {
-        type: 'lands',
+        type: 'land',
         status: 'success',
       })
     })
