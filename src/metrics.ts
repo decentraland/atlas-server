@@ -24,7 +24,7 @@ export const metricDeclarations = {
   },
   dcl_map_update: {
     type: IMetricsComponent.CounterType,
-    help: 'Update failures',
+    help: 'Updates',
     labelNames: ['type', 'status'],
   },
 }
