@@ -826,8 +826,13 @@ describe('when fetching update data', () => {
         `Failed to retrieve updated information about the lands: Error: An error ocurred`
       )
 
-      expect(metricsIncrementMock).toBeCalledWith('dcl_map_update_failures', {
+      expect(metricsIncrementMock).toBeCalledWith('dcl_map_update', {
         type: 'land',
+        status: 'failure',
+      })
+      expect(metricsIncrementMock).toBeCalledWith('dcl_map_update', {
+        type: 'rental',
+        status: 'success',
       })
     })
   })
@@ -854,8 +859,13 @@ describe('when fetching update data', () => {
         `Failed to retrieve updated information about the rental listings: Error: An error ocurred`
       )
 
-      expect(metricsIncrementMock).toBeCalledWith('dcl_map_update_failures', {
+      expect(metricsIncrementMock).toBeCalledWith('dcl_map_update', {
         type: 'rental',
+        status: 'failure',
+      })
+      expect(metricsIncrementMock).toBeCalledWith('dcl_map_update', {
+        type: 'land',
+        status: 'success',
       })
     })
   })
@@ -884,11 +894,13 @@ describe('when fetching update data', () => {
       expect(loggerErrorMock).toHaveBeenCalledWith(
         `Failed to retrieve updated information about the lands: Error: An error ocurred`
       )
-      expect(metricsIncrementMock).toBeCalledWith('dcl_map_update_failures', {
+      expect(metricsIncrementMock).toBeCalledWith('dcl_map_update', {
         type: 'land',
+        status: 'failure',
       })
-      expect(metricsIncrementMock).toBeCalledWith('dcl_map_update_failures', {
+      expect(metricsIncrementMock).toBeCalledWith('dcl_map_update', {
         type: 'rental',
+        status: 'failure',
       })
     })
   })

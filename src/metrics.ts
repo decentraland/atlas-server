@@ -22,10 +22,10 @@ export const metricDeclarations = {
     type: IMetricsComponent.HistogramType,
     labelNames: ['status'],
   },
-  dcl_map_update_failures: {
+  dcl_map_update: {
     type: IMetricsComponent.CounterType,
-    help: 'Update failures',
-    labelNames: ['type'],
+    help: 'Updates',
+    labelNames: ['type', 'status'],
   },
 }
 

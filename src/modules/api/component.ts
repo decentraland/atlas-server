@@ -288,20 +288,28 @@ export async function createApiComponent(components: {
       if (landsSettlement.status === 'fulfilled') {
         parcels = landsSettlement.value.parcels
         estates = landsSettlement.value.estates
+        metrics.increment('dcl_map_update', { type: 'land', status: 'success' })
       } else {
         componentLogger.error(
           `Failed to retrieve updated information about the lands: ${landsSettlement.reason}`
         )
-        metrics.increment('dcl_map_update_failures', { type: 'land' })
+        metrics.increment('dcl_map_update', { type: 'land', status: 'failure' })
       }
 
       if (rentalListingsSettlement.status === 'fulfilled') {
         rentalListings = rentalListingsSettlement.value
+        metrics.increment('dcl_map_update', {
+          type: 'rental',
+          status: 'success',
+        })
       } else {
         componentLogger.error(
           `Failed to retrieve updated information about the rental listings: ${rentalListingsSettlement.reason}`
         )
-        metrics.increment('dcl_map_update_failures', { type: 'rental' })
+        metrics.increment('dcl_map_update', {
+          type: 'rental',
+          status: 'failure',
+        })
       }
 
       // Gets the rental listings by nft id to use them more efficiently later.
