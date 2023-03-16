@@ -2,8 +2,8 @@ import {
   IBaseComponent,
   IConfigComponent,
   IStatusCheckCapableComponent,
+  ITracerComponent,
 } from '@well-known-components/interfaces'
-import { ITracerComponent } from '@well-known-components/tracer-component'
 import { EventEmitter } from 'events'
 import future from 'fp-future'
 import { IApiComponent, NFT, Result } from '../api/types'

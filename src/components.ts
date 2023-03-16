@@ -13,6 +13,7 @@ import { createSubgraphComponent } from '@well-known-components/thegraph-compone
 import { createLogComponent } from '@well-known-components/logger'
 import { createTracerComponent } from '@well-known-components/tracer-component'
 import { createHttpTracerComponent } from '@well-known-components/http-tracer-component'
+import { instrumentHttpServerWithRequestLogger } from '@well-known-components/http-requests-logger-component'
 import { createApiComponent } from './modules/api/component'
 import { createDistrictComponent } from './modules/district/component'
 import { createImageComponent } from './modules/image/component'
@@ -71,6 +72,7 @@ export async function initComponents(): Promise<AppComponents> {
     { cors }
   )
   createHttpTracerComponent({ server, tracer })
+  instrumentHttpServerWithRequestLogger({ server, logger: logs })
 
   await instrumentHttpServerWithMetrics({ metrics, server, config })
   const subgraph = await createSubgraphComponent(
