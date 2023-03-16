@@ -38,7 +38,6 @@
   },
   "devDependencies": {
     "@types/jest": "^29.2.5",
-    "artillery": "^2.0.0-30",
     "jest": "^29.3.1",
     "nodemon": "^2.0.20",
     "ts-jest": "^29.0.3",
