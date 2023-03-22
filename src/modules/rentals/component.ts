@@ -107,14 +107,19 @@ export async function createRentalsComponent(components: {
         )
       )
     componentLogger.info(`Finished to get the NFTs rental listings`)
-    return results
-      .flatMap((result) => result.data.results)
-      .reduce((rentalListings, rentalListing) => {
-        return {
-          ...rentalListings,
-          [rentalListing.nftId]: rentalListing,
-        }
-      }, {})
+    return (
+      results
+        .flatMap((result) => result.data.results)
+        // Although no returned rental should be null or undefined, there have been cases where the rental listing was not accessible
+        // this is a temporary change to see if the access problems were related to retrieved rental listings
+        .filter(Boolean)
+        .reduce((rentalListings, rentalListing) => {
+          return {
+            ...rentalListings,
+            [rentalListing.nftId]: rentalListing,
+          }
+        }, {})
+    )
   }
 
   /** Gets the updated rental listings that were updated after the given date.
@@ -139,7 +144,9 @@ export async function createRentalsComponent(components: {
         updatedRentalListings.data.total - rentalListings.length
     } while (remainingRentalListings > 0)
     componentLogger.info(`Finished to fetch the updated rental listings`)
-    return rentalListings
+    // Although no returned rental should be null or undefined, there have been cases where the rental listing was not accessible
+    // this is a temporary change to see if the access problems were related to retrieved rental listings
+    return rentalListings.filter(Boolean)
   }
 
   return {
