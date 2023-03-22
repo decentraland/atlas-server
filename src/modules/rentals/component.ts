@@ -109,6 +109,7 @@ export async function createRentalsComponent(components: {
     componentLogger.info(`Finished to get the NFTs rental listings`)
     return results
       .flatMap((result) => result.data.results)
+      .filter(Boolean)
       .reduce((rentalListings, rentalListing) => {
         return {
           ...rentalListings,
@@ -139,7 +140,7 @@ export async function createRentalsComponent(components: {
         updatedRentalListings.data.total - rentalListings.length
     } while (remainingRentalListings > 0)
     componentLogger.info(`Finished to fetch the updated rental listings`)
-    return rentalListings
+    return rentalListings.filter(Boolean)
   }
 
   return {
