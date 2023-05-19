@@ -6,6 +6,7 @@ import {
 } from '@well-known-components/interfaces'
 import { ISubgraphComponent } from '@well-known-components/thegraph-component'
 import { convertRentalListingToTileRentalListing } from '../../src/adapters/rentals'
+import { fromMillisecondsToSeconds } from '../../src/adapters/time'
 import { Metrics } from '../../src/metrics'
 import { createApiComponent } from '../../src/modules/api/component'
 import {
@@ -51,7 +52,7 @@ beforeEach(async () => {
     searchParcelY: '1',
     searchParcelEstateId: null,
     tokenId: '0',
-    updatedAt: date.toString(),
+    updatedAt: fromMillisecondsToSeconds(date).toString(),
     activeOrder: {
       price: '1000000000000000000',
       expiresAt: (date + 100000000).toString(),
@@ -71,7 +72,7 @@ beforeEach(async () => {
     searchParcelX: '1',
     searchParcelY: '1',
     tokenId: '1',
-    updatedAt: date.toString(),
+    updatedAt: fromMillisecondsToSeconds(date).toString(),
     activeOrder: {
       price: '2000000000000000000',
       expiresAt: (date + 100000000).toString(),
@@ -101,7 +102,7 @@ beforeEach(async () => {
             price: '2000000000000000000',
             expiresAt: (date + 100000000).toString(),
           },
-          updatedAt: date.toString(),
+          updatedAt: fromMillisecondsToSeconds(date).toString(),
         },
       },
     },
@@ -776,7 +777,7 @@ describe('when fetching update data', () => {
 
   beforeEach(() => {
     fstEstate = {
-      updatedAt: date.toString(),
+      updatedAt: fromMillisecondsToSeconds(date).toString(),
       estate: {
         parcels: [
           { nft: defaultFstParcelEstate },

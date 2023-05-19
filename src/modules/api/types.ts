@@ -5,7 +5,11 @@ export enum ApiEvents {
   PROGRESS = 'progress',
 }
 
-export type Batch = { tiles: Tile[]; parcels: NFT[]; estates: NFT[] }
+export type Batch = {
+  tiles: Tile[]
+  parcels: NFT[]
+  estates: NFT[]
+}
 export type Result = Batch & { updatedAt: number }
 
 export type NFT = {
@@ -36,6 +40,7 @@ export interface IApiComponent {
 
 export type OrderFragment = {
   price: string
+  /** The time in milliseconds when the order expires */
   expiresAt: string
 }
 

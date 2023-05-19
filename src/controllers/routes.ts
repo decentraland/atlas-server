@@ -30,7 +30,7 @@ export async function setupRouter(
   const router = new Router<GlobalContext>()
 
   const { district, map } = components
-  const getLastModifiedTime = () => map.getLastUpdatedAt()
+  const getLastModifiedTime = () => map.getLastUpdatedAt() * 1000
   const lastModifiedMiddlewareByMapDate =
     lastModifiedMiddleware(getLastModifiedTime)
 
