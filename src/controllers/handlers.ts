@@ -65,7 +65,6 @@ export async function miniMapHandler(context: Context) {
       status: 200,
       headers: {
         'content-type': 'image/png',
-        'cache-control': 'public,s-maxage=600,max-age=600',
       },
       body: stream,
     }
@@ -94,7 +93,6 @@ export async function estateMapHandler(context: Context) {
       status: 200,
       headers: {
         'content-type': 'image/png',
-        'cache-control': 'public,s-maxage=600,max-age=600',
       },
       body: stream,
     }
