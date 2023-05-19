@@ -18,6 +18,7 @@ import {
   TileRentalListing,
 } from '../../adapters/rentals'
 import { isRentalListingOpen } from '../../logic/rental'
+import { fromMillisecondsToSeconds } from '../../adapters/time'
 import { Metrics } from '../../metrics'
 import { Tile, TileType } from '../map/types'
 import { coordsToId, specialTiles } from '../map/utils'
@@ -123,6 +124,8 @@ export async function createApiComponent(components: {
     let total = 0
     let complete = false
     let lastTokenId = ''
+    /** The time in seconds the last rent was updated */
+    let lastRentalUpdate = 0
 
     while (!complete) {
       // fetch batch
@@ -137,6 +140,8 @@ export async function createApiComponent(components: {
         for (const estate of batch.estates) {
           estates.push(estate)
         }
+
+        lastRentalUpdate = Math.max(lastRentalUpdate, batch.lastRentalUpdate)
 
         // notify progress
         total = total + batch.tiles.length
@@ -183,9 +188,12 @@ export async function createApiComponent(components: {
         ),
         ([_key, value]) => value
       ),
-      updatedAt: tiles.reduce<number>(
-        (lastUpdatedAt, tile) => Math.max(lastUpdatedAt, tile.updatedAt),
-        0
+      updatedAt: Math.max(
+        tiles.reduce<number>(
+          (lastUpdatedAt, tile) => Math.max(lastUpdatedAt, tile.updatedAt),
+          0
+        ),
+        lastRentalUpdate
       ),
     }
     return result
@@ -206,16 +214,13 @@ export async function createApiComponent(components: {
         ) ${parcelFields}
       }`
     )
-    const rentalListings =
+    const rentalListings = await rentals.getRentalsListingsOfNFTs(
+      Array.from(new Set(nfts.map((nft) => nft.searchParcelEstateId ?? nft.id)))
+    )
+    const tileRentalListings =
       nfts.length > 0
         ? Object.fromEntries(
-            Object.entries(
-              await rentals.getRentalsListingsOfNFTs(
-                Array.from(
-                  new Set(nfts.map((nft) => nft.searchParcelEstateId ?? nft.id))
-                )
-              )
-            ).map(([key, value]) => [
+            Object.entries(rentalListings).map(([key, value]) => [
               key,
               convertRentalListingToTileRentalListing(value),
             ])
@@ -223,18 +228,27 @@ export async function createApiComponent(components: {
         : {}
     return nfts.reduce<Batch>(
       (batch, nft) => {
-        const rentalListing = rentalListings[nft.searchParcelEstateId ?? nft.id]
-        const tile = buildTile(nft, rentalListing)
+        const tileRentalListing =
+          tileRentalListings[nft.searchParcelEstateId ?? nft.id]
+        const tile = buildTile(nft, tileRentalListing)
         const parcel = buildParcel(nft)
         const estate = buildEstate(nft)
         batch.tiles.push(tile)
         batch.parcels.push(parcel)
+        if (tileRentalListing) {
+          batch.lastRentalUpdate = Math.max(
+            batch.lastRentalUpdate,
+            fromMillisecondsToSeconds(
+              rentalListings[nft.searchParcelEstateId ?? nft.id]?.updatedAt ?? 0
+            )
+          )
+        }
         if (estate) {
           batch.estates.push(estate)
         }
         return batch
       },
-      { tiles: [], parcels: [], estates: [] }
+      { tiles: [], parcels: [], estates: [], lastRentalUpdate: 0 }
     )
   }
 
@@ -440,7 +454,7 @@ export async function createApiComponent(components: {
         buildEstate
       )
 
-      const batch: Batch = {
+      const batch: Omit<Batch, 'lastRentalUpdate'> = {
         tiles: [...updatedTiles, ...updatedTilesFromEstates],
         parcels: [...updatedParcels, ...updatedParcelsFromEstates],
         estates: [...updatedEstates, ...updatedEstatesFromEstates],
@@ -455,12 +469,18 @@ export async function createApiComponent(components: {
           Math.max(updatedAt, parseInt(estate.updatedAt, 10)),
         0
       )
-      const rentalListingsUpdatedAt = Object.values(
-        rentalListingByNftId
-      ).reduce<number>(
-        (updatedAt, rentalListing) =>
-          Math.max(updatedAt, rentalListing.updatedAt),
-        0
+      const rentalListingsUpdatedAt = fromMillisecondsToSeconds(
+        Object.values(rentalListingByNftId).reduce<number>(
+          (updatedAt, rentalListing) =>
+            Math.max(updatedAt, rentalListing.updatedAt),
+          0
+        )
+      )
+      console.log(
+        'Change update times',
+        tilesLastUpdatedAt,
+        estatesLastUpdatedAt,
+        rentalListingsUpdatedAt
       )
 
       // Gets the minimum last updated time or the original updatedAfter time.
