@@ -124,8 +124,6 @@ export async function createApiComponent(components: {
     let total = 0
     let complete = false
     let lastTokenId = ''
-    /** The time in seconds the last rent was updated */
-    let lastRentalUpdate = 0
 
     while (!complete) {
       // fetch batch
@@ -140,8 +138,6 @@ export async function createApiComponent(components: {
         for (const estate of batch.estates) {
           estates.push(estate)
         }
-
-        lastRentalUpdate = Math.max(lastRentalUpdate, batch.lastRentalUpdate)
 
         // notify progress
         total = total + batch.tiles.length
@@ -188,12 +184,9 @@ export async function createApiComponent(components: {
         ),
         ([_key, value]) => value
       ),
-      updatedAt: Math.max(
-        tiles.reduce<number>(
-          (lastUpdatedAt, tile) => Math.max(lastUpdatedAt, tile.updatedAt),
-          0
-        ),
-        lastRentalUpdate
+      updatedAt: tiles.reduce<number>(
+        (lastUpdatedAt, tile) => Math.max(lastUpdatedAt, tile.updatedAt),
+        0
       ),
     }
     return result
@@ -235,20 +228,12 @@ export async function createApiComponent(components: {
         const estate = buildEstate(nft)
         batch.tiles.push(tile)
         batch.parcels.push(parcel)
-        if (tileRentalListing) {
-          batch.lastRentalUpdate = Math.max(
-            batch.lastRentalUpdate,
-            fromMillisecondsToSeconds(
-              rentalListings[nft.searchParcelEstateId ?? nft.id]?.updatedAt ?? 0
-            )
-          )
-        }
         if (estate) {
           batch.estates.push(estate)
         }
         return batch
       },
-      { tiles: [], parcels: [], estates: [], lastRentalUpdate: 0 }
+      { tiles: [], parcels: [], estates: [] }
     )
   }
 
@@ -454,7 +439,7 @@ export async function createApiComponent(components: {
         buildEstate
       )
 
-      const batch: Omit<Batch, 'lastRentalUpdate'> = {
+      const batch: Batch = {
         tiles: [...updatedTiles, ...updatedTilesFromEstates],
         parcels: [...updatedParcels, ...updatedParcelsFromEstates],
         estates: [...updatedEstates, ...updatedEstatesFromEstates],
@@ -475,12 +460,6 @@ export async function createApiComponent(components: {
             Math.max(updatedAt, rentalListing.updatedAt),
           0
         )
-      )
-      console.log(
-        'Change update times',
-        tilesLastUpdatedAt,
-        estatesLastUpdatedAt,
-        rentalListingsUpdatedAt
       )
 
       // Gets the minimum last updated time or the original updatedAfter time.
