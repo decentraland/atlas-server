@@ -244,6 +244,11 @@ export async function createMapComponent(components: {
 
   const notFoundDissolvedEstateIds = new Set<string>()
   async function getDissolvedEstate(id: string) {
+    //if id is not a tokenId
+    if (id && !id.match(`^[0-9]+$`)) {
+      return null
+    }
+
     // if this id has been queried already return before hitting the subgraph
     if (notFoundDissolvedEstateIds.has(id)) {
       return null

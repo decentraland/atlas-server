@@ -648,6 +648,9 @@ export async function createApiComponent(components: {
   }
 
   async function getDissolvedEstate(estateId: string): Promise<NFT | null> {
+    if (estateId && !estateId.match(`^[0-9]+$`)) {
+      return null
+    }
     const { nfts } = await subgraph.query<{ nfts: DissolvedEstateFragment[] }>(
       `{
         nfts(
