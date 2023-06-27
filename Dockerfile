@@ -44,7 +44,7 @@ RUN apk add --no-cache tini \
 ENV NODE_ENV production
 
 ARG COMMIT_HASH=local
-ENV COMMIT_HASH=${COMMIT_HASH:-local}   
+ENV COMMIT_HASH=${COMMIT_HASH:-local}
 
 WORKDIR /app
 COPY --from=builderenv /app /app
