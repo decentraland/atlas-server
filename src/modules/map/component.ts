@@ -244,7 +244,7 @@ export async function createMapComponent(components: {
 
   const notFoundDissolvedEstateIds = new Set<string>()
   async function getDissolvedEstate(id: string) {
-    //if id is not a tokenId
+    // if id is not a tokenId
     if (id && !id.match(`^[0-9]+$`)) {
       return null
     }
