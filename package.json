@@ -18,7 +18,7 @@
   "author": "",
   "license": "Apache-2.0",
   "dependencies": {
-    "@dcl/schemas": "^6.4.0",
+    "@dcl/schemas": "^8.1.0",
     "@types/cli-progress": "^3.9.1",
     "@well-known-components/env-config-provider": "^1.2.0",
     "@well-known-components/http-requests-logger-component": "^2.1.0",
