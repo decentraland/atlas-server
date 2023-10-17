@@ -1,8 +1,8 @@
-import { AppComponents, Context } from '../types'
 import { toLegacyTiles } from '../adapters/legacy-tiles'
 import { cacheWrapper } from '../logic/cache-wrapper'
 import { extractParams, getFilterFromUrl } from '../logic/filter-params'
 import { isErrorWithMessage } from '../logic/error'
+import { AppComponents, Context } from '../types'
 
 export const createTilesRequestHandler = (
   components: Pick<AppComponents, 'map'>
