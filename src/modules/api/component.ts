@@ -18,7 +18,10 @@ import {
   TileRentalListing,
 } from '../../adapters/rentals'
 import { isRentalListingOpen } from '../../logic/rental'
-import { fromMillisecondsToSeconds } from '../../adapters/time'
+import {
+  fromMillisecondsToSeconds,
+  fromSecondsToMilliseconds,
+} from '../../adapters/time'
 import { Metrics } from '../../metrics'
 import { Tile, TileType } from '../map/types'
 import { coordsToId, specialTiles } from '../map/utils'
@@ -274,8 +277,9 @@ export async function createApiComponent(components: {
         }
       }`
       )
-      const updatedRentalListings =
-        rentals.getUpdatedRentalListings(updatedAfter)
+      const updatedRentalListings = rentals.getUpdatedRentalListings(
+        fromSecondsToMilliseconds(updatedAfter)
+      )
 
       let parcels: ParcelFragment[] = []
       let estates: EstateFragment[] = []

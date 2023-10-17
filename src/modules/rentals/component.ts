@@ -41,7 +41,6 @@ export async function createRentalsComponent(components: {
         },
       }
     )
-
     if (!response.ok) {
       let parsedErrorResult: SignaturesServerErrorResponse<any> | undefined
       try {
