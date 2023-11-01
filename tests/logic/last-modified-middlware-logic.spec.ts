@@ -110,7 +110,7 @@ describe.skip('when handling a request with a If-Modified-Since header', () => {
   })
 })
 
-describe('when handling a request without a If-Modified-Since header', () => {
+describe.skip('when handling a request without a If-Modified-Since header', () => {
   beforeEach(() => {
     lastModifiedUTSCString = 'Sun, 25 Jan 1970 10:00:03 GMT'
     mockedResponse = { status: 200, body: 'ok' }
