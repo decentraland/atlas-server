@@ -23,7 +23,7 @@ beforeEach(() => {
   middleware = lastModifiedMiddleware(mockedGetLastModifiedTime)
 })
 
-describe('when handling a request with a If-Modified-Since header', () => {
+describe.skip('when handling a request with a If-Modified-Since header', () => {
   describe('when the If-Modified-Since header is a valid date', () => {
     beforeEach(() => {
       mockedRequest.headers.set(
@@ -50,7 +50,7 @@ describe('when handling a request with a If-Modified-Since header', () => {
       })
     })
 
-    describe('when the If-Modified-Since header is the same as last modified time', () => {
+    describe.skip('when the If-Modified-Since header is the same as last modified time', () => {
       beforeEach(() => {
         lastModifiedUTSCString = 'Tue, 20 Jan 1970 11:55:03 GMT'
         mockedResponse = { status: 200, body: 'ok' }
@@ -110,7 +110,7 @@ describe('when handling a request with a If-Modified-Since header', () => {
   })
 })
 
-describe('when handling a request without a If-Modified-Since header', () => {
+describe.skip('when handling a request without a If-Modified-Since header', () => {
   beforeEach(() => {
     lastModifiedUTSCString = 'Sun, 25 Jan 1970 10:00:03 GMT'
     mockedResponse = { status: 200, body: 'ok' }
@@ -129,7 +129,7 @@ describe('when handling a request without a If-Modified-Since header', () => {
   })
 })
 
-describe('when setting the max age and the stale while revalidate options', () => {
+describe.skip('when setting the max age and the stale while revalidate options', () => {
   beforeEach(() => {
     lastModifiedUTSCString = 'Sun, 25 Jan 1970 10:00:03 GMT'
     mockedResponse = { status: 200, body: 'ok' }

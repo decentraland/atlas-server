@@ -15,7 +15,6 @@ export function lastModifiedMiddleware(
 
   return async (context, next): Promise<IHttpServerComponent.IResponse> => {
     const lastModifiedTime = getLastModifiedTime()
-    const lastModifiedHeader = new Date(lastModifiedTime).toUTCString()
     const ifModifiedSinceHeader =
       context.request.headers.get('If-Modified-Since')
 
@@ -28,7 +27,6 @@ export function lastModifiedMiddleware(
         return {
           status: 304,
           headers: {
-            'Last-Modified': lastModifiedHeader,
             'Cache-Control': cacheControlHeader,
           },
         }
@@ -38,7 +36,6 @@ export function lastModifiedMiddleware(
     const response = await next()
     response.headers = {
       ...response.headers,
-      'Last-Modified': lastModifiedHeader,
       'Cache-Control': cacheControlHeader,
     }
 
