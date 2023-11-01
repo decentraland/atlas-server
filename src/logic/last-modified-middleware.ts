@@ -14,24 +14,24 @@ export function lastModifiedMiddleware(
   const cacheControlHeader = `max-age=${options.maxAge}, stale-while-revalidate=${options.staleWhileRevalidate}, public`
 
   return async (context, next): Promise<IHttpServerComponent.IResponse> => {
-    const lastModifiedTime = getLastModifiedTime()
-    const ifModifiedSinceHeader =
-      context.request.headers.get('If-Modified-Since')
+    // const lastModifiedTime = getLastModifiedTime()
+    // const ifModifiedSinceHeader =
+    //   context.request.headers.get('If-Modified-Since')
 
-    if (ifModifiedSinceHeader) {
-      const ifModifiedSinceTime = Date.parse(ifModifiedSinceHeader)
-      if (
-        !isNaN(ifModifiedSinceTime) &&
-        lastModifiedTime <= ifModifiedSinceTime
-      ) {
-        return {
-          status: 304,
-          headers: {
-            'Cache-Control': cacheControlHeader,
-          },
-        }
-      }
-    }
+    // if (ifModifiedSinceHeader) {
+    //   const ifModifiedSinceTime = Date.parse(ifModifiedSinceHeader)
+    //   if (
+    //     !isNaN(ifModifiedSinceTime) &&
+    //     lastModifiedTime <= ifModifiedSinceTime
+    //   ) {
+    //     return {
+    //       status: 304,
+    //       headers: {
+    //         'Cache-Control': cacheControlHeader,
+    //       },
+    //     }
+    //   }
+    // }
 
     const response = await next()
     response.headers = {
