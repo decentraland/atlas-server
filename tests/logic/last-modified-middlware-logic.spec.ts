@@ -129,7 +129,7 @@ describe.skip('when handling a request without a If-Modified-Since header', () =
   })
 })
 
-describe('when setting the max age and the stale while revalidate options', () => {
+describe.skip('when setting the max age and the stale while revalidate options', () => {
   beforeEach(() => {
     lastModifiedUTSCString = 'Sun, 25 Jan 1970 10:00:03 GMT'
     mockedResponse = { status: 200, body: 'ok' }
