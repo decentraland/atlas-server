@@ -381,11 +381,20 @@ export async function tilesInfoRequestHandler(context: {
 }) {
   const { map } = context.components
   if (!map.isReady()) {
-    return { status: 503, body: 'Not ready' }
+    return {
+      status: 503,
+      body: 'Not ready',
+      headers: {
+        'cache-control': 'no-cache',
+      },
+    }
   }
 
   const lastUpdatedAt = map.getLastUpdatedAt()
   return {
+    headers: {
+      'cache-control': 'no-cache',
+    },
     status: 200,
     body: { lastUpdatedAt },
   }
