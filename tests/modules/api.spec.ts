@@ -320,7 +320,7 @@ beforeEach(async () => {
 })
 
 describe('when fetching data', () => {
-  describe('and fetching the graph fails but the rental listings', () => {
+  describe('and fetching the graph fails', () => {
     beforeEach(() => {
       subgraphComponentMock.query = jest
         .fn()
@@ -394,8 +394,10 @@ describe('when fetching data', () => {
     let sixthParcelEstate: ParcelFragment
     let fourthParcelRentalListing: RentalListing
     let fifthParcelEstateRentalListing: RentalListing
+    let maxDateInSeconds: number
 
     beforeEach(() => {
+      maxDateInSeconds = fromMillisecondsToSeconds(date) + 5
       fourthParcel = {
         ...defaultParcel,
         id: 'parcel-0x0-3',
@@ -405,6 +407,7 @@ describe('when fetching data', () => {
         searchParcelEstateId: null,
         tokenId: '3',
         activeOrder: null,
+        updatedAt: maxDateInSeconds.toString(),
         parcel: {
           ...defaultParcel.parcel,
           data: {
@@ -422,6 +425,7 @@ describe('when fetching data', () => {
         searchParcelY: '3',
         searchParcelEstateId: 'estate-0x0-2',
         tokenId: '4',
+        updatedAt: (maxDateInSeconds - 1).toString(),
         parcel: {
           data: {
             name: 'Parcel 4',
@@ -452,6 +456,7 @@ describe('when fetching data', () => {
         name: 'Parcel 5',
         searchParcelX: '5',
         searchParcelY: '3',
+        updatedAt: (maxDateInSeconds - 2).toString(),
         parcel: {
           ...fifthParcelEstate.parcel,
           data: {
@@ -764,7 +769,7 @@ describe('when fetching data', () => {
             background_color: '000000',
           },
         ],
-        updatedAt: Number(defaultParcel.updatedAt),
+        updatedAt: maxDateInSeconds,
       })
     })
   })
@@ -772,18 +777,30 @@ describe('when fetching data', () => {
 
 describe('when fetching update data', () => {
   let fstEstate: EstateFragment
+  let fstParcel: ParcelFragment
+  let fstParcelTile: Tile
   let defaultParcelRentalListing: RentalListing
   let fstEstateRentalListing: RentalListing
+  let maxDateInSeconds: number
 
   beforeEach(() => {
+    maxDateInSeconds = fromMillisecondsToSeconds(date)
+    fstParcel = {
+      ...defaultParcel,
+      updatedAt: (maxDateInSeconds - 1).toString()
+    }
     fstEstate = {
-      updatedAt: fromMillisecondsToSeconds(date).toString(),
+      updatedAt: maxDateInSeconds.toString(),
       estate: {
         parcels: [
           { nft: defaultFstParcelEstate },
           { nft: defaultSndParcelEstate },
         ],
       },
+    }
+    fstParcelTile = {
+      ...defaultParcelTile,
+      updatedAt: maxDateInSeconds - 1
     }
     defaultParcelRentalListing = {
       id: 'defaultParcelRentalId',
@@ -975,7 +992,7 @@ describe('when fetching update data', () => {
   describe('and there are parcels and estates to be updated', () => {
     beforeEach(() => {
       subgraphComponentMock.query = jest.fn().mockResolvedValueOnce({
-        parcels: [defaultParcel],
+        parcels: [fstParcel],
         estates: [fstEstate],
       })
       rentalsComponentMock.getUpdatedRentalListings = jest
@@ -987,7 +1004,7 @@ describe('when fetching update data', () => {
       return expect(apiComponent.fetchUpdatedData(100000, {})).resolves.toEqual(
         {
           tiles: [
-            defaultParcelTile,
+            fstParcelTile,
             defaultFstParcelEstateTile,
             defaultSndParcelEstateTile,
           ],
@@ -997,7 +1014,7 @@ describe('when fetching update data', () => {
             defaultSndParcelEstateNFT,
           ],
           estates: [fstEstateNFT],
-          updatedAt: Number(fstEstate.updatedAt),
+          updatedAt: maxDateInSeconds,
         }
       )
     })
