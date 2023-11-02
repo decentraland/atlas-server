@@ -480,6 +480,10 @@ export async function createApiComponent(components: {
         updatedAfter
       )
 
+      console.log(
+        `Last updates | tiles: ${tilesLastUpdatedAt} - estates: ${estatesLastUpdatedAt} - rentals: ${rentalListings} - saved: ${updatedAt}`
+      )
+
       const result: Result = {
         ...batch,
         updatedAt,
