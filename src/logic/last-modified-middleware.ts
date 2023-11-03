@@ -11,7 +11,7 @@ export function lastModifiedMiddleware(
     staleWhileRevalidate: THREE_MINUTES,
   }
 ): IHttpServerComponent.IRequestHandler<Context<string>> {
-  const cacheControlHeader = `max-age=${options.maxAge}, stale-while-revalidate=${options.staleWhileRevalidate}, public`
+  const cacheControlHeader = `max-age=${options.maxAge}, s-maxage=${options.maxAge}, stale-while-revalidate=${options.staleWhileRevalidate}, public`
 
   return async (context, next): Promise<IHttpServerComponent.IResponse> => {
     const lastModifiedTime = getLastModifiedTime()

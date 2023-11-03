@@ -44,7 +44,8 @@ describe('when handling a request with a If-Modified-Since header', () => {
           ...mockedResponse,
           headers: {
             'Last-Modified': lastModifiedUTSCString,
-            'Cache-Control': 'max-age=120, stale-while-revalidate=180, public',
+            'Cache-Control':
+              'max-age=120, s-maxage=120, stale-while-revalidate=180, public',
           },
         })
       })
@@ -63,7 +64,8 @@ describe('when handling a request with a If-Modified-Since header', () => {
           status: 304,
           headers: {
             'Last-Modified': lastModifiedUTSCString,
-            'Cache-Control': 'max-age=120, stale-while-revalidate=180, public',
+            'Cache-Control':
+              'max-age=120, s-maxage=120, stale-while-revalidate=180, public',
           },
         })
       })
@@ -82,7 +84,8 @@ describe('when handling a request with a If-Modified-Since header', () => {
           status: 304,
           headers: {
             'Last-Modified': lastModifiedUTSCString,
-            'Cache-Control': 'max-age=120, stale-while-revalidate=180, public',
+            'Cache-Control':
+              'max-age=120, s-maxage=120, stale-while-revalidate=180, public',
           },
         })
       })
@@ -103,7 +106,8 @@ describe('when handling a request with a If-Modified-Since header', () => {
         ...mockedResponse,
         headers: {
           'Last-Modified': lastModifiedUTSCString,
-          'Cache-Control': 'max-age=120, stale-while-revalidate=180, public',
+          'Cache-Control':
+            'max-age=120, s-maxage=120, stale-while-revalidate=180, public',
         },
       })
     })
@@ -123,7 +127,8 @@ describe('when handling a request without a If-Modified-Since header', () => {
       ...mockedResponse,
       headers: {
         'Last-Modified': lastModifiedUTSCString,
-        'Cache-Control': 'max-age=120, stale-while-revalidate=180, public',
+        'Cache-Control':
+          'max-age=120, s-maxage=120, stale-while-revalidate=180, public',
       },
     })
   })
@@ -146,7 +151,8 @@ describe('when setting the max age and the stale while revalidate options', () =
       ...mockedResponse,
       headers: {
         'Last-Modified': lastModifiedUTSCString,
-        'Cache-Control': 'max-age=600, stale-while-revalidate=600, public',
+        'Cache-Control':
+          'max-age=600, s-maxage=600, stale-while-revalidate=600, public',
       },
     })
   })
