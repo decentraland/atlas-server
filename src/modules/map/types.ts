@@ -49,7 +49,7 @@ export type Tile = {
   left: boolean
   /** True if it has a tile on its top left. */
   topLeft: boolean
-  /** UTC timestamp in seconds of the last time the tile was updated. */
+  /** UTC timestamp in miliseconds of the last time the tile was updated. */
   updatedAt: number
   /** The name of the tile, taken either from the estate or from the parcel it belongs to. */
   name?: string

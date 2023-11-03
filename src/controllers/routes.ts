@@ -30,9 +30,8 @@ export async function setupRouter(
   const router = new Router<GlobalContext>()
 
   const { district, map } = components
-  const getLastModifiedTime = () => map.getLastUpdatedAt() * 1000
   const lastModifiedMiddlewareByMapDate =
-    lastModifiedMiddleware(getLastModifiedTime)
+    lastModifiedMiddleware(map.getLastUpdatedAt)
 
   router.get(
     '/v1/tiles',
@@ -52,7 +51,7 @@ export async function setupRouter(
   )
   router.get(
     '/v1/minimap.png',
-    lastModifiedMiddleware(getLastModifiedTime, {
+    lastModifiedMiddleware(map.getLastUpdatedAt, {
       maxAge: 600,
       staleWhileRevalidate: 600,
     }),
@@ -60,7 +59,7 @@ export async function setupRouter(
   )
   router.get(
     '/v1/estatemap.png',
-    lastModifiedMiddleware(getLastModifiedTime, {
+    lastModifiedMiddleware(map.getLastUpdatedAt, {
       maxAge: 600,
       staleWhileRevalidate: 600,
     }),

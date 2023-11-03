@@ -45,6 +45,7 @@ describe('when converting a rental listing to a tile rental listing', () => {
     expect(convertRentalListingToTileRentalListing(rentalListing)).toEqual({
       expiration: rentalListing.expiration,
       periods: rentalListing.periods,
+      updatedAt: rentalListing.updatedAt
     })
   })
 })
