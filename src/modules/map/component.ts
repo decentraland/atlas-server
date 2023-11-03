@@ -37,7 +37,7 @@ export async function createMapComponent(components: {
   let estates = future<Record<string, NFT>>()
   let tokens = future<Record<string, NFT>>()
   let ready = false
-  let lastUpdatedAt = 0
+  let lastUpdatedAt = 0 // in ms
 
   // sort
   const sortByCoords = (a: Tile, b: Tile) =>

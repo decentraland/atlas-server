@@ -24,6 +24,7 @@ describe('when converting tiles into a legacy tiles', () => {
           { minDays: 1, maxDays: 1, pricePerDay: '10000' },
           { minDays: 2, maxDays: 2, pricePerDay: '20000' },
         ],
+        updatedAt: Date.now(),
       }
     })
 

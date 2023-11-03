@@ -1,6 +1,6 @@
 import { RentalListing } from '@dcl/schemas'
 
-export type TileRentalListing = Pick<RentalListing, 'expiration' | 'periods'>
+export type TileRentalListing = Pick<RentalListing, 'expiration' | 'periods' | 'updatedAt'>
 
 export function convertRentalListingToTileRentalListing(
   rentalListing: RentalListing
@@ -8,5 +8,6 @@ export function convertRentalListingToTileRentalListing(
   return {
     expiration: rentalListing.expiration,
     periods: rentalListing.periods,
+    updatedAt: rentalListing.updatedAt
   }
 }

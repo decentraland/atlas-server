@@ -241,7 +241,7 @@ export async function createApiComponent(components: {
   }
 
   async function fetchUpdatedData(
-    updatedAfter: number,
+    updatedAfterInMs: number,
     oldTiles: Record<string, Tile>
   ) {
     try {
@@ -255,7 +255,7 @@ export async function createApiComponent(components: {
           orderBy: updatedAt,
           orderDirection: asc,
           where: {
-            updatedAt_gt: "${updatedAfter}",
+            updatedAt_gt: "${fromMillisecondsToSeconds(updatedAfterInMs)}",
             category: parcel
           }
         ) ${parcelFields}
@@ -264,7 +264,7 @@ export async function createApiComponent(components: {
           orderBy: updatedAt,
           orderDirection: asc,
           where: {
-            updatedAt_gt: "${updatedAfter}",
+            updatedAt_gt: "${fromMillisecondsToSeconds(updatedAfterInMs)}",
             category: estate
           }
         ) {
@@ -277,9 +277,10 @@ export async function createApiComponent(components: {
         }
       }`
       )
-      const updatedRentalListings = rentals.getUpdatedRentalListings(
-        fromSecondsToMilliseconds(updatedAfter)
-      )
+      const updatedRentalListings =
+        // timestamp in signatures server has microsecond precision. Adding one to avoid returning
+        // the same rental listing previously saved
+        rentals.getUpdatedRentalListings(updatedAfterInMs + 1)
 
       let parcels: ParcelFragment[] = []
       let estates: EstateFragment[] = []
@@ -329,7 +330,7 @@ export async function createApiComponent(components: {
           tiles: [],
           parcels: [],
           estates: [],
-          updatedAt: updatedAfter,
+          updatedAt: updatedAfterInMs,
         }
       }
 
@@ -371,8 +372,10 @@ export async function createApiComponent(components: {
             isNftIdFromParcel(rentalListing.nftId) &&
             tilesByTokenId[tokenId]
           ) {
+            const currentTile = tilesByTokenId[tokenId]
             return {
-              ...tilesByTokenId[tokenId],
+              ...currentTile,
+              updatedAt: Math.max(currentTile.updatedAt, rentalListing.updatedAt),
               rentalListing: isRentalListingOpen(rentalListing)
                 ? convertRentalListingToTileRentalListing(rentalListing)
                 : undefined,
@@ -383,6 +386,7 @@ export async function createApiComponent(components: {
           ) {
             return tilesByEstateId[tokenId].map((tile) => ({
               ...tile,
+              updatedAt: Math.max(tile.updatedAt, rentalListing.updatedAt),
               rentalListing: isRentalListingOpen(rentalListing)
                 ? convertRentalListingToTileRentalListing(rentalListing)
                 : undefined,
@@ -449,21 +453,34 @@ export async function createApiComponent(components: {
         estates: [...updatedEstates, ...updatedEstatesFromEstates],
       }
 
+      // tiles already have the updateAt value in ms
       const tilesLastUpdatedAt = batch.tiles.reduce<number>(
         (updatedAt, tile) => Math.max(updatedAt, tile.updatedAt),
         0
       )
-      const estatesLastUpdatedAt = estates.reduce<number>(
-        (updatedAt, estate) =>
-          Math.max(updatedAt, parseInt(estate.updatedAt, 10)),
-        0
-      )
-      const rentalListingsUpdatedAt = fromMillisecondsToSeconds(
-        Object.values(rentalListingByNftId).reduce<number>(
-          (updatedAt, rentalListing) =>
-            Math.max(updatedAt, rentalListing.updatedAt),
+
+      // using estes from graph so we need to convert the updatedAt in ms as they come in seconds
+      const estatesLastUpdatedAt = fromSecondsToMilliseconds(
+        estates.reduce<number>(
+          (updatedAt, estate) =>
+            Math.max(updatedAt, parseInt(estate.updatedAt, 10)),
           0
         )
+      )
+
+      const rentalListingsUpdatedAt = Object.values(
+        rentalListingByNftId
+      ).reduce<number>(
+        (updatedAt, rentalListing) =>
+          Math.max(updatedAt, rentalListing.updatedAt),
+        0
+      )
+
+      // As both values are obtained simultaneously we can get the max from both of them and no data loss
+      // will ocurr
+      const lastUpdatedParcelOrEstate = Math.max(
+        tilesLastUpdatedAt,
+        estatesLastUpdatedAt
       )
 
       // Gets the minimum last updated time or the original updatedAfter time.
@@ -471,17 +488,18 @@ export async function createApiComponent(components: {
       // it possible to have an estate or parcel update in the meantime.
       const updatedAt = Math.max(
         Math.min(
-          tilesLastUpdatedAt === 0 ? Number.MAX_VALUE : tilesLastUpdatedAt,
-          estatesLastUpdatedAt === 0 ? Number.MAX_VALUE : estatesLastUpdatedAt,
+          lastUpdatedParcelOrEstate === 0
+            ? Number.MAX_VALUE
+            : lastUpdatedParcelOrEstate,
           rentalListingsUpdatedAt === 0
             ? Number.MAX_VALUE
             : rentalListingsUpdatedAt
         ),
-        updatedAfter
+        updatedAfterInMs
       )
 
-      console.log(
-        `Last updates | tiles: ${tilesLastUpdatedAt} - estates: ${estatesLastUpdatedAt} - rentals: ${rentalListings} - saved: ${updatedAt}`
+      componentLogger.info(
+        `Last updates | tiles: ${tilesLastUpdatedAt} - estates: ${estatesLastUpdatedAt} - rentals: ${rentalListingsUpdatedAt} - saved: ${updatedAt}`
       )
 
       const result: Result = {
@@ -522,8 +540,11 @@ export async function createApiComponent(components: {
     const owner = (estate && estate.nft.owner) || parcelOwner
     const activeOrder = (estate && estate.nft.activeOrder) || parcelActiveOrder
     const updatedAt = Math.max(
-      estate ? parseInt(estate.nft.updatedAt, 10) : 0,
-      parseInt(parcelUpdatedAt, 10)
+      fromSecondsToMilliseconds(
+        estate ? parseInt(estate.nft.updatedAt, 10) : 0
+      ),
+      fromSecondsToMilliseconds(parseInt(parcelUpdatedAt, 10)),
+      rentalListing?.updatedAt || 0
     )
 
     // special tiles are plazas, districts and roads

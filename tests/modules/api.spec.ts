@@ -6,7 +6,10 @@ import {
 } from '@well-known-components/interfaces'
 import { ISubgraphComponent } from '@well-known-components/thegraph-component'
 import { convertRentalListingToTileRentalListing } from '../../src/adapters/rentals'
-import { fromMillisecondsToSeconds } from '../../src/adapters/time'
+import {
+  fromMillisecondsToSeconds,
+  fromSecondsToMilliseconds,
+} from '../../src/adapters/time'
 import { Metrics } from '../../src/metrics'
 import { createApiComponent } from '../../src/modules/api/component'
 import {
@@ -188,7 +191,7 @@ beforeEach(async () => {
     id: '0,1',
     x: Number(defaultParcel.searchParcelX),
     y: Number(defaultParcel.searchParcelY),
-    updatedAt: Number(defaultParcel.updatedAt),
+    updatedAt: fromSecondsToMilliseconds(Number(defaultParcel.updatedAt)),
     type: TileType.PLAZA,
     top: true,
     left: true,
@@ -205,7 +208,9 @@ beforeEach(async () => {
     id: '1,1',
     x: Number(defaultFstParcelEstate.searchParcelX),
     y: Number(defaultFstParcelEstate.searchParcelY),
-    updatedAt: Number(defaultFstParcelEstate.updatedAt),
+    updatedAt: fromSecondsToMilliseconds(
+      Number(defaultFstParcelEstate.updatedAt)
+    ),
     type: TileType.PLAZA,
     top: true,
     left: true,
@@ -223,7 +228,9 @@ beforeEach(async () => {
     id: '1,2',
     x: Number(defaultSndParcelEstate.searchParcelX),
     y: Number(defaultSndParcelEstate.searchParcelY),
-    updatedAt: Number(defaultSndParcelEstate.updatedAt),
+    updatedAt: fromSecondsToMilliseconds(
+      Number(defaultSndParcelEstate.updatedAt)
+    ),
     type: TileType.PLAZA,
     top: true,
     left: true,
@@ -382,7 +389,7 @@ describe('when fetching data', () => {
           defaultSndParcelEstateNFT,
         ],
         estates: [fstEstateNFT],
-        updatedAt: Number(defaultParcel.updatedAt),
+        updatedAt: fromSecondsToMilliseconds(Number(defaultParcel.updatedAt)),
       })
     })
   })
@@ -512,7 +519,9 @@ describe('when fetching data', () => {
             id: '0,1',
             x: Number(defaultParcel.searchParcelX),
             y: Number(defaultParcel.searchParcelY),
-            updatedAt: Number(defaultParcel.updatedAt),
+            updatedAt: fromSecondsToMilliseconds(
+              Number(defaultParcel.updatedAt)
+            ),
             type: 'plaza',
             top: true,
             left: true,
@@ -530,7 +539,9 @@ describe('when fetching data', () => {
             id: '1,1',
             x: Number(defaultFstParcelEstate.searchParcelX),
             y: Number(defaultFstParcelEstate.searchParcelY),
-            updatedAt: Number(defaultFstParcelEstate.updatedAt),
+            updatedAt: fromSecondsToMilliseconds(
+              Number(defaultFstParcelEstate.updatedAt)
+            ),
             type: 'plaza',
             top: true,
             left: true,
@@ -549,7 +560,9 @@ describe('when fetching data', () => {
             id: '1,2',
             x: Number(defaultSndParcelEstate.searchParcelX),
             y: Number(defaultSndParcelEstate.searchParcelY),
-            updatedAt: Number(defaultSndParcelEstate.updatedAt),
+            updatedAt: fromSecondsToMilliseconds(
+              Number(defaultSndParcelEstate.updatedAt)
+            ),
             type: 'plaza',
             top: true,
             left: true,
@@ -568,7 +581,9 @@ describe('when fetching data', () => {
             id: '3,3',
             x: Number(fourthParcel.searchParcelX),
             y: Number(fourthParcel.searchParcelY),
-            updatedAt: Number(fourthParcel.updatedAt),
+            updatedAt: fromSecondsToMilliseconds(
+              Number(fourthParcel.updatedAt)
+            ),
             type: 'plaza',
             top: true,
             left: true,
@@ -584,7 +599,9 @@ describe('when fetching data', () => {
             id: '4,3',
             x: Number(fifthParcelEstate.searchParcelX),
             y: Number(fifthParcelEstate.searchParcelY),
-            updatedAt: Number(fifthParcelEstate.updatedAt),
+            updatedAt: fromSecondsToMilliseconds(
+              Number(fifthParcelEstate.updatedAt)
+            ),
             type: 'plaza',
             top: true,
             left: true,
@@ -605,7 +622,9 @@ describe('when fetching data', () => {
             id: '5,3',
             x: Number(sixthParcelEstate.searchParcelX),
             y: Number(sixthParcelEstate.searchParcelY),
-            updatedAt: Number(sixthParcelEstate.updatedAt),
+            updatedAt: fromSecondsToMilliseconds(
+              Number(sixthParcelEstate.updatedAt)
+            ),
             type: 'plaza',
             top: true,
             left: true,
@@ -769,7 +788,7 @@ describe('when fetching data', () => {
             background_color: '000000',
           },
         ],
-        updatedAt: maxDateInSeconds,
+        updatedAt: fromSecondsToMilliseconds(maxDateInSeconds),
       })
     })
   })
@@ -787,7 +806,7 @@ describe('when fetching update data', () => {
     maxDateInSeconds = fromMillisecondsToSeconds(date)
     fstParcel = {
       ...defaultParcel,
-      updatedAt: (maxDateInSeconds - 1).toString()
+      updatedAt: (maxDateInSeconds - 1).toString(),
     }
     fstEstate = {
       updatedAt: maxDateInSeconds.toString(),
@@ -800,7 +819,7 @@ describe('when fetching update data', () => {
     }
     fstParcelTile = {
       ...defaultParcelTile,
-      updatedAt: maxDateInSeconds - 1
+      updatedAt: fromSecondsToMilliseconds(maxDateInSeconds - 1),
     }
     defaultParcelRentalListing = {
       id: 'defaultParcelRentalId',
@@ -983,7 +1002,7 @@ describe('when fetching update data', () => {
           tiles: [defaultFstParcelEstateTile, defaultSndParcelEstateTile],
           parcels: [defaultFstParcelEstateNFT, defaultSndParcelEstateNFT],
           estates: [fstEstateNFT],
-          updatedAt: Number(fstEstate.updatedAt),
+          updatedAt: fromSecondsToMilliseconds(Number(fstEstate.updatedAt)),
         }
       )
     })
@@ -1014,7 +1033,7 @@ describe('when fetching update data', () => {
             defaultSndParcelEstateNFT,
           ],
           estates: [fstEstateNFT],
-          updatedAt: maxDateInSeconds,
+          updatedAt: fromSecondsToMilliseconds(maxDateInSeconds),
         }
       )
     })
@@ -1040,6 +1059,7 @@ describe('when fetching update data', () => {
         tiles: [
           {
             ...defaultParcelTile,
+            updatedAt: defaultParcelRentalListing.updatedAt,
             rentalListing: convertRentalListingToTileRentalListing(
               defaultParcelRentalListing
             ),
@@ -1047,7 +1067,7 @@ describe('when fetching update data', () => {
         ],
         parcels: [],
         estates: [],
-        updatedAt: Number(defaultParcelTile.updatedAt),
+        updatedAt: date,
       })
     })
   })
@@ -1073,12 +1093,14 @@ describe('when fetching update data', () => {
         tiles: [
           {
             ...defaultFstParcelEstateTile,
+            updatedAt: fstEstateRentalListing.updatedAt,
             rentalListing: convertRentalListingToTileRentalListing(
               fstEstateRentalListing
             ),
           },
           {
             ...defaultSndParcelEstateTile,
+            updatedAt: fstEstateRentalListing.updatedAt,
             rentalListing: convertRentalListingToTileRentalListing(
               fstEstateRentalListing
             ),
@@ -1086,7 +1108,7 @@ describe('when fetching update data', () => {
         ],
         parcels: [],
         estates: [],
-        updatedAt: Number(defaultFstParcelEstateTile.updatedAt),
+        updatedAt: date,
       })
     })
   })
@@ -1116,18 +1138,21 @@ describe('when fetching update data', () => {
         tiles: [
           {
             ...defaultParcelTile,
+            updatedAt: defaultParcelRentalListing.updatedAt,
             rentalListing: convertRentalListingToTileRentalListing(
               defaultParcelRentalListing
             ),
           },
           {
             ...defaultFstParcelEstateTile,
+            updatedAt: defaultParcelRentalListing.updatedAt,
             rentalListing: convertRentalListingToTileRentalListing(
               fstEstateRentalListing
             ),
           },
           {
             ...defaultSndParcelEstateTile,
+            updatedAt: defaultParcelRentalListing.updatedAt,
             rentalListing: convertRentalListingToTileRentalListing(
               fstEstateRentalListing
             ),
@@ -1135,7 +1160,7 @@ describe('when fetching update data', () => {
         ],
         parcels: [],
         estates: [],
-        updatedAt: Number(defaultFstParcelEstateTile.updatedAt),
+        updatedAt: date,
       })
     })
   })
@@ -1162,10 +1187,16 @@ describe('when fetching update data', () => {
           },
         })
       ).resolves.toEqual({
-        tiles: [defaultParcelTile],
+        tiles: [
+          {
+            ...defaultParcelTile,
+            updatedAt: defaultParcelRentalListing.updatedAt,
+            rentalListing: undefined,
+          },
+        ],
         parcels: [],
         estates: [],
-        updatedAt: Number(defaultParcelTile.updatedAt),
+        updatedAt: date,
       })
     })
   })
@@ -1196,10 +1227,19 @@ describe('when fetching update data', () => {
           },
         })
       ).resolves.toEqual({
-        tiles: [defaultFstParcelEstateTile, defaultSndParcelEstateTile],
+        tiles: [
+          {
+            ...defaultFstParcelEstateTile,
+            updatedAt: fstEstateRentalListing.updatedAt,
+          },
+          {
+            ...defaultSndParcelEstateTile,
+            updatedAt: fstEstateRentalListing.updatedAt,
+          },
+        ],
         parcels: [],
         estates: [],
-        updatedAt: Number(defaultFstParcelEstateTile.updatedAt),
+        updatedAt: date,
       })
     })
   })
@@ -1248,10 +1288,15 @@ describe('when fetching update data', () => {
           [defaultParcelTile.id]: defaultParcelTile,
         })
       ).resolves.toEqual({
-        tiles: [updatedDefaultParcelTile],
+        tiles: [
+          {
+            ...updatedDefaultParcelTile,
+            updatedAt: defaultParcelRentalListing.updatedAt,
+          },
+        ],
         parcels: [updatedDefaultParcelNFT],
         estates: [],
-        updatedAt: Number(updatedDefaultParcel.updatedAt),
+        updatedAt: date,
       })
     })
   })
@@ -1315,18 +1360,21 @@ describe('when fetching update data', () => {
         tiles: [
           {
             ...defaultFstParcelEstateTile,
+            updatedAt: fstEstateRentalListing.updatedAt,
             rentalListing: convertRentalListingToTileRentalListing(
               fstEstateRentalListing
             ),
           },
           {
             ...defaultSndParcelEstateTile,
+            updatedAt: fstEstateRentalListing.updatedAt,
             rentalListing: convertRentalListingToTileRentalListing(
               fstEstateRentalListing
             ),
           },
           {
             ...updatedDefaultParcelTileIntoFstEstate,
+            updatedAt: fstEstateRentalListing.updatedAt,
             rentalListing: convertRentalListingToTileRentalListing(
               fstEstateRentalListing
             ),
@@ -1339,7 +1387,237 @@ describe('when fetching update data', () => {
           defaultSndParcelEstateNFT,
         ],
         estates: [fstEstateNFT],
-        updatedAt: Number(defaultFstParcelEstateTile.updatedAt),
+        updatedAt: fstEstateRentalListing.updatedAt,
+      })
+    })
+  })
+
+  describe('and calculating the updated date', () => {
+    let maxDateInSeconds: number
+    let maxDateInMilliseconds: number
+
+    describe('and there are no updates', () => {
+      beforeEach(() => {
+        subgraphComponentMock.query = jest.fn().mockResolvedValueOnce({
+          parcels: [],
+          estates: [],
+        })
+        rentalsComponentMock.getUpdatedRentalListings = jest
+          .fn()
+          .mockResolvedValueOnce([])
+      })
+
+      it('should return the current lastUpdatedDate value', () => {
+        return expect(
+          apiComponent.fetchUpdatedData(100000, {})
+        ).resolves.toEqual(expect.objectContaining({ updatedAt: 100000 }))
+      })
+    })
+
+    describe('and there are only parcels updates', () => {
+      let maxDateInSeconds: number
+      beforeEach(() => {
+        maxDateInSeconds = fromMillisecondsToSeconds(Date.now())
+        const parcel1 = {
+          ...defaultParcel,
+          id: '1',
+          tokenId: '1',
+          searchParcelX: '0',
+          searchParcelY: '1',
+          updatedAt: maxDateInSeconds.toString(),
+        }
+
+        const parcel2 = {
+          ...defaultParcel,
+          id: '2',
+          tokenId: '2',
+          searchParcelX: '0',
+          searchParcelY: '2',
+          updatedAt: (maxDateInSeconds - 1).toString(),
+        }
+        subgraphComponentMock.query = jest.fn().mockResolvedValueOnce({
+          parcels: [parcel1, parcel2],
+          estates: [],
+        })
+        rentalsComponentMock.getUpdatedRentalListings = jest
+          .fn()
+          .mockResolvedValueOnce([])
+      })
+
+      it('should return the highest updatedAt value from parcels', () => {
+        return expect(
+          apiComponent.fetchUpdatedData(100000, {})
+        ).resolves.toEqual(
+          expect.objectContaining({
+            updatedAt: fromSecondsToMilliseconds(maxDateInSeconds),
+          })
+        )
+      })
+    })
+
+    describe('and there are only estates updates', () => {
+      beforeEach(() => {
+        maxDateInSeconds = fromMillisecondsToSeconds(Date.now())
+        const parcel1Estate = {
+          ...defaultFstParcelEstate,
+          parcel: {
+            ...defaultFstParcelEstate.parcel,
+            estate: {
+              ...defaultFstParcelEstate.parcel.estate,
+              nft: {
+                ...defaultFstParcelEstate.parcel.estate!.nft,
+                updatedAt: maxDateInSeconds.toString(),
+              },
+            },
+          },
+          updatedAt: (maxDateInSeconds - 1).toString(),
+        }
+        const parcel2Estate = {
+          ...defaultSndParcelEstate,
+          parcel: {
+            ...defaultSndParcelEstate.parcel,
+            estate: {
+              ...defaultSndParcelEstate.parcel.estate!,
+              nft: {
+                ...defaultSndParcelEstate.parcel.estate!.nft,
+                updatedAt: maxDateInSeconds.toString(),
+              },
+            },
+          },
+          updatedAt: (maxDateInSeconds - 2).toString(),
+        }
+        const estate: EstateFragment = {
+          ...fstEstate,
+          estate: {
+            ...fstEstate.estate,
+            parcels: [
+              { nft: parcel1Estate as ParcelFragment },
+              { nft: parcel2Estate as ParcelFragment },
+            ],
+          },
+          updatedAt: maxDateInSeconds.toString(),
+        }
+
+        subgraphComponentMock.query = jest.fn().mockResolvedValueOnce({
+          parcels: [],
+          estates: [estate],
+        })
+        rentalsComponentMock.getUpdatedRentalListings = jest
+          .fn()
+          .mockResolvedValueOnce([])
+      })
+
+      it('should return the max value between estates and parcels updates', () => {
+        return expect(
+          apiComponent.fetchUpdatedData(100000, {})
+        ).resolves.toEqual(
+          expect.objectContaining({
+            updatedAt: fromSecondsToMilliseconds(maxDateInSeconds),
+          })
+        )
+      })
+    })
+
+    describe('and there are only listings updates', () => {
+      beforeEach(() => {
+        subgraphComponentMock.query = jest.fn().mockResolvedValueOnce({
+          parcels: [],
+          estates: [],
+        })
+        maxDateInMilliseconds = Date.now()
+
+        const rentalListing1 = {
+          ...defaultParcelRentalListing,
+          updatedAt: maxDateInMilliseconds,
+        }
+        const rentalListing2 = {
+          ...fstEstateRentalListing,
+          updatedAt: maxDateInMilliseconds - 1,
+        }
+        rentalsComponentMock.getUpdatedRentalListings = jest
+          .fn()
+          .mockResolvedValueOnce([rentalListing1, rentalListing2])
+      })
+
+      it('should return highest updateAt value from all listings', () => {
+        return expect(
+          apiComponent.fetchUpdatedData(100000, {})
+        ).resolves.toEqual(
+          expect.objectContaining({
+            updatedAt: maxDateInMilliseconds,
+          })
+        )
+      })
+    })
+
+    describe('and there are updates on parcels, estates and listings', () => {
+      beforeEach(() => {
+        maxDateInMilliseconds = Date.now()
+
+        const rentalListing1 = {
+          ...defaultParcelRentalListing,
+          updatedAt: maxDateInMilliseconds,
+        }
+
+        const parcel1 = {
+          ...defaultParcel,
+          id: '1',
+          tokenId: '1',
+          searchParcelX: '0',
+          searchParcelY: '1',
+          updatedAt: (
+            fromMillisecondsToSeconds(maxDateInMilliseconds) - 1
+          ).toString(),
+        }
+
+        const parcel1Estate = {
+          ...defaultSndParcelEstate,
+          parcel: {
+            ...defaultSndParcelEstate.parcel,
+            estate: {
+              ...defaultSndParcelEstate.parcel.estate!,
+              nft: {
+                ...defaultSndParcelEstate.parcel.estate!.nft,
+                updatedAt: (
+                  fromMillisecondsToSeconds(maxDateInMilliseconds) - 2
+                ).toString(),
+              },
+            },
+          },
+          updatedAt: (
+            fromMillisecondsToSeconds(maxDateInMilliseconds) - 3
+          ).toString(),
+        }
+        const estate: EstateFragment = {
+          ...fstEstate,
+          estate: {
+            ...fstEstate.estate,
+            parcels: [{ nft: parcel1Estate as ParcelFragment }],
+          },
+          updatedAt: (
+            fromMillisecondsToSeconds(maxDateInMilliseconds) - 2
+          ).toString(),
+        }
+
+        subgraphComponentMock.query = jest.fn().mockResolvedValueOnce({
+          parcels: [parcel1],
+          estates: [estate],
+        })
+        rentalsComponentMock.getUpdatedRentalListings = jest
+          .fn()
+          .mockResolvedValueOnce([rentalListing1])
+      })
+
+      it('should return lowest updateAt between the highest listing and highest parcel or estate', () => {
+        return expect(
+          apiComponent.fetchUpdatedData(100000, {})
+        ).resolves.toEqual(
+          expect.objectContaining({
+            updatedAt: fromSecondsToMilliseconds(
+              fromMillisecondsToSeconds(maxDateInMilliseconds) - 1
+            ),
+          })
+        )
       })
     })
   })
