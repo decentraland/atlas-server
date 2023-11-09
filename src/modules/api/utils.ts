@@ -102,7 +102,7 @@ export function getParcelFragmentRentalListing(
     oldTilesByTokenId[tokenId] &&
     oldTilesByTokenId[tokenId].rentalListing
   ) {
-    return oldTilesByTokenId[parcel.id].rentalListing
+    return oldTilesByTokenId[tokenId].rentalListing
   }
 
   return undefined
