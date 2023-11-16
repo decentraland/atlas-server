@@ -1296,7 +1296,7 @@ describe('when fetching update data', () => {
         ],
         parcels: [updatedDefaultParcelNFT],
         estates: [],
-        updatedAt: date,
+        updatedAt: defaultParcelTile.updatedAt,
       })
     })
   })
@@ -1387,7 +1387,7 @@ describe('when fetching update data', () => {
           defaultSndParcelEstateNFT,
         ],
         estates: [fstEstateNFT],
-        updatedAt: fstEstateRentalListing.updatedAt,
+        updatedAt: Math.min(fstEstateRentalListing.updatedAt, fromSecondsToMilliseconds(parseInt(fstEstate.updatedAt, 10))),
       })
     })
   })
