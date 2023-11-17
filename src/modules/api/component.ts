@@ -375,7 +375,10 @@ export async function createApiComponent(components: {
             const currentTile = tilesByTokenId[tokenId]
             return {
               ...currentTile,
-              updatedAt: Math.max(currentTile.updatedAt, rentalListing.updatedAt),
+              updatedAt: Math.max(
+                currentTile.updatedAt,
+                rentalListing.updatedAt
+              ),
               rentalListing: isRentalListingOpen(rentalListing)
                 ? convertRentalListingToTileRentalListing(rentalListing)
                 : undefined,
@@ -454,9 +457,12 @@ export async function createApiComponent(components: {
       }
 
       // tiles already have the updateAt value in ms
-      const tilesLastUpdatedAt = batch.tiles.reduce<number>(
-        (updatedAt, tile) => Math.max(updatedAt, tile.updatedAt),
-        0
+      const tilesLastUpdatedAt = fromSecondsToMilliseconds(
+        parcels.reduce<number>(
+          (updatedAt, parcel) =>
+            Math.max(updatedAt, parseInt(parcel.updatedAt, 10)),
+          0
+        )
       )
 
       // using estes from graph so we need to convert the updatedAt in ms as they come in seconds
