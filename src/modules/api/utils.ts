@@ -3,7 +3,6 @@ import {
   convertRentalListingToTileRentalListing,
   TileRentalListing,
 } from '../../adapters/rentals'
-import { getTokenIdFromNftId } from '../../logic/nfts'
 import { isRentalListingOpen } from '../../logic/rental'
 import { Tile } from '../map/types'
 import {
@@ -87,10 +86,9 @@ export function buildFromEstates<T extends { id: string }>(
 export function getParcelFragmentRentalListing(
   parcel: ParcelFragment,
   newRentalListings: Record<string, RentalListing>,
-  oldTilesByTokenId: Record<string, Tile>
+  oldTilesByNftId: Record<string, Tile>
 ): TileRentalListing | undefined {
   const nftId = parcel.searchParcelEstateId ?? parcel.id
-  const tokenId = getTokenIdFromNftId(nftId)
 
   if (newRentalListings[nftId]) {
     return newRentalListings[nftId] &&
@@ -98,11 +96,10 @@ export function getParcelFragmentRentalListing(
       ? convertRentalListingToTileRentalListing(newRentalListings[nftId])
       : undefined
   } else if (
-    tokenId &&
-    oldTilesByTokenId[tokenId] &&
-    oldTilesByTokenId[tokenId].rentalListing
+    oldTilesByNftId[parcel.id] &&
+    oldTilesByNftId[parcel.id].rentalListing
   ) {
-    return oldTilesByTokenId[tokenId].rentalListing
+    return oldTilesByNftId[parcel.id].rentalListing
   }
 
   return undefined

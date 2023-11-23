@@ -345,9 +345,9 @@ export async function createApiComponent(components: {
       }, {} as Record<string, Tile[]>)
 
       // Gets the tiles by token id to use them more efficiently later.
-      const tilesByTokenId = Object.values(oldTiles).reduce((acc, curr) => {
-        if (curr.tokenId) {
-          acc[curr.tokenId] = curr
+      const tilesByNftId = Object.values(oldTiles).reduce((acc, curr) => {
+        if (curr.nftId) {
+          acc[curr.nftId] = curr
         }
         return acc
       }, {} as Record<string, Tile>)
@@ -370,9 +370,9 @@ export async function createApiComponent(components: {
 
           if (
             isNftIdFromParcel(rentalListing.nftId) &&
-            tilesByTokenId[tokenId]
+            tilesByNftId[rentalListing.nftId]
           ) {
-            const currentTile = tilesByTokenId[tokenId]
+            const currentTile = tilesByNftId[rentalListing.nftId]
             return {
               ...currentTile,
               updatedAt: Math.max(
@@ -406,7 +406,7 @@ export async function createApiComponent(components: {
           getParcelFragmentRentalListing(
             parcel,
             rentalListingByNftId,
-            tilesByTokenId
+            tilesByNftId
           )
         )
       )
@@ -435,7 +435,7 @@ export async function createApiComponent(components: {
             getParcelFragmentRentalListing(
               parcel,
               rentalListingByNftId,
-              tilesByTokenId
+              tilesByNftId
             )
           )
       )
@@ -528,6 +528,7 @@ export async function createApiComponent(components: {
     rentalListing?: TileRentalListing
   ): Tile {
     const {
+      id: nftId,
       owner: parcelOwner,
       name: parcelName,
       searchParcelX,
@@ -560,6 +561,7 @@ export async function createApiComponent(components: {
       id,
       x,
       y,
+      nftId,
       updatedAt,
       type: specialTile
         ? specialTile.type
@@ -585,7 +587,10 @@ export async function createApiComponent(components: {
 
     if (activeOrder && !isExpired(activeOrder)) {
       tile.price = Math.round(parseInt(activeOrder.price) / 1e18)
-      tile.expiresAt = Math.round(parseInt(activeOrder.expiresAt, 10) / 1000)
+      tile.expiresAt =
+        activeOrder.expiresAt.length === 10
+          ? parseInt(activeOrder.expiresAt, 10)
+          : Math.round(parseInt(activeOrder.expiresAt, 10) / 1000)
     }
 
     if (tokenId) {
