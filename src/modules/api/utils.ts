@@ -14,7 +14,11 @@ import {
 import proximities from './data/proximity.json'
 
 export function isExpired(order: OrderFragment) {
-  return parseInt(order.expiresAt) <= Math.round(Date.now() / 1000)
+  const expirationDate =
+    order.expiresAt.length === 10
+      ? parseInt(order.expiresAt, 10)
+      : Math.round(parseInt(order.expiresAt, 10) / 1000)
+  return expirationDate <= Math.round(Date.now() / 1000)
 }
 
 export const getProximity = (
