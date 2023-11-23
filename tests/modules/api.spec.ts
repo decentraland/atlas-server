@@ -199,6 +199,7 @@ beforeEach(async () => {
     name: 'Parcel 0',
     owner: defaultParcel.owner?.id,
     price: 1,
+    nftId: defaultParcel.id,
     expiresAt: Math.round(
       parseInt(defaultFstParcelEstate.activeOrder?.expiresAt!, 10) / 1000
     ),
@@ -217,6 +218,7 @@ beforeEach(async () => {
     topLeft: true,
     name: 'Estate 0',
     estateId: '1',
+    nftId: defaultFstParcelEstate.id,
     owner: defaultFstParcelEstate.owner?.id,
     price: 2,
     expiresAt: Math.round(
@@ -237,6 +239,7 @@ beforeEach(async () => {
     topLeft: true,
     name: 'Estate 0',
     estateId: '1',
+    nftId: defaultSndParcelEstate.id,
     owner: defaultSndParcelEstate.owner?.id,
     price: 2,
     expiresAt: Math.round(
@@ -529,6 +532,7 @@ describe('when fetching data', () => {
             name: 'Parcel 0',
             owner: defaultParcel.owner?.id,
             price: 1,
+            nftId: defaultParcel.id,
             expiresAt: Math.round(
               parseInt(defaultFstParcelEstate.activeOrder?.expiresAt!, 10) /
                 1000
@@ -548,6 +552,7 @@ describe('when fetching data', () => {
             topLeft: true,
             name: 'Estate 0',
             estateId: '1',
+            nftId: defaultFstParcelEstate.id,
             owner: defaultFstParcelEstate.owner?.id,
             price: 2,
             expiresAt: Math.round(
@@ -569,6 +574,7 @@ describe('when fetching data', () => {
             topLeft: true,
             name: 'Estate 0',
             estateId: '1',
+            nftId: defaultSndParcelEstate.id,
             owner: defaultSndParcelEstate.owner?.id,
             price: 2,
             expiresAt: Math.round(
@@ -587,6 +593,7 @@ describe('when fetching data', () => {
             type: 'plaza',
             top: true,
             left: true,
+            nftId: fourthParcel.id,
             topLeft: true,
             name: 'Parcel 3',
             owner: fourthParcel.owner?.id,
@@ -608,6 +615,7 @@ describe('when fetching data', () => {
             topLeft: true,
             name: 'Estate 1',
             estateId: '2',
+            nftId: fifthParcelEstate.id,
             owner: fifthParcelEstate.owner?.id,
             price: 2,
             expiresAt: Math.round(
@@ -631,6 +639,7 @@ describe('when fetching data', () => {
             topLeft: true,
             name: 'Estate 1',
             estateId: '2',
+            nftId: sixthParcelEstate.id,
             owner: sixthParcelEstate.owner?.id,
             price: 2,
             expiresAt: Math.round(

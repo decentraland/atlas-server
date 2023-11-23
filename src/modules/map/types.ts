@@ -41,6 +41,8 @@ export type Tile = {
   x: number
   /** The coordinate Y of the tile. */
   y: number
+  /** The id of the nft */
+  nftId?: string
   /** The tile type. */
   type: TileType
   /** True if it has a tile on its top. */
