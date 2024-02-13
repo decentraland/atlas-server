@@ -18,6 +18,8 @@ RUN apk add --no-cache py3-setuptools \
 # install dependencies
 COPY package.json /app/package.json
 COPY package-lock.json /app/package-lock.json
+# increase the number of file descriptors to avoid EMFILE error
+RUN ulimit -n 4096
 RUN npm ci
 
 # build the app
