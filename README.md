@@ -10,6 +10,11 @@
 2. Run `npm run build`
 3. Run `npm start`
 
+## Local development
+
+1. Run `docker-compose up` to start the minio service
+2. Run `npm start` to start the server
+
 ## Config
 
 The env variables and their default values are the following:
@@ -23,11 +28,12 @@ API_BATCH_SIZE=1000
 API_CONCURRENCY=10
 REFRESH_INTERVAL=60
 
-# AWS S3 Configuration
-AWS_REGION=us-east-1
-AWS_ACCESS_KEY_ID=your_access_key
-AWS_SECRET_ACCESS_KEY=your_secret_key
-AWS_S3_BUCKET=your_bucket_name
+# AWS S3 Configuration for local development (using minio)
+AWS_ACCESS_KEY_ID=admin
+AWS_SECRET_ACCESS_KEY=password
+AWS_S3_BUCKET=atlas-server
+AWS_S3_REGION=us-east-1
+AWS_S3_ENDPOINT=http://0.0.0.0:9000
 ```
 
 You can `cp .env.example .env` and tweak the ones you want to change

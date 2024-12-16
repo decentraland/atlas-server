@@ -1,0 +1,38 @@
+# Utilitarian compose file to locally run required external services
+# required by the asset-packs. Just by running `docker-compose up`
+# you will have a http-server and an s3 compatible local object storage
+# ready to be used.
+
+version: '3.8'
+
+services:
+  # Object storage compatible with aws-sdk.
+  # Comes with a UI that can be accessed via http://localhost:9001.
+  # https://min.io/
+  minio:
+    image: minio/minio
+    environment:
+      - MINIO_ROOT_USER=admin
+      - MINIO_ROOT_PASSWORD=password
+    ports:
+      - 9000:9000
+      - 9001:9001
+    volumes:
+      - minio_data:/data
+    command: server /data --console-address ":9001"
+
+  # Companion for the minio service in charge of initialization and
+  # provides an mc client for operating directly with the storage
+  # https://docs.min.io/minio/baremetal/reference/minio-cli/minio-mc.html
+  minio-mc:
+    image: minio/mc
+    depends_on:
+      - minio
+    env_file:
+      - .env
+    volumes:
+      - ./minio-mc-entrypoint.sh:/scripts/entrypoint.sh
+    entrypoint: /scripts/entrypoint.sh
+
+volumes:
+  minio_data:

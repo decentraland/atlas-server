@@ -16,25 +16,33 @@ export async function createS3Component(components: {
   const componentLogger = logs.getLogger('S3 component')
 
   try {
-    const region = await config.getString('AWS_REGION')
+    const region = (await config.getString('AWS_S3_REGION')) || 'us-east-1'
     const accessKeyId = await config.getString('AWS_ACCESS_KEY_ID')
     const secretAccessKey = await config.getString('AWS_SECRET_ACCESS_KEY')
     const bucketName = await config.getString('AWS_S3_BUCKET')
+    const endpoint = await config.getString('AWS_S3_ENDPOINT')
 
-    if (!region || !accessKeyId || !secretAccessKey || !bucketName) {
+    if (!bucketName) {
       componentLogger.warn(
-        'Missing AWS configuration - S3 component will use stub implementation'
+        'Missing AWS bucket - S3 component will use stub implementation'
       )
       return createStubS3Component(componentLogger)
     }
 
-    const s3Client = new S3Client({
+    const s3Config: any = {
       region,
-      credentials: {
+      endpoint: endpoint || undefined,
+    }
+
+    // Only add credentials if they are provided
+    if (accessKeyId && secretAccessKey) {
+      s3Config.credentials = {
         accessKeyId,
         secretAccessKey,
-      },
-    })
+      }
+    }
+
+    const s3Client = new S3Client(s3Config)
 
     async function uploadTilesJson(
       version: 'v1' | 'v2',
@@ -53,7 +61,10 @@ export async function createS3Component(components: {
           })
         )
 
-        const fileUrl = `https://${bucketName}.s3.amazonaws.com/${key}`
+        const fileUrl = endpoint
+          ? `${endpoint}/${bucketName}/${key}`
+          : `https://${bucketName}.s3.amazonaws.com/${key}`
+
         componentLogger.info(`Uploaded tiles to ${fileUrl}`)
         return fileUrl
       } catch (error) {
