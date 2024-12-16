@@ -24,6 +24,7 @@ export interface IMapComponent {
   getToken: (contractAddress: string, tokenId: string) => Promise<NFT | null>
   isReady: () => boolean
   getLastUpdatedAt: () => number
+  getLastUploadedTilesUrl: () => { v1?: string; v2?: string }
 }
 
 export enum TileType {

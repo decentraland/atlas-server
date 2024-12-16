@@ -9,14 +9,19 @@ import future from 'fp-future'
 import { IApiComponent, NFT, Result } from '../api/types'
 import { IMapComponent, Tile, MapEvents } from './types'
 import { addSpecialTiles, computeEstate, isExpired, sleep } from './utils'
+import { IS3Component } from '../s3/component'
+import { toLegacyTiles } from '../../adapters/legacy-tiles'
+import { ILoggerComponent } from '@well-known-components/interfaces'
+import { AppComponents } from '../../types'
 
-export async function createMapComponent(components: {
-  config: IConfigComponent
-  api: IApiComponent
-  batchApi: IApiComponent
-  tracer: ITracerComponent
-}): Promise<IMapComponent & IBaseComponent & IStatusCheckCapableComponent> {
-  const { config, api, batchApi, tracer } = components
+export async function createMapComponent(
+  components: Pick<
+    AppComponents,
+    'config' | 'api' | 'batchApi' | 'tracer' | 's3' | 'logs'
+  >
+): Promise<IMapComponent & IBaseComponent & IStatusCheckCapableComponent> {
+  const { config, api, batchApi, tracer, s3, logs } = components
+  const componentLogger = logs.getLogger('Map component')
 
   // config
   const refreshInterval =
@@ -38,6 +43,7 @@ export async function createMapComponent(components: {
   let tokens = future<Record<string, NFT>>()
   let ready = false
   let lastUpdatedAt = 0 // in ms
+  let lastUploadedTilesUrl: { v1?: string; v2?: string } = {}
 
   // sort
   const sortByCoords = (a: Tile, b: Tile) =>
@@ -113,6 +119,31 @@ export async function createMapComponent(components: {
     return newTiles
   }
 
+  async function uploadTilesToS3(tilesData: Record<string, Tile>) {
+    try {
+      componentLogger.info('Starting tiles upload to S3...')
+
+      // Upload v1 format (legacy)
+      lastUploadedTilesUrl.v1 = await s3.uploadTilesJson(
+        'v1',
+        toLegacyTiles(tilesData)
+      )
+      componentLogger.info(`Uploaded v1 tiles to ${lastUploadedTilesUrl.v1}`)
+
+      // Upload v2 format (current)
+      lastUploadedTilesUrl.v2 = await s3.uploadTilesJson('v2', tilesData)
+      componentLogger.info(`Uploaded v2 tiles to ${lastUploadedTilesUrl.v2}`)
+    } catch (error) {
+      componentLogger.warn(
+        `Failed to upload tiles to S3 (will serve from memory): ${error}`
+      )
+      events.emit(
+        MapEvents.ERROR,
+        new Error(`Failed to upload tiles to S3: ${error}`)
+      )
+    }
+  }
+
   const lifeCycle: IBaseComponent = {
     // IBaseComponent.start lifecycle
     async start() {
@@ -120,11 +151,13 @@ export async function createMapComponent(components: {
       try {
         const result = await batchApi.fetchData()
         lastUpdatedAt = result.updatedAt
-        tiles.resolve(addSpecialTiles(addTiles(result.tiles, {})))
+        const newTiles = addSpecialTiles(addTiles(result.tiles, {}))
+        tiles.resolve(newTiles)
         parcels.resolve(addParcels(result.parcels, {}))
         estates.resolve(addEstates(result.estates, {}))
         tokens.resolve(addTokens(result.parcels, result.estates, {}))
         ready = true
+        await uploadTilesToS3(newTiles)
         events.emit(MapEvents.READY, result)
         await sleep(refreshInterval)
         poll()
@@ -205,6 +238,9 @@ export async function createMapComponent(components: {
 
             // update lastUpdatedAt
             lastUpdatedAt = result.updatedAt
+
+            // upload new tiles to S3
+            await uploadTilesToS3(newTiles)
 
             events.emit(MapEvents.UPDATE, result)
           }
@@ -309,5 +345,6 @@ export async function createMapComponent(components: {
     getToken,
     isReady,
     getLastUpdatedAt,
+    getLastUploadedTilesUrl: () => lastUploadedTilesUrl,
   }
 }

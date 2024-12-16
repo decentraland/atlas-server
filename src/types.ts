@@ -1,42 +1,45 @@
-import { ISubgraphComponent } from '@well-known-components/thegraph-component'
 import { IApiComponent } from './modules/api/types'
 import { IMapComponent } from './modules/map/types'
-import { IImageComponent } from './modules/image/types'
 import { IDistrictComponent } from './modules/district/types'
+import { IImageComponent } from './modules/image/types'
+import { IS3Component } from './modules/s3/component'
 import {
   IConfigComponent,
-  IHttpServerComponent,
   ILoggerComponent,
+  IHttpServerComponent,
   IMetricsComponent,
+  ITracerComponent,
+  IBaseComponent,
 } from '@well-known-components/interfaces'
-import { metricDeclarations } from './metrics'
+import { IRentalsComponent } from './modules/rentals/types'
+import { ISubgraphComponent } from '@well-known-components/thegraph-component'
+import { Metrics } from './metrics'
 import { MiniMapRendererComponent } from './adapters/mini-map-renderer'
 
 export type GlobalContext = {
-  components: BaseComponents
+  components: AppComponents
 }
 
-export type BaseComponents = {
+export type AppComponents = {
   config: IConfigComponent
+  logs: ILoggerComponent
+  server: IHttpServerComponent<GlobalContext>
+  metrics: IMetricsComponent<keyof Metrics>
+  tracer: ITracerComponent
+  subgraph: ISubgraphComponent
+  rentals: IRentalsComponent
   api: IApiComponent
   batchApi: IApiComponent
-  subgraph: ISubgraphComponent
   map: IMapComponent
-  server: IHttpServerComponent<GlobalContext>
-  logs: ILoggerComponent
-  image: IImageComponent
   district: IDistrictComponent
-  metrics: IMetricsComponent<keyof typeof metricDeclarations>
+  image: IImageComponent
+  s3: IS3Component
+  statusChecks: IBaseComponent
   renderMiniMap: MiniMapRendererComponent
   renderEstateMiniMap: MiniMapRendererComponent
 }
 
-// production components
-export type AppComponents = BaseComponents & {
-  statusChecks: {}
-}
+export type TestComponents = AppComponents
 
-// test environment components
-export type TestComponents = BaseComponents & {}
-
-export type Context<Path extends string = any> = IHttpServerComponent.PathAwareContext<GlobalContext, Path>
+export type Context<Path extends string = any> =
+  IHttpServerComponent.PathAwareContext<GlobalContext, Path>

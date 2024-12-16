@@ -22,6 +22,12 @@ SUBGRAPH_COMPONENT_QUERY_TIMEOUT=30000
 API_BATCH_SIZE=1000
 API_CONCURRENCY=10
 REFRESH_INTERVAL=60
+
+# AWS S3 Configuration
+AWS_REGION=us-east-1
+AWS_ACCESS_KEY_ID=your_access_key
+AWS_SECRET_ACCESS_KEY=your_secret_key
+AWS_S3_BUCKET=your_bucket_name
 ```
 
 You can `cp .env.example .env` and tweak the ones you want to change
