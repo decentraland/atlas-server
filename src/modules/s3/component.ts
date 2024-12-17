@@ -1,11 +1,15 @@
-import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3'
+import { S3Client, PutObjectCommand, S3ClientConfig } from '@aws-sdk/client-s3'
 import {
   IConfigComponent,
   ILoggerComponent,
 } from '@well-known-components/interfaces'
+import { Tile, LegacyTile } from '../map/types'
 
 export type IS3Component = {
-  uploadTilesJson: (version: 'v1' | 'v2', tiles: any) => Promise<string>
+  uploadTilesJson: (
+    version: 'v1' | 'v2',
+    tiles: Record<string, Partial<Tile> | Partial<LegacyTile>>
+  ) => Promise<string>
 }
 
 export async function createS3Component(components: {
@@ -29,7 +33,7 @@ export async function createS3Component(components: {
       return createStubS3Component(componentLogger)
     }
 
-    const s3Config: any = {
+    const s3Config: S3ClientConfig = {
       region,
       endpoint: endpoint || undefined,
     }
@@ -46,7 +50,7 @@ export async function createS3Component(components: {
 
     async function uploadTilesJson(
       version: 'v1' | 'v2',
-      tiles: any
+      tiles: Record<string, Partial<Tile> | Partial<LegacyTile>>
     ): Promise<string> {
       const key = `tiles/${version}/latest.json`
 
