@@ -1,15 +1,24 @@
-import { S3Client, PutObjectCommand, S3ClientConfig } from '@aws-sdk/client-s3'
+import {
+  S3Client,
+  PutObjectCommand,
+  GetObjectCommand,
+  S3ClientConfig,
+} from '@aws-sdk/client-s3'
 import {
   IConfigComponent,
   ILoggerComponent,
 } from '@well-known-components/interfaces'
 import { Tile, LegacyTile } from '../map/types'
 
-export type IS3Component = {
-  uploadTilesJson: (
-    version: 'v1' | 'v2',
-    tiles: Record<string, Partial<Tile> | Partial<LegacyTile>>
-  ) => Promise<string>
+export interface IS3Component {
+  uploadTilesJson(
+    version: string,
+    tiles: Record<string, Partial<Tile | LegacyTile>>
+  ): Promise<string>
+  uploadTimestamp(timestamp: number): Promise<void>
+  getTilesJson(version: string): Promise<Record<string, Tile> | null>
+  getTimestamp(): Promise<number | null>
+  getFileUrl(version: string): Promise<string>
 }
 
 export async function createS3Component(components: {
@@ -50,7 +59,7 @@ export async function createS3Component(components: {
 
     async function uploadTilesJson(
       version: 'v1' | 'v2',
-      tiles: Record<string, Partial<Tile> | Partial<LegacyTile>>
+      tiles: Record<string, Tile | LegacyTile>
     ): Promise<string> {
       const key = `tiles/${version}/latest.json`
 
@@ -77,8 +86,85 @@ export async function createS3Component(components: {
       }
     }
 
+    async function uploadTimestamp(timestamp: number): Promise<void> {
+      const key = 'tiles/timestamp.json'
+
+      try {
+        await s3Client.send(
+          new PutObjectCommand({
+            Bucket: bucketName,
+            Key: key,
+            Body: JSON.stringify({ timestamp }),
+            ContentType: 'application/json',
+            CacheControl: 'public, max-age=60',
+          })
+        )
+        componentLogger.info(`Uploaded timestamp to S3`)
+      } catch (error) {
+        componentLogger.error(`Failed to upload timestamp to S3: ${error}`)
+        throw error
+      }
+    }
+
+    async function getTilesJson(
+      version: string
+    ): Promise<Record<string, Tile> | null> {
+      const key = `tiles/${version}/latest.json`
+
+      try {
+        const response = await s3Client.send(
+          new GetObjectCommand({
+            Bucket: bucketName,
+            Key: key,
+          })
+        )
+
+        const body = await response.Body?.transformToString()
+        if (!body) return null
+
+        const data = JSON.parse(body)
+        return data.ok ? data.data : null
+      } catch (error) {
+        componentLogger.warn(`Failed to get tiles from S3: ${error}`)
+        return null
+      }
+    }
+
+    async function getTimestamp(): Promise<number | null> {
+      const key = 'tiles/timestamp.json'
+
+      try {
+        const response = await s3Client.send(
+          new GetObjectCommand({
+            Bucket: bucketName,
+            Key: key,
+          })
+        )
+
+        const body = await response.Body?.transformToString()
+        if (!body) return null
+
+        const data = JSON.parse(body)
+        return data.timestamp
+      } catch (error) {
+        componentLogger.warn(`Failed to get timestamp from S3: ${error}`)
+        return null
+      }
+    }
+
+    async function getFileUrl(version: string): Promise<string> {
+      const key = `tiles/${version}/latest.json`
+      return endpoint
+        ? `${endpoint}/${bucketName}/${key}`
+        : `https://${bucketName}.s3.amazonaws.com/${key}`
+    }
+
     return {
       uploadTilesJson,
+      uploadTimestamp,
+      getTilesJson,
+      getTimestamp,
+      getFileUrl,
     }
   } catch (error) {
     componentLogger.warn(
@@ -94,6 +180,21 @@ function createStubS3Component(
   return {
     uploadTilesJson: async () => {
       logger.debug('Stub S3 component - upload operation ignored')
+      return ''
+    },
+    uploadTimestamp: async () => {
+      logger.debug('Stub S3 component - timestamp upload ignored')
+    },
+    getTilesJson: async () => {
+      logger.debug('Stub S3 component - get tiles operation ignored')
+      return null
+    },
+    getTimestamp: async () => {
+      logger.debug('Stub S3 component - get timestamp operation ignored')
+      return null
+    },
+    getFileUrl: async () => {
+      logger.debug('Stub S3 component - get file URL operation ignored')
       return ''
     },
   }
