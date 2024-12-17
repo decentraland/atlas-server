@@ -25,6 +25,7 @@ import {
   createEstatesRendererComponent,
   createMiniMapRendererComponent,
 } from './adapters/mini-map-renderer'
+import { createS3Component } from './modules/s3/component'
 
 export async function initComponents(): Promise<AppComponents> {
   const config = await createDotEnvConfigComponent(
@@ -98,7 +99,15 @@ export async function initComponents(): Promise<AppComponents> {
     logger: logs,
     metrics,
   })
-  const map = await createMapComponent({ config, api, batchApi, tracer })
+  const s3 = await createS3Component({ config, logs })
+  const map = await createMapComponent({
+    config,
+    api,
+    batchApi,
+    tracer,
+    s3,
+    logs,
+  })
   const image = createImageComponent({ map })
   const district = createDistrictComponent()
   const statusChecks = await createStatusCheckComponent({ server, config })
@@ -117,6 +126,9 @@ export async function initComponents(): Promise<AppComponents> {
     image,
     district,
     statusChecks,
+    s3,
+    tracer,
+    rentals,
     renderMiniMap,
     renderEstateMiniMap,
   }

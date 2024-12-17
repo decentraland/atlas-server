@@ -13,15 +13,26 @@ export const createTilesRequestHandler = (
       if (!map.isReady()) {
         return { status: 503, body: 'Not ready' }
       }
-      const tiles = await map.getTiles()
-      const data = getFilterFromUrl(context.url, tiles)
+
+      const lastUploadedUrls = map.getLastUploadedTilesUrl()
+      if (!lastUploadedUrls.v2) {
+        const tiles = await map.getTiles()
+        const data = getFilterFromUrl(context.url, tiles)
+        return {
+          status: 200,
+          headers: {
+            'content-type': 'application/json',
+          } as Record<string, string>,
+          body: JSON.stringify({ ok: true, data }),
+        }
+      }
 
       return {
-        status: 200,
+        status: 301,
         headers: {
-          'content-type': 'application/json',
-        },
-        body: JSON.stringify({ ok: true, data }),
+          location: lastUploadedUrls.v2,
+          'cache-control': 'public, max-age=60',
+        } as Record<string, string>,
       }
     },
     [map.getLastUpdatedAt]
@@ -37,15 +48,26 @@ export const createLegacyTilesRequestHandler = (
       if (!map.isReady()) {
         return { status: 503, body: 'Not ready' }
       }
-      const tiles = await map.getTiles()
-      const data = toLegacyTiles(getFilterFromUrl(context.url, tiles))
+
+      const lastUploadedUrls = map.getLastUploadedTilesUrl()
+      if (!lastUploadedUrls.v1) {
+        const tiles = await map.getTiles()
+        const data = toLegacyTiles(getFilterFromUrl(context.url, tiles))
+        return {
+          status: 200,
+          headers: {
+            'content-type': 'application/json',
+          } as Record<string, string>,
+          body: JSON.stringify({ ok: true, data }),
+        }
+      }
 
       return {
-        status: 200,
+        status: 301,
         headers: {
-          'content-type': 'application/json',
-        },
-        body: JSON.stringify({ ok: true, data }),
+          location: lastUploadedUrls.v1,
+          'cache-control': 'public, max-age=60',
+        } as Record<string, string>,
       }
     },
     [map.getLastUpdatedAt]

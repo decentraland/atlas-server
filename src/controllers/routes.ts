@@ -30,8 +30,9 @@ export async function setupRouter(
   const router = new Router<GlobalContext>()
 
   const { district, map } = components
-  const lastModifiedMiddlewareByMapDate =
-    lastModifiedMiddleware(map.getLastUpdatedAt)
+  const lastModifiedMiddlewareByMapDate = lastModifiedMiddleware(
+    map.getLastUpdatedAt
+  )
 
   router.get(
     '/v1/tiles',
