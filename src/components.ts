@@ -9,6 +9,7 @@ import {
   createStatusCheckComponent,
   IFetchComponent,
 } from '@well-known-components/http-server'
+import { createFeaturesComponent } from '@well-known-components/features-component'
 import { createSubgraphComponent } from '@well-known-components/thegraph-component'
 import { createLogComponent } from '@well-known-components/logger'
 import { createTracerComponent } from '@well-known-components/tracer-component'
@@ -113,7 +114,17 @@ export async function initComponents(): Promise<AppComponents> {
   const statusChecks = await createStatusCheckComponent({ server, config })
   const renderMiniMap = await createMiniMapRendererComponent({ map })
   const renderEstateMiniMap = await createEstatesRendererComponent({ map })
-
+  const features = await createFeaturesComponent(
+    {
+      config,
+      logs,
+      fetch,
+    },
+    (await config.requireString('ATLAS_SERVER_URL')) ||
+      `http://${await config.getString(
+        'HTTP_SERVER_HOST'
+      )}:${await config.getString('HTTP_SERVER_PORT')}`
+  )
   return {
     config,
     api,
@@ -131,5 +142,6 @@ export async function initComponents(): Promise<AppComponents> {
     rentals,
     renderMiniMap,
     renderEstateMiniMap,
+    features,
   }
 }

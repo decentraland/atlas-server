@@ -3,36 +3,44 @@ import { cacheWrapper } from '../logic/cache-wrapper'
 import { extractParams, getFilterFromUrl } from '../logic/filter-params'
 import { isErrorWithMessage } from '../logic/error'
 import { AppComponents, Context } from '../types'
+import { ApplicationName, Feature } from '../modules/features/types'
 
 export const createTilesRequestHandler = (
-  components: Pick<AppComponents, 'map'>
+  components: Pick<AppComponents, 'map' | 'features'>
 ) => {
-  const { map } = components
+  const { map, features } = components
   return cacheWrapper(
     async (context: { url: URL }) => {
       if (!map.isReady()) {
         return { status: 503, body: 'Not ready' }
       }
 
-      const lastUploadedUrls = map.getLastUploadedTilesUrl()
-      if (!lastUploadedUrls.v2) {
-        const tiles = await map.getTiles()
-        const data = getFilterFromUrl(context.url, tiles)
-        return {
-          status: 200,
-          headers: {
-            'content-type': 'application/json',
-          } as Record<string, string>,
-          body: JSON.stringify({ ok: true, data }),
+      if (
+        await features.getIsFeatureEnabled(
+          ApplicationName.DAPPS,
+          Feature.ATLAS_REDIRECT_TO_S3
+        )
+      ) {
+        const lastUploadedUrls = map.getLastUploadedTilesUrl()
+        if (lastUploadedUrls.v2) {
+          return {
+            status: 301,
+            headers: {
+              location: lastUploadedUrls.v2,
+              'cache-control': 'public, max-age=60',
+            } as Record<string, string>,
+          }
         }
       }
 
+      const tiles = await map.getTiles()
+      const data = getFilterFromUrl(context.url, tiles)
       return {
-        status: 301,
+        status: 200,
         headers: {
-          location: lastUploadedUrls.v2,
-          'cache-control': 'public, max-age=60',
+          'content-type': 'application/json',
         } as Record<string, string>,
+        body: JSON.stringify({ ok: true, data }),
       }
     },
     [map.getLastUpdatedAt]
@@ -40,34 +48,41 @@ export const createTilesRequestHandler = (
 }
 
 export const createLegacyTilesRequestHandler = (
-  components: Pick<AppComponents, 'map'>
+  components: Pick<AppComponents, 'map' | 'features'>
 ) => {
-  const { map } = components
+  const { map, features } = components
   return cacheWrapper(
     async (context: { url: URL }) => {
       if (!map.isReady()) {
         return { status: 503, body: 'Not ready' }
       }
 
-      const lastUploadedUrls = map.getLastUploadedTilesUrl()
-      if (!lastUploadedUrls.v1) {
-        const tiles = await map.getTiles()
-        const data = toLegacyTiles(getFilterFromUrl(context.url, tiles))
-        return {
-          status: 200,
-          headers: {
-            'content-type': 'application/json',
-          } as Record<string, string>,
-          body: JSON.stringify({ ok: true, data }),
+      if (
+        await features.getIsFeatureEnabled(
+          ApplicationName.DAPPS,
+          Feature.ATLAS_REDIRECT_TO_S3
+        )
+      ) {
+        const lastUploadedUrls = map.getLastUploadedTilesUrl()
+        if (lastUploadedUrls.v1) {
+          return {
+            status: 301,
+            headers: {
+              location: lastUploadedUrls.v1,
+              'cache-control': 'public, max-age=60',
+            } as Record<string, string>,
+          }
         }
       }
 
+      const tiles = await map.getTiles()
+      const data = toLegacyTiles(getFilterFromUrl(context.url, tiles))
       return {
-        status: 301,
+        status: 200,
         headers: {
-          location: lastUploadedUrls.v1,
-          'cache-control': 'public, max-age=60',
+          'content-type': 'application/json',
         } as Record<string, string>,
+        body: JSON.stringify({ ok: true, data }),
       }
     },
     [map.getLastUpdatedAt]

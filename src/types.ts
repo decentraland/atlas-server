@@ -1,8 +1,3 @@
-import { IApiComponent } from './modules/api/types'
-import { IMapComponent } from './modules/map/types'
-import { IDistrictComponent } from './modules/district/types'
-import { IImageComponent } from './modules/image/types'
-import { IS3Component } from './modules/s3/component'
 import {
   IConfigComponent,
   ILoggerComponent,
@@ -13,9 +8,14 @@ import {
 } from '@well-known-components/interfaces'
 import { IRentalsComponent } from './modules/rentals/types'
 import { ISubgraphComponent } from '@well-known-components/thegraph-component'
+import { IFeaturesComponent } from '@well-known-components/features-component'
+import { IApiComponent } from './modules/api/types'
+import { IMapComponent } from './modules/map/types'
+import { IDistrictComponent } from './modules/district/types'
+import { IImageComponent } from './modules/image/types'
+import { IS3Component } from './modules/s3/component'
 import { Metrics } from './metrics'
 import { MiniMapRendererComponent } from './adapters/mini-map-renderer'
-
 export type GlobalContext = {
   components: AppComponents
 }
@@ -37,6 +37,7 @@ export type AppComponents = {
   statusChecks: IBaseComponent
   renderMiniMap: MiniMapRendererComponent
   renderEstateMiniMap: MiniMapRendererComponent
+  features: IFeaturesComponent
 }
 
 export type TestComponents = AppComponents
