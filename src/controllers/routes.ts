@@ -20,7 +20,7 @@ import { Router } from '@well-known-components/http-server'
 
 export type RoutesComponents = Pick<
   AppComponents,
-  'server' | 'map' | 'image' | 'config' | 'api' | 'district'
+  'server' | 'map' | 'image' | 'config' | 'api' | 'district' | 'features'
 >
 
 // We return the entire router because it will be easier to test than a whole server

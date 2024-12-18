@@ -15,6 +15,7 @@ import { IRentalsComponent } from './modules/rentals/types'
 import { ISubgraphComponent } from '@well-known-components/thegraph-component'
 import { Metrics } from './metrics'
 import { MiniMapRendererComponent } from './adapters/mini-map-renderer'
+import { IFeaturesComponent } from './modules/features/types'
 
 export type GlobalContext = {
   components: AppComponents
@@ -37,6 +38,7 @@ export type AppComponents = {
   statusChecks: IBaseComponent
   renderMiniMap: MiniMapRendererComponent
   renderEstateMiniMap: MiniMapRendererComponent
+  features: IFeaturesComponent
 }
 
 export type TestComponents = AppComponents

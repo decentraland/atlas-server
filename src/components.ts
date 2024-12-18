@@ -19,6 +19,7 @@ import { createDistrictComponent } from './modules/district/component'
 import { createImageComponent } from './modules/image/component'
 import { createMapComponent } from './modules/map/component'
 import { createRentalsComponent } from './modules/rentals/component'
+import { createFeaturesComponent } from './modules/features/component'
 import { AppComponents, GlobalContext } from './types'
 import { metricDeclarations } from './metrics'
 import {
@@ -113,7 +114,17 @@ export async function initComponents(): Promise<AppComponents> {
   const statusChecks = await createStatusCheckComponent({ server, config })
   const renderMiniMap = await createMiniMapRendererComponent({ map })
   const renderEstateMiniMap = await createEstatesRendererComponent({ map })
-
+  const features = await createFeaturesComponent(
+    {
+      config,
+      logs,
+      fetch,
+    },
+    (await config.requireString('ATLAS_SERVER_URL')) ||
+      `http://${await config.getString(
+        'HTTP_SERVER_HOST'
+      )}:${await config.getString('HTTP_SERVER_PORT')}`
+  )
   return {
     config,
     api,
@@ -131,5 +142,6 @@ export async function initComponents(): Promise<AppComponents> {
     rentals,
     renderMiniMap,
     renderEstateMiniMap,
+    features,
   }
 }
