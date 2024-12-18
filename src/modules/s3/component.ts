@@ -35,6 +35,11 @@ export async function createS3Component(components: {
     const bucketName = await config.getString('AWS_S3_BUCKET')
     const endpoint = await config.getString('AWS_S3_ENDPOINT')
 
+    console.log('S3 Configuration')
+    console.log(`REGION=${region}`)
+    console.log(`BUCKET_NAME=${bucketName}`)
+    console.log(`ENDPOINT=${endpoint}`)
+
     if (!bucketName) {
       componentLogger.warn(
         'Missing AWS bucket - S3 component will use stub implementation'
@@ -44,15 +49,24 @@ export async function createS3Component(components: {
 
     const s3Config: S3ClientConfig = {
       region,
-      endpoint: endpoint || undefined,
+    }
+
+    if (endpoint) {
+      console.log('Endpoint provided')
+      s3Config.endpoint = endpoint
+    } else {
+      console.log('No endpoint provided')
     }
 
     // Only add credentials if they are provided
     if (accessKeyId && secretAccessKey) {
+      console.log('Credentials provided')
       s3Config.credentials = {
         accessKeyId,
         secretAccessKey,
       }
+    } else {
+      console.log('No credentials provided')
     }
 
     const s3Client = new S3Client(s3Config)
