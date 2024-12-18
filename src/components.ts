@@ -9,6 +9,7 @@ import {
   createStatusCheckComponent,
   IFetchComponent,
 } from '@well-known-components/http-server'
+import { createFeaturesComponent } from '@well-known-components/features-component'
 import { createSubgraphComponent } from '@well-known-components/thegraph-component'
 import { createLogComponent } from '@well-known-components/logger'
 import { createTracerComponent } from '@well-known-components/tracer-component'
@@ -19,7 +20,6 @@ import { createDistrictComponent } from './modules/district/component'
 import { createImageComponent } from './modules/image/component'
 import { createMapComponent } from './modules/map/component'
 import { createRentalsComponent } from './modules/rentals/component'
-import { createFeaturesComponent } from './modules/features/component'
 import { AppComponents, GlobalContext } from './types'
 import { metricDeclarations } from './metrics'
 import {
