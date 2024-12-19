@@ -146,3 +146,4 @@ Example:
 - Installing `node-canvas` on Apple M1:
 
 If the `npm install` fails on the dependency `node-canvas` and you are running on an Apple M1 chip, try installing these dependencies via brew: `brew install pkg-config cairo pango libpng jpeg giflib librsvg`.
+.
