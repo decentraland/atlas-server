@@ -85,6 +85,12 @@ export async function createS3Component(components: {
             Body: JSON.stringify({ ok: true, data: tiles }),
             ContentType: 'application/json',
             CacheControl: 'public, max-age=60',
+            ACL: 'public-read',
+            Metadata: {
+              'Access-Control-Allow-Origin': '*',
+              'Access-Control-Allow-Methods': 'GET',
+              'Access-Control-Allow-Headers': 'Content-Type',
+            },
           })
         )
 
@@ -111,6 +117,12 @@ export async function createS3Component(components: {
             Body: JSON.stringify({ timestamp }),
             ContentType: 'application/json',
             CacheControl: 'public, max-age=60',
+            ACL: 'public-read',
+            Metadata: {
+              'Access-Control-Allow-Origin': '*',
+              'Access-Control-Allow-Methods': 'GET',
+              'Access-Control-Allow-Headers': 'Content-Type',
+            },
           })
         )
         componentLogger.info(`Uploaded timestamp to S3`)
