@@ -34,11 +34,7 @@ export async function createS3Component(components: {
     const secretAccessKey = await config.getString('AWS_SECRET_ACCESS_KEY')
     const bucketName = await config.getString('AWS_S3_BUCKET')
     const endpoint = await config.getString('AWS_S3_ENDPOINT')
-
-    console.log('S3 Configuration')
-    console.log(`REGION=${region}`)
-    console.log(`BUCKET_NAME=${bucketName}`)
-    console.log(`ENDPOINT=${endpoint}`)
+    const cdnUrl = await config.getString('CDN_URL')
 
     if (!bucketName) {
       componentLogger.warn(
@@ -178,6 +174,9 @@ export async function createS3Component(components: {
 
     async function getFileUrl(version: string): Promise<string> {
       const key = `tiles/${version}/latest.json`
+      if (cdnUrl) {
+        return `${cdnUrl}/${key}`
+      }
       return endpoint
         ? `${endpoint}/${bucketName}/${key}`
         : `https://${bucketName}.s3.amazonaws.com/${key}`
