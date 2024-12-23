@@ -36,6 +36,12 @@ export async function createS3Component(components: {
     const endpoint = await config.getString('AWS_S3_ENDPOINT')
     const cdnUrl = await config.getString('CDN_URL')
 
+    if (cdnUrl) {
+      console.log('CDN URL provided', cdnUrl)
+    } else {
+      console.log('No CDN URL provided')
+    }
+
     if (!bucketName) {
       componentLogger.warn(
         'Missing AWS bucket - S3 component will use stub implementation'
@@ -89,7 +95,9 @@ export async function createS3Component(components: {
           })
         )
 
-        const fileUrl = endpoint
+        const fileUrl = cdnUrl
+          ? `${cdnUrl}/${key}`
+          : endpoint
           ? `${endpoint}/${bucketName}/${key}`
           : `https://${bucketName}.s3.amazonaws.com/${key}`
 
