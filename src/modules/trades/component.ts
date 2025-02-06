@@ -151,8 +151,6 @@ export async function createTradesComponent(
       `)
         )
 
-      console.log('query: ', query.text)
-
       const result = await dappsReadDatabase.query<Trade>(query)
       return result.rows
     } catch (error) {

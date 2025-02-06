@@ -147,45 +147,38 @@ export async function createMapComponent(
   async function updateTilesWithTrades(tiles: Record<string, Tile>) {
     try {
       const activeTrades = await trades.getActiveTrades()
-      componentLogger.info(`Found ${activeTrades.length} active trades`)
       const newTiles = { ...tiles }
 
       for (const trade of activeTrades) {
         // Find tiles that match the trade's contract and token
-        const matchingTiles = Object.values(newTiles).filter(
-          tile => {
-            const matches = tile.nftId &&
-              tile.tokenId &&
-              trade.contract_address_sent &&
-              trade.sent_token_id &&
-              tile.nftId.includes(trade.contract_address_sent) &&
-              tile.tokenId === trade.sent_token_id
-            
-            if (matches) {
-              componentLogger.info(`Found matching tile for trade:
-                Trade: ${trade.contract_address_sent}-${trade.sent_token_id}
-                Tile: ${tile.nftId}-${tile.tokenId}
-                Current price: ${tile.price}
-                Trade price: ${Math.round(parseInt(trade.amount_received) / 1e18)}
-                Current updatedAt: ${tile.updatedAt}
-                Trade createdAt: ${new Date(trade.created_at).getTime()}
-              `)
-            }
-            return matches
-          }
-        )
+        const matchingTiles = Object.values(newTiles).filter((tile) => {
+          const matches =
+            tile.nftId &&
+            tile.tokenId &&
+            trade.contract_address_sent &&
+            trade.sent_token_id &&
+            tile.nftId.includes(trade.contract_address_sent) &&
+            tile.tokenId === trade.sent_token_id
+
+          return matches
+        })
 
         for (const tile of matchingTiles) {
           const tradeCreatedAt = new Date(trade.created_at).getTime()
           const tradePrice = Math.round(parseInt(trade.amount_received) / 1e18)
 
           // If tile has no price or trade is more recent than current order
-          if (!tile.price || (tile.updatedAt && tradeCreatedAt > tile.updatedAt)) {
-            componentLogger.info(`Updating tile ${tile.id} price from ${tile.price} to ${tradePrice}`)
+          if (
+            !tile.price ||
+            (tile.updatedAt && tradeCreatedAt > tile.updatedAt)
+          ) {
+            componentLogger.info(
+              `Updating tile ${tile.id} price from ${tile.price} to ${tradePrice}`
+            )
             newTiles[tile.id] = {
               ...tile,
               price: tradePrice,
-              updatedAt: tradeCreatedAt
+              updatedAt: tradeCreatedAt,
             }
           }
         }
