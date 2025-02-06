@@ -13,10 +13,10 @@ import { AppComponents } from '../../types'
 export async function createMapComponent(
   components: Pick<
     AppComponents,
-    'config' | 'api' | 'batchApi' | 'tracer' | 's3' | 'logs'
+    'config' | 'api' | 'batchApi' | 'tracer' | 's3' | 'logs' | 'trades'
   >
 ): Promise<IMapComponent & IBaseComponent & IStatusCheckCapableComponent> {
-  const { config, api, batchApi, tracer, s3, logs } = components
+  const { config, api, batchApi, tracer, s3, logs, trades } = components
   const componentLogger = logs.getLogger('Map component')
 
   // config
@@ -144,6 +144,60 @@ export async function createMapComponent(
     }
   }
 
+  async function updateTilesWithTrades(tiles: Record<string, Tile>) {
+    try {
+      const activeTrades = await trades.getActiveTrades()
+      componentLogger.info(`Found ${activeTrades.length} active trades`)
+      const newTiles = { ...tiles }
+
+      for (const trade of activeTrades) {
+        // Find tiles that match the trade's contract and token
+        const matchingTiles = Object.values(newTiles).filter(
+          tile => {
+            const matches = tile.nftId &&
+              tile.tokenId &&
+              trade.contract_address_sent &&
+              trade.sent_token_id &&
+              tile.nftId.includes(trade.contract_address_sent) &&
+              tile.tokenId === trade.sent_token_id
+            
+            if (matches) {
+              componentLogger.info(`Found matching tile for trade:
+                Trade: ${trade.contract_address_sent}-${trade.sent_token_id}
+                Tile: ${tile.nftId}-${tile.tokenId}
+                Current price: ${tile.price}
+                Trade price: ${Math.round(parseInt(trade.amount_received) / 1e18)}
+                Current updatedAt: ${tile.updatedAt}
+                Trade createdAt: ${new Date(trade.created_at).getTime()}
+              `)
+            }
+            return matches
+          }
+        )
+
+        for (const tile of matchingTiles) {
+          const tradeCreatedAt = new Date(trade.created_at).getTime()
+          const tradePrice = Math.round(parseInt(trade.amount_received) / 1e18)
+
+          // If tile has no price or trade is more recent than current order
+          if (!tile.price || (tile.updatedAt && tradeCreatedAt > tile.updatedAt)) {
+            componentLogger.info(`Updating tile ${tile.id} price from ${tile.price} to ${tradePrice}`)
+            newTiles[tile.id] = {
+              ...tile,
+              price: tradePrice,
+              updatedAt: tradeCreatedAt
+            }
+          }
+        }
+      }
+
+      return newTiles
+    } catch (error) {
+      componentLogger.error(`Failed to update tiles with trades: ${error}`)
+      return tiles
+    }
+  }
+
   const lifeCycle: IBaseComponent = {
     // IBaseComponent.start lifecycle
     async start() {
@@ -177,9 +231,16 @@ export async function createMapComponent(
           estates.resolve(addEstates(result.estates, {}))
           tokens.resolve(addTokens(result.parcels, result.estates, {}))
 
+          // After initializing tiles, update them with trades
+          const initialTiles = await tiles
+          const tilesWithTrades = await updateTilesWithTrades(initialTiles)
+          tiles = future()
+          tiles.resolve(tilesWithTrades)
+
           ready = true
+          await uploadTilesToS3(tilesWithTrades)
           events.emit(MapEvents.READY, {
-            tiles: Object.values(newTiles),
+            tiles: Object.values(tilesWithTrades),
             parcels: result.parcels,
             estates: result.estates,
             updatedAt: lastUpdatedAt,
@@ -196,9 +257,21 @@ export async function createMapComponent(
           parcels.resolve(addParcels(result.parcels, {}))
           estates.resolve(addEstates(result.estates, {}))
           tokens.resolve(addTokens(result.parcels, result.estates, {}))
+
+          // After initializing tiles, update them with trades
+          const initialTiles = await tiles
+          const tilesWithTrades = await updateTilesWithTrades(initialTiles)
+          tiles = future()
+          tiles.resolve(tilesWithTrades)
+
           ready = true
-          await uploadTilesToS3(newTiles)
-          events.emit(MapEvents.READY, result)
+          await uploadTilesToS3(tilesWithTrades)
+          events.emit(MapEvents.READY, {
+            tiles: Object.values(tilesWithTrades),
+            parcels: result.parcels,
+            estates: result.estates,
+            updatedAt: lastUpdatedAt,
+          })
         }
 
         await sleep(refreshInterval)
@@ -256,8 +329,10 @@ export async function createMapComponent(
           if (result.tiles.length > 0) {
             // update tiles
             const newTiles = expireOrders(addTiles(result.tiles, oldTiles))
+            // Add trade prices
+            const tilesWithTrades = await updateTilesWithTrades(newTiles)
             tiles = future()
-            tiles.resolve(newTiles)
+            tiles.resolve(tilesWithTrades)
 
             // update parcels
             const newParcels = addParcels(result.parcels, oldParcels)
@@ -283,7 +358,7 @@ export async function createMapComponent(
             lastUpdatedAt = result.updatedAt
 
             // upload new tiles to S3
-            await uploadTilesToS3(newTiles)
+            await uploadTilesToS3(tilesWithTrades)
 
             events.emit(MapEvents.UPDATE, result)
           }
