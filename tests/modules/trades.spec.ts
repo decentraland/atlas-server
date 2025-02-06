@@ -1,15 +1,17 @@
-import { ILoggerComponent } from '@well-known-components/interfaces'
 import { ChainId } from '@dcl/schemas'
-import { createTradesComponent } from '../../src/modules/trades/component'
+import { ILoggerComponent } from '@well-known-components/interfaces'
 import { IPgComponent } from '@well-known-components/pg-component'
+import { createTradesComponent, ITradesComponent } from '../../src/modules/trades/component'
 
 describe('trades component', () => {
-  let logs: ILoggerComponent
+  let loggerComponentMock: ILoggerComponent
   let dappsReadDatabase: IPgComponent
   let mockQuery: jest.Mock
+  let tradesComponent: ITradesComponent
 
-  beforeEach(() => {
-    logs = {
+  beforeEach(async () => {
+    mockQuery = jest.fn()
+    loggerComponentMock = {
       getLogger: () => ({
         info: jest.fn(),
         warn: jest.fn(),
@@ -19,7 +21,6 @@ describe('trades component', () => {
       }),
     }
 
-    mockQuery = jest.fn()
     dappsReadDatabase = {
       query: mockQuery,
       streamQuery: jest.fn(),
@@ -29,67 +30,67 @@ describe('trades component', () => {
     }
 
     process.env.CHAIN_ID = ChainId.ETHEREUM_MAINNET.toString()
+
+    tradesComponent = await createTradesComponent({
+      config: {} as any,
+      logs: loggerComponentMock,
+      dappsReadDatabase,
+    })
   })
 
-  describe('getActiveTrades', () => {
-    it('should return active trades from the database', async () => {
-      const trades = await createTradesComponent({
-        config: {} as any,
-        logs,
-        dappsReadDatabase,
+  describe('when getting active trades', () => {
+    describe('and the query is successful', () => {
+      let mockTrades: any[]
+      let result: any[]
+
+      beforeEach(async () => {
+        mockTrades = [
+          {
+            id: '1',
+            created_at: '2024-02-06T10:00:00Z',
+            type: 'public_nft_order',
+            signer: '0x123',
+            contract_address_sent: '0x456',
+            amount_received: '1000000000000000000',
+            available: true,
+            sent_token_id: '789',
+            status: 'open',
+          },
+        ]
+
+        mockQuery.mockResolvedValueOnce({ rows: mockTrades })
+        result = await tradesComponent.getActiveTrades()
       })
 
-      const mockTrades = [
-        {
-          id: '1',
-          created_at: '2024-02-06T10:00:00Z',
-          type: 'public_nft_order',
-          signer: '0x123',
-          contract_address_sent: '0x456',
-          amount_received: '1000000000000000000',
-          available: true,
-          sent_token_id: '789',
-          status: 'open',
-        },
-      ]
+      it('should return active trades from the database', () => {
+        expect(result).toEqual(mockTrades)
+      })
 
-      mockQuery.mockResolvedValueOnce({ rows: mockTrades })
+      it('should call the query once with the correct parameters', () => {
+        expect(mockQuery).toHaveBeenCalledTimes(1)
+        expect(mockQuery.mock.calls[0][0].text).toContain('SELECT * FROM trades_with_status WHERE status = ')
+      })
 
-      const result = await trades.getActiveTrades()
-
-      expect(result).toEqual(mockTrades)
-      expect(mockQuery).toHaveBeenCalledTimes(1)
-      expect(mockQuery.mock.calls[0][0].text).toContain('SELECT * FROM trades_with_status WHERE status = ')
+      it('should filter by parcel and estate categories', () => {
+        expect(mockQuery.mock.calls[0][0].text).toContain("AND (nft.category = 'parcel' OR nft.category = 'estate')")
+      })
     })
 
-    it('should return empty array when query fails', async () => {
-      const trades = await createTradesComponent({
-        config: {} as any,
-        logs,
-        dappsReadDatabase,
+    describe('and the query fails', () => {
+      let result: any[]
+
+      beforeEach(async () => {
+        mockQuery.mockRejectedValueOnce(new Error('Database error'))
+        result = await tradesComponent.getActiveTrades()
       })
 
-      mockQuery.mockRejectedValueOnce(new Error('Database error'))
-
-      const result = await trades.getActiveTrades()
-
-      expect(result).toEqual([])
-      expect(mockQuery).toHaveBeenCalledTimes(1)
-    })
-
-    it('should filter by parcel and estate categories', async () => {
-      const trades = await createTradesComponent({
-        config: {} as any,
-        logs,
-        dappsReadDatabase,
+      it('should return an empty array', () => {
+        expect(result).toEqual([])
       })
 
-      mockQuery.mockResolvedValueOnce({ rows: [] })
-
-      await trades.getActiveTrades()
-
-      expect(mockQuery).toHaveBeenCalledTimes(1)
-      expect(mockQuery.mock.calls[0][0].text).toContain("AND (nft.category = 'parcel' OR nft.category = 'estate')")
+      it('should have attempted to query once', () => {
+        expect(mockQuery).toHaveBeenCalledTimes(1)
+      })
     })
   })
 }) 
