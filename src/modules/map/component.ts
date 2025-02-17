@@ -194,85 +194,100 @@ export async function createMapComponent(
   const lifeCycle: IBaseComponent = {
     // IBaseComponent.start lifecycle
     async start() {
-      events.emit(MapEvents.INIT)
-      try {
-        // Try to load cached tiles and timestamp from S3
-        const [cachedTiles, cachedTimestamp] = await Promise.all([
-          s3.getTilesJson('v2'),
-          s3.getTimestamp(),
-        ])
+      const MAX_RETRIES = 10;
+      let retryCount = 0;
 
-        if (cachedTiles && cachedTimestamp) {
-          componentLogger.info(
-            'Found cached tiles in S3, using them to initialize the component'
-          )
-          lastUpdatedAt = cachedTimestamp
-          const newTiles = addSpecialTiles(
-            addTiles(Object.values(cachedTiles), {})
-          )
-          tiles.resolve(newTiles)
+      const startWithRetry = async () => {
+        try {
+          events.emit(MapEvents.INIT)
+          // Try to load cached tiles and timestamp from S3
+          const [cachedTiles, cachedTimestamp] = await Promise.all([
+            s3.getTilesJson('v2'),
+            s3.getTimestamp(),
+          ])
 
-          // Set the lastUploadedTilesUrl when loading from cache
-          lastUploadedTilesUrl = {
-            v1: await s3.getFileUrl('v1'),
-            v2: await s3.getFileUrl('v2'),
+          if (cachedTiles && cachedTimestamp) {
+            componentLogger.info(
+              'Found cached tiles in S3, using them to initialize the component'
+            )
+            lastUpdatedAt = cachedTimestamp
+            const newTiles = addSpecialTiles(
+              addTiles(Object.values(cachedTiles), {})
+            )
+            tiles.resolve(newTiles)
+
+            // Set the lastUploadedTilesUrl when loading from cache
+            lastUploadedTilesUrl = {
+              v1: await s3.getFileUrl('v1'),
+              v2: await s3.getFileUrl('v2'),
+            }
+
+            // Fetch only the necessary data for parcels and estates
+            const result = await batchApi.fetchData()
+            parcels.resolve(addParcels(result.parcels, {}))
+            estates.resolve(addEstates(result.estates, {}))
+            tokens.resolve(addTokens(result.parcels, result.estates, {}))
+
+            // After initializing tiles, update them with trades
+            const initialTiles = await tiles
+            const tilesWithTrades = await updateTilesWithTrades(initialTiles)
+            tiles = future()
+            tiles.resolve(tilesWithTrades)
+
+            ready = true
+            await uploadTilesToS3(tilesWithTrades)
+            events.emit(MapEvents.READY, {
+              tiles: Object.values(tilesWithTrades),
+              parcels: result.parcels,
+              estates: result.estates,
+              updatedAt: lastUpdatedAt,
+            })
+          } else {
+            // Fallback to original initialization if no cache exists
+            componentLogger.info(
+              'No cached tiles found in S3, fetching fresh data'
+            )
+            const result = await batchApi.fetchData()
+            lastUpdatedAt = result.updatedAt
+            const newTiles = addSpecialTiles(addTiles(result.tiles, {}))
+            tiles.resolve(newTiles)
+            parcels.resolve(addParcels(result.parcels, {}))
+            estates.resolve(addEstates(result.estates, {}))
+            tokens.resolve(addTokens(result.parcels, result.estates, {}))
+
+            // After initializing tiles, update them with trades
+            const initialTiles = await tiles
+            const tilesWithTrades = await updateTilesWithTrades(initialTiles)
+            tiles = future()
+            tiles.resolve(tilesWithTrades)
+
+            ready = true
+            await uploadTilesToS3(tilesWithTrades)
+            events.emit(MapEvents.READY, {
+              tiles: Object.values(tilesWithTrades),
+              parcels: result.parcels,
+              estates: result.estates,
+              updatedAt: lastUpdatedAt,
+            })
           }
 
-          // Fetch only the necessary data for parcels and estates
-          const result = await batchApi.fetchData()
-          parcels.resolve(addParcels(result.parcels, {}))
-          estates.resolve(addEstates(result.estates, {}))
-          tokens.resolve(addTokens(result.parcels, result.estates, {}))
-
-          // After initializing tiles, update them with trades
-          const initialTiles = await tiles
-          const tilesWithTrades = await updateTilesWithTrades(initialTiles)
-          tiles = future()
-          tiles.resolve(tilesWithTrades)
-
-          ready = true
-          await uploadTilesToS3(tilesWithTrades)
-          events.emit(MapEvents.READY, {
-            tiles: Object.values(tilesWithTrades),
-            parcels: result.parcels,
-            estates: result.estates,
-            updatedAt: lastUpdatedAt,
-          })
-        } else {
-          // Fallback to original initialization if no cache exists
-          componentLogger.info(
-            'No cached tiles found in S3, fetching fresh data'
-          )
-          const result = await batchApi.fetchData()
-          lastUpdatedAt = result.updatedAt
-          const newTiles = addSpecialTiles(addTiles(result.tiles, {}))
-          tiles.resolve(newTiles)
-          parcels.resolve(addParcels(result.parcels, {}))
-          estates.resolve(addEstates(result.estates, {}))
-          tokens.resolve(addTokens(result.parcels, result.estates, {}))
-
-          // After initializing tiles, update them with trades
-          const initialTiles = await tiles
-          const tilesWithTrades = await updateTilesWithTrades(initialTiles)
-          tiles = future()
-          tiles.resolve(tilesWithTrades)
-
-          ready = true
-          await uploadTilesToS3(tilesWithTrades)
-          events.emit(MapEvents.READY, {
-            tiles: Object.values(tilesWithTrades),
-            parcels: result.parcels,
-            estates: result.estates,
-            updatedAt: lastUpdatedAt,
-          })
+          await sleep(refreshInterval)
+          poll()
+        } catch (error) {
+          retryCount++
+          componentLogger.error(`Failed to initialize map component (attempt ${retryCount}/${MAX_RETRIES}): ${error}`)
+          
+          if (retryCount < MAX_RETRIES) {
+            componentLogger.info(`Retrying initialization... (attempt ${retryCount + 1}/${MAX_RETRIES})`)
+            await startWithRetry()
+          } else {
+            componentLogger.error(`Failed to initialize map component after ${MAX_RETRIES} attempts`)
+            tiles.reject(error as Error)
+          }
         }
-
-        await sleep(refreshInterval)
-        poll()
-      } catch (error) {
-        componentLogger.error(`Failed to initialize map component: ${error}`)
-        tiles.reject(error as Error)
       }
+
+      return startWithRetry()
     },
   }
 
