@@ -157,8 +157,10 @@ export async function createMapComponent(
             tile.tokenId &&
             trade.contract_address_sent &&
             trade.sent_token_id &&
-            tile.nftId.includes(trade.contract_address_sent) &&
-            tile.tokenId === trade.sent_token_id
+            ((!tile.estateId &&
+              tile.nftId.includes(trade.contract_address_sent) &&
+              tile.tokenId === trade.sent_token_id) ||
+              (tile.estateId && tile.estateId === trade.sent_token_id))
 
           return matches
         })
