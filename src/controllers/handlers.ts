@@ -1,38 +1,107 @@
+import { IFeaturesComponent } from '@well-known-components/features-component'
 import { toLegacyTiles } from '../adapters/legacy-tiles'
 import { cacheWrapper } from '../logic/cache-wrapper'
 import { extractParams, getFilterFromUrl } from '../logic/filter-params'
 import { isErrorWithMessage } from '../logic/error'
 import { AppComponents, Context } from '../types'
 import { ApplicationName, Feature } from '../modules/features/types'
+import { IMapComponent } from '../modules/map/types'
+
+/**
+ * Checks if the S3 redirect feature flag is enabled
+ */
+const isS3RedirectEnabled = async (features: IFeaturesComponent) => {
+  return await features.getIsFeatureEnabled(
+    ApplicationName.DAPPS,
+    Feature.ATLAS_REDIRECT_TO_S3
+  )
+}
+
+/**
+ * Attempts to get a redirect response to the S3-stored tiles
+ * @param map - The map component to get the URLs from
+ * @param version - Which version of tiles to get ('v1' for legacy, 'v2' for current)
+ * @returns A redirect response object if S3 URL is available, null otherwise
+ */
+const handleGetLastUploadedTilesUrl = (
+  map: IMapComponent,
+  version: 'v1' | 'v2'
+) => {
+  const lastUploadedUrls = map.getLastUploadedTilesUrl()
+  if (lastUploadedUrls[version]) {
+    return {
+      status: 301,
+      headers: {
+        location: lastUploadedUrls[version],
+        'cache-control': 'public, max-age=60',
+      } as Record<string, string>,
+    }
+  }
+  return null
+}
+
+/**
+ * Handles the common logic for both tiles handlers
+ * @param map - The map component
+ * @param features - The features component
+ * @param version - Which version of tiles to get ('v1' for legacy, 'v2' for current)
+ * @param logger - Optional logger to log warnings
+ * @returns Either a response object if should redirect/error, or null if should continue with map tiles
+ */
+const handleTilesRequest = async (
+  map: IMapComponent,
+  features: IFeaturesComponent,
+  version: 'v1' | 'v2',
+  logger?: { warn: (msg: string) => void }
+) => {
+  const isRedirectToS3Enabled = await isS3RedirectEnabled(features)
+
+  // If map is not ready and feature flag is off -> return 503
+  if (!map.isReady() && !isRedirectToS3Enabled) {
+    return { status: 503, body: 'Not ready' }
+  }
+
+  // If feature flag is on, try to redirect to S3 (regardless of map ready state)
+  // This ensures we serve from S3 when:
+  // 1. Map is not ready but we have a cached version in S3
+  // 2. Map is ready but we want to reduce load on the service
+  if (isRedirectToS3Enabled) {
+    const redirectResponse = handleGetLastUploadedTilesUrl(map, version)
+    if (redirectResponse) {
+      return redirectResponse
+    }
+    logger?.warn('No S3 file available')
+  }
+
+  // If we reach here, it means either:
+  // - Feature flag is on but no S3 file is available
+  // - Feature flag is off and map should be ready (checked in first condition)
+  if (!map.isReady()) {
+    logger?.warn('Map is not ready')
+    return { status: 503, body: 'Not ready' }
+  }
+
+  return null
+}
 
 export const createTilesRequestHandler = (
-  components: Pick<AppComponents, 'map' | 'features'>
+  components: Pick<AppComponents, 'map' | 'features' | 'logs'>
 ) => {
-  const { map, features } = components
+  const { map, features, logs } = components
+  const componentLogger = logs.getLogger('tiles-request-handler')
   return cacheWrapper(
     async (context: { url: URL }) => {
-      if (!map.isReady()) {
-        return { status: 503, body: 'Not ready' }
+      const response = await handleTilesRequest(
+        map,
+        features,
+        'v2',
+        componentLogger
+      )
+      if (response) {
+        return response
       }
 
-      if (
-        await features.getIsFeatureEnabled(
-          ApplicationName.DAPPS,
-          Feature.ATLAS_REDIRECT_TO_S3
-        )
-      ) {
-        const lastUploadedUrls = map.getLastUploadedTilesUrl()
-        if (lastUploadedUrls.v2) {
-          return {
-            status: 301,
-            headers: {
-              location: lastUploadedUrls.v2,
-              'cache-control': 'public, max-age=60',
-            } as Record<string, string>,
-          }
-        }
-      }
-
+      // Serve tiles directly from the map
       const tiles = await map.getTiles()
       const data = getFilterFromUrl(context.url, tiles)
       return {
@@ -48,33 +117,23 @@ export const createTilesRequestHandler = (
 }
 
 export const createLegacyTilesRequestHandler = (
-  components: Pick<AppComponents, 'map' | 'features'>
+  components: Pick<AppComponents, 'map' | 'features' | 'logs'>
 ) => {
-  const { map, features } = components
+  const { map, features, logs } = components
+  const componentLogger = logs.getLogger('legacy-tiles-request-handler')
   return cacheWrapper(
     async (context: { url: URL }) => {
-      if (!map.isReady()) {
-        return { status: 503, body: 'Not ready' }
+      const response = await handleTilesRequest(
+        map,
+        features,
+        'v1',
+        componentLogger
+      )
+      if (response) {
+        return response
       }
 
-      if (
-        await features.getIsFeatureEnabled(
-          ApplicationName.DAPPS,
-          Feature.ATLAS_REDIRECT_TO_S3
-        )
-      ) {
-        const lastUploadedUrls = map.getLastUploadedTilesUrl()
-        if (lastUploadedUrls.v1) {
-          return {
-            status: 301,
-            headers: {
-              location: lastUploadedUrls.v1,
-              'cache-control': 'public, max-age=60',
-            } as Record<string, string>,
-          }
-        }
-      }
-
+      // Serve tiles directly from the map
       const tiles = await map.getTiles()
       const data = toLegacyTiles(getFilterFromUrl(context.url, tiles))
       return {
