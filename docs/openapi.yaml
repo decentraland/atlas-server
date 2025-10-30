@@ -6,18 +6,18 @@ info:
     parcels, estates, districts, and their metadata. The API allows you to retrieve tile information, generate 
     map images, and access NFT metadata following the OpenSea Metadata Standard.
     
-    ## Features
+    ### Features
     - Retrieve map tiles with flexible filtering options
     - Generate customizable PNG map images
     - Access NFT metadata for parcels and estates
     - Query district information and contributions
     - Real-time rental listing information
     
-    ## Rate Limiting
+    ### Rate Limiting
     The API implements caching and last-modified headers for optimal performance. Clients should respect 
     cache-control headers to minimize server load
     
-    ## Authentication
+    ### Authentication
     No authentication is required for this public API
   version: 2.0.0
   contact:
