@@ -1,0 +1,1299 @@
+openapi: 3.0.3
+info:
+  title: Decentraland Atlas Server API
+  description: |
+    The Atlas Server API provides access to Decentraland's virtual world map data, including information about 
+    parcels, estates, districts, and their metadata. The API allows you to retrieve tile information, generate 
+    map images, and access NFT metadata following the OpenSea Metadata Standard.
+    
+    ## Features
+    - Retrieve map tiles with flexible filtering options
+    - Generate customizable PNG map images
+    - Access NFT metadata for parcels and estates
+    - Query district information and contributions
+    - Real-time rental listing information
+    
+    ## Rate Limiting
+    The API implements caching and last-modified headers for optimal performance. Clients should respect 
+    cache-control headers to minimize server load.
+    
+    ## Authentication
+    No authentication is required for this public API.
+  version: 2.0.0
+  contact:
+    name: Decentraland Foundation
+    url: https://decentraland.org
+  license:
+    name: Apache 2.0
+    url: https://www.apache.org/licenses/LICENSE-2.0
+
+servers:
+  - url: https://api.decentraland.org
+    description: Production environment
+  - url: https://api.decentraland.zone
+    description: Development environment
+
+tags:
+  - name: Tiles
+    description: |
+      Endpoints for retrieving map tile data. Tiles represent individual parcels and their properties 
+      in the Decentraland virtual world.
+  - name: Map Images
+    description: |
+      Endpoints for generating PNG images of the Decentraland map. Images can be customized with various 
+      parameters such as size, center, and highlighted parcels.
+  - name: NFT Metadata
+    description: |
+      Endpoints for retrieving NFT metadata for parcels and estates. Metadata follows the OpenSea 
+      Metadata Standard.
+  - name: Districts
+    description: |
+      Endpoints for querying information about districts in Genesis City, including contributions 
+      made by community members.
+  - name: Health
+    description: Health check and status endpoints for monitoring server availability.
+
+paths:
+  /v2/tiles:
+    get:
+      tags:
+        - Tiles
+      summary: Get all map tiles
+      description: |
+        Returns all tiles in the Decentraland map with detailed information about each parcel. 
+        This endpoint supports filtering by coordinates and field selection to optimize payload size.
+        
+        ## Filtering Options
+        - **Coordinate filtering**: Use x1, y1, x2, y2 to request a specific area
+        - **Field inclusion**: Use 'include' to select specific fields
+        - **Field exclusion**: Use 'exclude' to omit specific fields
+        
+        ## Caching
+        This endpoint includes Last-Modified headers and supports conditional requests with If-Modified-Since.
+      operationId: getTiles
+      parameters:
+        - name: x1
+          in: query
+          description: Minimum X coordinate for bounding box filter
+          schema:
+            type: integer
+          example: -150
+        - name: y1
+          in: query
+          description: Minimum Y coordinate for bounding box filter
+          schema:
+            type: integer
+          example: -150
+        - name: x2
+          in: query
+          description: Maximum X coordinate for bounding box filter
+          schema:
+            type: integer
+          example: 150
+        - name: y2
+          in: query
+          description: Maximum Y coordinate for bounding box filter
+          schema:
+            type: integer
+          example: 150
+        - name: include
+          in: query
+          description: Comma-separated list of fields to include in each tile
+          schema:
+            type: string
+          example: "id,x,y,type,owner,price"
+        - name: exclude
+          in: query
+          description: Comma-separated list of fields to exclude from each tile
+          schema:
+            type: string
+          example: "updatedAt,tokenId"
+      responses:
+        '200':
+          description: Successful response with tile data
+          headers:
+            Last-Modified:
+              description: Timestamp of when the map data was last updated
+              schema:
+                type: string
+            Cache-Control:
+              description: Cache control directives
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    additionalProperties:
+                      $ref: '#/components/schemas/Tile'
+        '301':
+          description: Redirect to S3-hosted tiles (when feature flag is enabled)
+          headers:
+            location:
+              description: URL of the S3-hosted tiles
+              schema:
+                type: string
+            cache-control:
+              schema:
+                type: string
+                example: "public, max-age=60"
+        '503':
+          description: Service not ready
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: "Not ready"
+
+  /v1/tiles:
+    get:
+      tags:
+        - Tiles
+      summary: Get all map tiles (Legacy format)
+      deprecated: true
+      description: |
+        **DEPRECATED**: This endpoint returns tiles in the legacy format. Please use `/v2/tiles` instead.
+        
+        Returns all tiles in the map using the older data format. This endpoint is maintained for 
+        backward compatibility but will be removed in a future version.
+      operationId: getLegacyTiles
+      parameters:
+        - name: x1
+          in: query
+          schema:
+            type: integer
+        - name: y1
+          in: query
+          schema:
+            type: integer
+        - name: x2
+          in: query
+          schema:
+            type: integer
+        - name: y2
+          in: query
+          schema:
+            type: integer
+        - name: include
+          in: query
+          schema:
+            type: string
+        - name: exclude
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Successful response with legacy tile data
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  data:
+                    type: object
+                    additionalProperties:
+                      $ref: '#/components/schemas/LegacyTile'
+        '301':
+          description: Redirect to S3-hosted tiles
+        '503':
+          description: Service not ready
+
+  /v2/tiles/info:
+    get:
+      tags:
+        - Tiles
+      summary: Get tiles metadata information
+      description: |
+        Returns metadata about the tiles dataset, including the last update timestamp. 
+        This endpoint is useful for cache invalidation and determining when to refresh data.
+      operationId: getTilesInfo
+      responses:
+        '200':
+          description: Successful response with tiles info
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+                example: "no-cache"
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  lastUpdatedAt:
+                    type: integer
+                    format: int64
+                    description: UTC timestamp in milliseconds of last update
+                    example: 1698765432000
+        '503':
+          description: Service not ready
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+                example: "no-cache"
+
+  /v2/map.png:
+    get:
+      tags:
+        - Map Images
+      summary: Generate a PNG image of the map
+      description: |
+        Generates a customizable PNG image of the Decentraland map. You can control the dimensions, 
+        tile size, center point, and highlight specific parcels. Optional overlays include parcels 
+        on sale and rental listings.
+        
+        ## Parameters
+        - **width/height**: Image dimensions (100-4096px, default: 1024)
+        - **size**: Size of each tile in pixels (5-50px, default: 20)
+        - **center**: Coordinates to center the map on
+        - **selected**: Semicolon-separated list of coordinates to highlight
+        - **on-sale**: Show parcels listed for sale in blue
+        - **listed-for-rent**: Show parcels available for rent
+      operationId: getMapImage
+      parameters:
+        - name: width
+          in: query
+          description: Width of the image in pixels
+          schema:
+            type: integer
+            minimum: 100
+            maximum: 4096
+            default: 1024
+          example: 2048
+        - name: height
+          in: query
+          description: Height of the image in pixels
+          schema:
+            type: integer
+            minimum: 100
+            maximum: 4096
+            default: 1024
+          example: 2048
+        - name: size
+          in: query
+          description: Size of each tile in pixels
+          schema:
+            type: integer
+            minimum: 5
+            maximum: 50
+            default: 20
+          example: 20
+        - name: center
+          in: query
+          description: Center coordinates in format "x,y"
+          schema:
+            type: string
+          example: "0,0"
+        - name: selected
+          in: query
+          description: Semicolon-separated list of coordinates to highlight (format "x1,y1;x2,y2;...")
+          schema:
+            type: string
+          example: "10,10;10,11;11,10;11,11"
+        - name: on-sale
+          in: query
+          description: Highlight parcels that are on sale
+          schema:
+            type: boolean
+            default: false
+          example: true
+        - name: listed-for-rent
+          in: query
+          description: Highlight parcels that are listed for rent
+          schema:
+            type: boolean
+            default: false
+          example: true
+      responses:
+        '200':
+          description: PNG image of the map
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: "image/png"
+            Last-Modified:
+              schema:
+                type: string
+            Cache-Control:
+              schema:
+                type: string
+          content:
+            image/png:
+              schema:
+                type: string
+                format: binary
+        '500':
+          description: Error generating image
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: Service not ready
+
+  /v1/map.png:
+    get:
+      tags:
+        - Map Images
+      summary: Generate a PNG image of the map (v1)
+      description: Version 1 of the map image endpoint. Functionally identical to v2.
+      operationId: getMapImageV1
+      parameters:
+        - name: width
+          in: query
+          schema:
+            type: integer
+            minimum: 100
+            maximum: 4096
+            default: 1024
+        - name: height
+          in: query
+          schema:
+            type: integer
+            minimum: 100
+            maximum: 4096
+            default: 1024
+        - name: size
+          in: query
+          schema:
+            type: integer
+            minimum: 5
+            maximum: 50
+            default: 20
+        - name: center
+          in: query
+          schema:
+            type: string
+        - name: selected
+          in: query
+          schema:
+            type: string
+        - name: on-sale
+          in: query
+          schema:
+            type: boolean
+        - name: listed-for-rent
+          in: query
+          schema:
+            type: boolean
+      responses:
+        '200':
+          description: PNG image
+          content:
+            image/png:
+              schema:
+                type: string
+                format: binary
+        '500':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: Not ready
+
+  /v1/minimap.png:
+    get:
+      tags:
+        - Map Images
+      summary: Generate a minimap PNG image
+      description: |
+        Generates a minimap view of the entire Decentraland world. This endpoint uses extended caching 
+        (10 minutes) for better performance.
+      operationId: getMinimap
+      responses:
+        '200':
+          description: PNG minimap image
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: "image/png"
+            Cache-Control:
+              schema:
+                type: string
+                example: "public, max-age=600, stale-while-revalidate=600"
+          content:
+            image/png:
+              schema:
+                type: string
+                format: binary
+        '500':
+          description: Error generating minimap
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: Service not ready
+
+  /v1/estatemap.png:
+    get:
+      tags:
+        - Map Images
+      summary: Generate an estate-focused minimap PNG image
+      description: |
+        Generates a minimap view with emphasis on estate boundaries. Uses extended caching 
+        (10 minutes) for better performance.
+      operationId: getEstateMap
+      responses:
+        '200':
+          description: PNG estate map image
+          content:
+            image/png:
+              schema:
+                type: string
+                format: binary
+        '500':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: Not ready
+
+  /v2/parcels/{x}/{y}/map.png:
+    get:
+      tags:
+        - Map Images
+      summary: Generate a map image centered on a specific parcel
+      description: |
+        Generates a PNG image of the map centered on and highlighting a specific parcel. 
+        The parcel is automatically selected and centered in the generated image.
+      operationId: getParcelMapImage
+      parameters:
+        - name: x
+          in: path
+          required: true
+          description: X coordinate of the parcel
+          schema:
+            type: integer
+          example: 23
+        - name: y
+          in: path
+          required: true
+          description: Y coordinate of the parcel
+          schema:
+            type: integer
+          example: -23
+        - name: width
+          in: query
+          schema:
+            type: integer
+            minimum: 100
+            maximum: 4096
+            default: 1024
+        - name: height
+          in: query
+          schema:
+            type: integer
+            minimum: 100
+            maximum: 4096
+            default: 1024
+        - name: size
+          in: query
+          schema:
+            type: integer
+            minimum: 5
+            maximum: 50
+            default: 20
+        - name: on-sale
+          in: query
+          schema:
+            type: boolean
+        - name: listed-for-rent
+          in: query
+          schema:
+            type: boolean
+      responses:
+        '200':
+          description: PNG image centered on the parcel
+          content:
+            image/png:
+              schema:
+                type: string
+                format: binary
+        '500':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: Not ready
+
+  /v1/parcels/{x}/{y}/map.png:
+    get:
+      tags:
+        - Map Images
+      summary: Generate a map image centered on a specific parcel (v1)
+      description: Version 1 of the parcel map endpoint. Functionally identical to v2.
+      operationId: getParcelMapImageV1
+      parameters:
+        - name: x
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: y
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: width
+          in: query
+          schema:
+            type: integer
+        - name: height
+          in: query
+          schema:
+            type: integer
+        - name: size
+          in: query
+          schema:
+            type: integer
+        - name: on-sale
+          in: query
+          schema:
+            type: boolean
+        - name: listed-for-rent
+          in: query
+          schema:
+            type: boolean
+      responses:
+        '200':
+          description: PNG image
+          content:
+            image/png:
+              schema:
+                type: string
+                format: binary
+        '500':
+          description: Error
+        '503':
+          description: Not ready
+
+  /v2/estates/{estateId}/map.png:
+    get:
+      tags:
+        - Map Images
+      summary: Generate a map image centered on a specific estate
+      description: |
+        Generates a PNG image of the map centered on and highlighting all parcels that belong 
+        to a specific estate. If the estate has been dissolved, redirects to a dissolved estate image.
+      operationId: getEstateMapImage
+      parameters:
+        - name: estateId
+          in: path
+          required: true
+          description: Estate ID
+          schema:
+            type: string
+          example: "12345"
+        - name: width
+          in: query
+          schema:
+            type: integer
+            minimum: 100
+            maximum: 4096
+            default: 1024
+        - name: height
+          in: query
+          schema:
+            type: integer
+            minimum: 100
+            maximum: 4096
+            default: 1024
+        - name: size
+          in: query
+          schema:
+            type: integer
+            minimum: 5
+            maximum: 50
+            default: 20
+        - name: on-sale
+          in: query
+          schema:
+            type: boolean
+        - name: listed-for-rent
+          in: query
+          schema:
+            type: boolean
+      responses:
+        '200':
+          description: PNG image centered on the estate
+          content:
+            image/png:
+              schema:
+                type: string
+                format: binary
+        '302':
+          description: Redirect to dissolved estate image
+          headers:
+            location:
+              schema:
+                type: string
+                example: "https://ui.decentraland.org/dissolved_estate.png"
+        '500':
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: Not ready
+
+  /v1/estates/{estateId}/map.png:
+    get:
+      tags:
+        - Map Images
+      summary: Generate a map image centered on a specific estate (v1)
+      description: Version 1 of the estate map endpoint. Functionally identical to v2.
+      operationId: getEstateMapImageV1
+      parameters:
+        - name: estateId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: width
+          in: query
+          schema:
+            type: integer
+        - name: height
+          in: query
+          schema:
+            type: integer
+        - name: size
+          in: query
+          schema:
+            type: integer
+        - name: on-sale
+          in: query
+          schema:
+            type: boolean
+        - name: listed-for-rent
+          in: query
+          schema:
+            type: boolean
+      responses:
+        '200':
+          description: PNG image
+          content:
+            image/png:
+              schema:
+                type: string
+                format: binary
+        '302':
+          description: Redirect to dissolved estate image
+        '500':
+          description: Error
+        '503':
+          description: Not ready
+
+  /v2/parcels/{x}/{y}:
+    get:
+      tags:
+        - NFT Metadata
+      summary: Get metadata for a specific parcel
+      description: |
+        Returns detailed NFT metadata for a specific parcel, following the OpenSea Metadata Standard. 
+        Includes information about the parcel's location, name, description, owner, and various attributes.
+      operationId: getParcelMetadata
+      parameters:
+        - name: x
+          in: path
+          required: true
+          description: X coordinate of the parcel
+          schema:
+            type: integer
+          example: 23
+        - name: y
+          in: path
+          required: true
+          description: Y coordinate of the parcel
+          schema:
+            type: integer
+          example: -23
+      responses:
+        '200':
+          description: Parcel metadata
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NFT'
+        '403':
+          description: Invalid coordinates
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: "Invalid x or y"
+        '404':
+          description: Parcel not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: Service not ready
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: "Not ready"
+
+  /v2/estates/{id}:
+    get:
+      tags:
+        - NFT Metadata
+      summary: Get metadata for a specific estate
+      description: |
+        Returns detailed NFT metadata for a specific estate, following the OpenSea Metadata Standard. 
+        Includes information about all parcels in the estate, as well as estate-level metadata.
+        If the estate has been dissolved, returns the dissolved estate metadata.
+      operationId: getEstateMetadata
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Estate ID
+          schema:
+            type: string
+          example: "12345"
+      responses:
+        '200':
+          description: Estate metadata
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NFT'
+        '403':
+          description: Invalid estate ID
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: "Invalid id"
+        '404':
+          description: Estate not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: Service not ready
+
+  /v2/contracts/{address}/tokens/{id}:
+    get:
+      tags:
+        - NFT Metadata
+      summary: Get NFT metadata by contract address and token ID
+      description: |
+        Returns NFT metadata for a parcel or estate by providing the contract address and token ID. 
+        This endpoint follows the OpenSea Metadata Standard and is commonly used by NFT marketplaces.
+        
+        ## Contract Addresses (Mainnet)
+        - **LAND**: `0xf87e31492faf9a91b02ee0deaad50d51d56d5d4d`
+        - **Estate**: `0x959e104e1a4db6317fa58f8295f586e1a978c297`
+        
+        For LAND parcels, responses include extended cache headers for immutability.
+      operationId: getTokenMetadata
+      parameters:
+        - name: address
+          in: path
+          required: true
+          description: Contract address (LAND or Estate contract)
+          schema:
+            type: string
+          example: "0xf87e31492faf9a91b02ee0deaad50d51d56d5d4d"
+        - name: id
+          in: path
+          required: true
+          description: Token ID
+          schema:
+            type: string
+          example: "115792089237316195423570985008687907832452644793752989267978113781140059103329"
+      responses:
+        '200':
+          description: Token metadata
+          headers:
+            Cache-Control:
+              description: Cache control header (immutable for LAND parcels)
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NFT'
+        '404':
+          description: Token not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: Service not ready
+
+  /v2/districts:
+    get:
+      tags:
+        - Districts
+      summary: Get all districts
+      description: |
+        Returns a list of all districts in Genesis City. Districts are special areas with unique themes 
+        and community-driven development.
+      operationId: getDistricts
+      responses:
+        '200':
+          description: List of all districts
+          headers:
+            Last-Modified:
+              schema:
+                type: string
+            Cache-Control:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    example: true
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/District'
+
+  /v2/districts/{id}:
+    get:
+      tags:
+        - Districts
+      summary: Get a specific district by ID
+      description: |
+        Returns detailed information about a specific district, including its name, description, 
+        and all parcels that belong to it.
+      operationId: getDistrict
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: District ID
+          schema:
+            type: string
+          example: "aetherian-project"
+      responses:
+        '200':
+          description: District information
+          headers:
+            Last-Modified:
+              schema:
+                type: string
+            Cache-Control:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    example: true
+                  data:
+                    $ref: '#/components/schemas/District'
+        '404':
+          description: District not found
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: "Not found"
+
+  /v2/addresses/{address}/contributions:
+    get:
+      tags:
+        - Districts
+      summary: Get contributions by address
+      description: |
+        Returns a list of all district contributions made by a specific Ethereum address. 
+        Contributions represent parcels that were contributed during the district allocation phase.
+      operationId: getContributions
+      parameters:
+        - name: address
+          in: path
+          required: true
+          description: Ethereum address
+          schema:
+            type: string
+          example: "0x1234567890abcdef1234567890abcdef12345678"
+      responses:
+        '200':
+          description: List of contributions
+          headers:
+            Last-Modified:
+              schema:
+                type: string
+            Cache-Control:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    example: true
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Contribution'
+
+  /v2/ping:
+    get:
+      tags:
+        - Health
+      summary: Ping endpoint
+      description: Simple ping endpoint to check if the server is responding.
+      operationId: ping
+      responses:
+        '200':
+          description: Server is responding
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: "ok"
+
+  /v2/ready:
+    get:
+      tags:
+        - Health
+      summary: Readiness check
+      description: |
+        Checks if the server is ready to serve requests. Returns 200 when all data is loaded 
+        and the server is ready, or 503 if the server is still initializing.
+      operationId: ready
+      responses:
+        '200':
+          description: Server is ready
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: "ok"
+        '503':
+          description: Server is not ready
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: "Not ready"
+
+components:
+  schemas:
+    Tile:
+      type: object
+      description: Represents a single tile (parcel) in the Decentraland map
+      required:
+        - id
+        - x
+        - y
+        - type
+        - top
+        - left
+        - topLeft
+        - updatedAt
+      properties:
+        id:
+          type: string
+          description: The coordinate of the tile expressed as "x,y"
+          example: "23,-23"
+        x:
+          type: integer
+          description: The X coordinate of the tile
+          example: 23
+        y:
+          type: integer
+          description: The Y coordinate of the tile
+          example: -23
+        nftId:
+          type: string
+          description: The NFT ID if the tile is owned
+          example: "parcel-23--23"
+        type:
+          type: string
+          enum:
+            - owned
+            - unowned
+            - plaza
+            - road
+            - district
+          description: The type of tile
+          example: "owned"
+        top:
+          type: boolean
+          description: True if it has a tile on its top
+          example: true
+        left:
+          type: boolean
+          description: True if it has a tile on its left
+          example: true
+        topLeft:
+          type: boolean
+          description: True if it has a tile on its top left
+          example: false
+        updatedAt:
+          type: integer
+          format: int64
+          description: UTC timestamp in milliseconds of the last time the tile was updated
+          example: 1698765432000
+        name:
+          type: string
+          description: The name of the tile, taken either from the estate or from the parcel it belongs to
+          example: "My Genesis Plaza"
+        owner:
+          type: string
+          description: The Ethereum address of the owner
+          example: "0x1234567890abcdef1234567890abcdef12345678"
+        estateId:
+          type: string
+          description: The estate ID if the tile belongs to an estate
+          example: "12345"
+        tokenId:
+          type: string
+          description: The token ID if the tile represents a parcel
+          example: "115792089237316195423570985008687907832452644793752989267978113781140059103329"
+        price:
+          type: number
+          format: double
+          description: The price in ethers of the parcel/estate order (if listed for sale)
+          example: 10000.5
+        expiresAt:
+          type: integer
+          format: int64
+          description: The UTC time in seconds when the sell order expires
+          example: 1699000000
+        rentalListing:
+          $ref: '#/components/schemas/TileRentalListing'
+
+    LegacyTile:
+      type: object
+      description: Legacy tile format (deprecated)
+      deprecated: true
+      properties:
+        type:
+          type: integer
+          description: Numeric type code
+          example: 0
+        x:
+          type: integer
+          example: 23
+        y:
+          type: integer
+          example: -23
+        owner:
+          type: string
+          example: "0x1234567890abcdef1234567890abcdef12345678"
+        estate_id:
+          type: string
+          example: "12345"
+        name:
+          type: string
+          example: "My Parcel"
+        top:
+          type: integer
+          example: 1
+        left:
+          type: integer
+          example: 1
+        topLeft:
+          type: integer
+          example: 0
+        price:
+          type: number
+          example: 10000.5
+        rentalPricePerDay:
+          type: string
+          example: "100.0"
+
+    TileRentalListing:
+      type: object
+      description: Rental listing information for a tile
+      properties:
+        expiration:
+          type: integer
+          format: int64
+          description: UTC timestamp in milliseconds when the rental listing expires
+          example: 1699000000000
+        periods:
+          type: array
+          items:
+            type: object
+            properties:
+              pricePerDay:
+                type: string
+                description: Daily rental price in wei
+                example: "100000000000000000000"
+              minDays:
+                type: integer
+                description: Minimum rental period in days
+                example: 1
+              maxDays:
+                type: integer
+                description: Maximum rental period in days
+                example: 30
+        updatedAt:
+          type: integer
+          format: int64
+          description: UTC timestamp in milliseconds when the listing was last updated
+          example: 1698700000000
+
+    NFT:
+      type: object
+      description: NFT metadata following the OpenSea Metadata Standard
+      required:
+        - id
+        - name
+        - description
+        - image
+        - external_url
+        - attributes
+      properties:
+        id:
+          type: string
+          description: Unique identifier for the NFT
+          example: "parcel-23--23"
+        name:
+          type: string
+          description: Name of the NFT
+          example: "Parcel 23,-23"
+        description:
+          type: string
+          description: Description of the NFT
+          example: "A beautiful parcel in Genesis City"
+        image:
+          type: string
+          format: uri
+          description: URL to the NFT image
+          example: "https://api.decentraland.org/v2/parcels/23/-23/map.png"
+        external_url:
+          type: string
+          format: uri
+          description: External URL to view the NFT in Decentraland
+          example: "https://market.decentraland.org/contracts/0xf87e31492faf9a91b02ee0deaad50d51d56d5d4d/tokens/115792089237316195423570985008687907832452644793752989267978113781140059103329"
+        background_color:
+          type: string
+          description: Background color for the NFT (6-character hex code without #)
+          example: "ff0044"
+        attributes:
+          type: array
+          description: Array of attributes for the NFT
+          items:
+            $ref: '#/components/schemas/NFTAttribute'
+
+    NFTAttribute:
+      type: object
+      description: An attribute of an NFT
+      required:
+        - trait_type
+        - value
+        - display_type
+      properties:
+        trait_type:
+          type: string
+          description: The type of trait
+          example: "X"
+        value:
+          type: number
+          description: The value of the trait
+          example: 23
+        display_type:
+          type: string
+          enum:
+            - number
+          description: How to display the value
+          example: "number"
+
+    District:
+      type: object
+      description: Information about a district in Genesis City
+      required:
+        - id
+        - name
+        - description
+        - parcels
+        - totalParcels
+      properties:
+        id:
+          type: string
+          description: Unique identifier for the district
+          example: "aetherian-project"
+        name:
+          type: string
+          description: Name of the district
+          example: "Aetherian Project"
+        description:
+          type: string
+          description: Description of the district
+          example: "A district focused on art and culture"
+        parcels:
+          type: array
+          description: Array of parcel coordinates in the district
+          items:
+            type: string
+            example: "23,-23"
+        totalParcels:
+          type: integer
+          description: Total number of parcels in the district
+          example: 42
+
+    Contribution:
+      type: object
+      description: Information about a contribution to a district
+      required:
+        - address
+        - districtId
+        - totalParcels
+      properties:
+        address:
+          type: string
+          description: Ethereum address of the contributor
+          example: "0x1234567890abcdef1234567890abcdef12345678"
+        districtId:
+          type: string
+          description: ID of the district contributed to
+          example: "aetherian-project"
+        totalParcels:
+          type: integer
+          description: Number of parcels contributed
+          example: 5
+
+    Error:
+      type: object
+      description: Error response
+      properties:
+        ok:
+          type: boolean
+          example: false
+        error:
+          type: string
+          description: Error message
+          example: "Not Found"
+

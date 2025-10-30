@@ -1,0 +1,21 @@
+name: Publish docs
+
+on:
+  pull_request:
+    paths:
+      - 'docs/**'
+  push:
+    branches:
+      - master
+    paths:
+      - 'docs/**'
+
+jobs:
+  build-and-deploy:
+    uses: decentraland/platform-actions/.github/workflows/apps-docs.yml@main
+    with:
+      api-spec-file: 'docs/openapi.yaml'
+      api-spec-name: 'atlas-service-api'
+      output-bundle-file: 'docs/api-reference.yaml'
+    secrets: inherit
+
