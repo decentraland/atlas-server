@@ -33,6 +33,8 @@ servers:
   - url: https://api.decentraland.zone
     description: Development environment
 
+security: []
+
 tags:
   - name: Tiles
     description: |
