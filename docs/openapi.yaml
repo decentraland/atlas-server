@@ -4,7 +4,7 @@ info:
   description: |
     The Atlas Server API provides access to Decentraland's virtual world map data, including information about 
     parcels, estates, districts, and their metadata. The API allows you to retrieve tile information, generate 
-    map images, and access NFT metadata following the OpenSea Metadata Standard
+    map images, and access NFT metadata following the OpenSea Metadata Standard.
     
     ## Features
     - Retrieve map tiles with flexible filtering options
