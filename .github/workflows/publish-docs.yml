@@ -1,4 +1,4 @@
-name: Publish docs
+name: API Docs
 
 on:
   pull_request:
@@ -7,15 +7,39 @@ on:
   push:
     branches:
       - master
-    paths:
-      - 'docs/**'
 
 jobs:
-  build-and-deploy:
-    uses: decentraland/platform-actions/.github/workflows/apps-docs.yml@main
-    with:
-      api-spec-file: 'docs/openapi.yaml'
-      api-spec-name: 'atlas-service-api'
-      output-bundle-file: 'docs/api-reference.yaml'
-    secrets: inherit
+  build-and-publish:
+    runs-on: ubuntu-latest
+    env:
+      GITBOOK_TOKEN: ${{ secrets.GITBOOK_TOKEN }}
+      GITBOOK_ORGANIZATION_ID: ${{ secrets.GITBOOK_ORGANIZATION_ID }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Validate OpenAPI specification
+        run: npx @redocly/cli@latest lint docs/openapi.yaml
+
+      - name: Bundle OpenAPI specification
+        run: npx @redocly/cli@latest bundle docs/openapi.yaml --output docs/openapi-bundled.yaml --ext yaml --dereferenced
+
+      - name: Publish to GitBook
+        if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+        run: |
+          npm install -g @gitbook/cli
+          gitbook openapi publish \
+            --spec "atlas-service" \
+            --organization "$GITBOOK_ORGANIZATION_ID" \
+            "docs/openapi-bundled.yaml"
 
