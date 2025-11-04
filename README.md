@@ -147,7 +147,7 @@ Example:
 
 If the `npm install` fails on the dependency `node-canvas` and you are running on an Apple M1 chip, try installing these dependencies via brew: `brew install pkg-config cairo pango libpng jpeg giflib librsvg`.
 
-## 🤖 AI Agent Context
+## AI Agent Context
 
 **Service Purpose:** Provides REST API for querying Decentraland's Genesis City map data (parcels, estates, districts) and generating map visualizations as PNG images. Serves as the data layer for the Decentraland Atlas interface.
 
