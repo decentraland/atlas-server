@@ -25,6 +25,6 @@ jobs:
       - name: Test
         run: npm run test -- --coverage
       - name: Report coverage
-        uses: coverallsapp/github-action@09b709cf6a16e30b0808ba050c7a6e8a5ef13f8d # @master
+        uses: coverallsapp/github-action@648a8eb78e6d50909eff900e4ec85cab4524a45b # @v2.3.6
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
