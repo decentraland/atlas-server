@@ -8,12 +8,14 @@ WORKDIR /app
 RUN apk update
 RUN apk add --no-cache py3-setuptools \
   python3-dev \
-  build-base \ 
+  build-base \
   g++ \
   cairo-dev \
   jpeg-dev \
   pango-dev \
-  giflib-dev
+  giflib-dev \
+  pixman-dev \
+  pkgconf
 
 # install dependencies
 COPY package.json /app/package.json
@@ -38,7 +40,8 @@ RUN apk add --no-cache tini \
   cairo \
   jpeg \
   pango \
-  giflib
+  giflib \
+  pixman
 
 # NODE_ENV is used to configure some runtime options, like JSON logger
 ENV NODE_ENV production
