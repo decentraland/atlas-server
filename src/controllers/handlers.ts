@@ -5,6 +5,31 @@ import { isErrorWithMessage } from '../logic/error'
 import { AppComponents, Context } from '../types'
 import { ApplicationName, Feature } from '../modules/features/types'
 
+export async function rootRequestHandler() {
+  return {
+    status: 200,
+    headers: {
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify({
+      ok: true,
+      documentation: 'https://github.com/decentraland/atlas-server#endpoints',
+      endpoints: [
+        '/v2/tiles',
+        '/v2/tiles/info',
+        '/v2/map.png',
+        '/v2/parcels/:x/:y',
+        '/v2/estates/:id',
+        '/v2/contracts/:address/tokens/:id',
+        '/v2/districts',
+        '/v2/addresses/:address/contributions',
+        '/v2/ping',
+        '/v2/ready',
+      ],
+    }),
+  }
+}
+
 export const createTilesRequestHandler = (
   components: Pick<AppComponents, 'map' | 'features'>
 ) => {

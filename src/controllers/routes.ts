@@ -14,6 +14,7 @@ import {
   tilesInfoRequestHandler,
   miniMapHandler,
   estateMapHandler,
+  rootRequestHandler,
 } from './handlers'
 
 import { Router } from '@well-known-components/http-server'
@@ -34,6 +35,7 @@ export async function setupRouter(
     map.getLastUpdatedAt
   )
 
+  router.get('/', rootRequestHandler)
   router.get(
     '/v1/tiles',
     lastModifiedMiddlewareByMapDate,
