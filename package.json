@@ -34,7 +34,7 @@
     "@well-known-components/pg-component": "^1.1.0",
     "@well-known-components/thegraph-component": "^1.6.0",
     "@well-known-components/tracer-component": "^1.2.0",
-    "canvas": "^2.11.2",
+    "canvas": "^3.2.3",
     "cli-progress": "^3.9.0",
     "decentraland-transactions": "^2.18.1",
     "ethers": "^5.7.2",
