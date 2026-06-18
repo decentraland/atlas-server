@@ -1,6 +1,6 @@
 ARG RUN
 
-FROM node:24-alpine as builderenv
+FROM node:24-alpine@sha256:5fa278c599dbba0c8f873d8717d50ecbb57c5ae6a53b7ab240c25135e0b65995 as builderenv
 
 WORKDIR /app
 
@@ -33,7 +33,7 @@ RUN npm ci --only=production
 
 ########################## END OF BUILD STAGE ##########################
 
-FROM node:24-alpine
+FROM node:24-alpine@sha256:5fa278c599dbba0c8f873d8717d50ecbb57c5ae6a53b7ab240c25135e0b65995
 
 RUN apk update
 RUN apk add --no-cache tini \
