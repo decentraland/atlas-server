@@ -1,6 +1,6 @@
 ARG RUN
 
-FROM node:20-alpine as builderenv
+FROM node:24-alpine@sha256:5fa278c599dbba0c8f873d8717d50ecbb57c5ae6a53b7ab240c25135e0b65995 as builderenv
 
 WORKDIR /app
 
@@ -8,12 +8,14 @@ WORKDIR /app
 RUN apk update
 RUN apk add --no-cache py3-setuptools \
   python3-dev \
-  build-base \ 
+  build-base \
   g++ \
   cairo-dev \
   jpeg-dev \
   pango-dev \
-  giflib-dev
+  giflib-dev \
+  pixman-dev \
+  pkgconf
 
 # install dependencies
 COPY package.json /app/package.json
@@ -31,14 +33,15 @@ RUN npm ci --only=production
 
 ########################## END OF BUILD STAGE ##########################
 
-FROM node:20-alpine
+FROM node:24-alpine@sha256:5fa278c599dbba0c8f873d8717d50ecbb57c5ae6a53b7ab240c25135e0b65995
 
 RUN apk update
 RUN apk add --no-cache tini \
   cairo \
   jpeg \
   pango \
-  giflib
+  giflib \
+  pixman
 
 # NODE_ENV is used to configure some runtime options, like JSON logger
 ENV NODE_ENV production
