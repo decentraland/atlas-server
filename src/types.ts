@@ -1,15 +1,15 @@
 import {
   IConfigComponent,
   ILoggerComponent,
-  IHttpServerComponent,
   IMetricsComponent,
   ITracerComponent,
   IBaseComponent,
 } from '@well-known-components/interfaces'
+import { IHttpServerComponent } from '@dcl/core-commons'
 import { IRentalsComponent } from './modules/rentals/types'
-import { ISubgraphComponent } from '@well-known-components/thegraph-component'
-import { IPgComponent } from '@well-known-components/pg-component'
-import { IFeaturesComponent } from '@well-known-components/features-component'
+import { ISubgraphComponent } from '@dcl/thegraph-component'
+import { IPgComponent } from '@dcl/pg-component'
+import { IFeaturesComponent } from '@dcl/features-component'
 import { IApiComponent } from './modules/api/types'
 import { IMapComponent } from './modules/map/types'
 import { IDistrictComponent } from './modules/district/types'

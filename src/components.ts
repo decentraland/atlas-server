@@ -1,21 +1,18 @@
-import * as nodeFetch from 'node-fetch'
 import { createDotEnvConfigComponent } from '@well-known-components/env-config-provider'
-import {
-  createMetricsComponent,
-  instrumentHttpServerWithMetrics,
-} from '@well-known-components/metrics'
+import { createMetricsComponent } from '@dcl/metrics'
 import {
   createServerComponent,
   createStatusCheckComponent,
-  IFetchComponent,
-} from '@well-known-components/http-server'
-import { createFeaturesComponent } from '@well-known-components/features-component'
-import { createSubgraphComponent } from '@well-known-components/thegraph-component'
-import { createPgComponent } from '@well-known-components/pg-component'
+  instrumentHttpServerWithPromClientRegistry,
+} from '@dcl/http-server'
+import { createFeaturesComponent } from '@dcl/features-component'
+import { createSubgraphComponent } from '@dcl/thegraph-component'
+import { createPgComponent } from '@dcl/pg-component'
 import { createLogComponent } from '@well-known-components/logger'
-import { createTracerComponent } from '@well-known-components/tracer-component'
-import { createHttpTracerComponent } from '@well-known-components/http-tracer-component'
-import { instrumentHttpServerWithRequestLogger } from '@well-known-components/http-requests-logger-component'
+import { createTracerComponent } from '@dcl/tracer-component'
+import { createHttpTracerComponent } from '@dcl/http-tracer-component'
+import { instrumentHttpServerWithRequestLogger } from '@dcl/http-requests-logger-component'
+import { createTracedFetcherComponent } from '@dcl/traced-fetch-component'
 import { createApiComponent } from './modules/api/component'
 import { createDistrictComponent } from './modules/district/component'
 import { createImageComponent } from './modules/image/component'
@@ -42,27 +39,14 @@ export async function initComponents(): Promise<AppComponents> {
   }
   const subgraphURL = await config.requireString('SUBGRAPH_URL')
 
-  const fetch: IFetchComponent = {
-    fetch: (url: nodeFetch.RequestInfo, init?: nodeFetch.RequestInit) => {
-      const headers: nodeFetch.HeadersInit = { ...init?.headers }
-      const traceParent = tracer.isInsideOfTraceSpan()
-        ? tracer.getTraceChildString()
-        : null
-      if (traceParent) {
-        ;(headers as { [key: string]: string }).traceparent = traceParent
-        const traceState = tracer.getTraceStateString()
-        if (traceState) {
-          ;(headers as { [key: string]: string }).tracestate = traceState
-        }
-      }
-      return nodeFetch.default(url, { ...init, headers })
-    },
-  }
   const metrics = await createMetricsComponent(metricDeclarations, {
     config,
   })
   const tracer = createTracerComponent()
   const logs = await createLogComponent({ metrics, tracer })
+  // Native fetcher that propagates the active trace context. Replaces the
+  // previous hand-rolled node-fetch fetcher that injected traceparent manually.
+  const fetch = await createTracedFetcherComponent({ tracer })
   const batchLogs = {
     getLogger(name: string) {
       const logger = logs.getLogger(name)
@@ -78,7 +62,12 @@ export async function initComponents(): Promise<AppComponents> {
   createHttpTracerComponent({ server, tracer })
   instrumentHttpServerWithRequestLogger({ server, logger: logs })
 
-  await instrumentHttpServerWithMetrics({ metrics, server, config })
+  await instrumentHttpServerWithPromClientRegistry({
+    server,
+    metrics,
+    config,
+    registry: metrics.registry!,
+  })
   const subgraph = await createSubgraphComponent(
     { config, logs, fetch, metrics },
     subgraphURL

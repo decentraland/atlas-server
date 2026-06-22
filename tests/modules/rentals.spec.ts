@@ -1,5 +1,5 @@
 import { RentalListing } from '@dcl/schemas'
-import { IFetchComponent } from '@well-known-components/http-server'
+import { IFetchComponent } from '@dcl/core-commons'
 import {
   IConfigComponent,
   ILoggerComponent,

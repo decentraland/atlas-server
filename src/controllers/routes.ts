@@ -16,7 +16,7 @@ import {
   estateMapHandler,
 } from './handlers'
 
-import { Router } from '@well-known-components/http-server'
+import { Router } from '@dcl/http-server'
 
 export type RoutesComponents = Pick<
   AppComponents,
