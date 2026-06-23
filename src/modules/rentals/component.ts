@@ -47,6 +47,9 @@ export async function createRentalsComponent(components: {
         parsedErrorResult = await response.json()
       } catch (_) {
         // Ignore the JSON parse result error error.
+        // The body was not consumed by json(), so cancel it to avoid
+        // leaking the undrained response stream before throwing below.
+        await response.body?.cancel().catch(() => undefined)
       }
 
       if (parsedErrorResult) {
