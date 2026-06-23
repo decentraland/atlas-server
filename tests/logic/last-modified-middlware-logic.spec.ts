@@ -1,6 +1,5 @@
-import { IHttpServerComponent } from '@well-known-components/interfaces'
+import { IHttpServerComponent } from '@dcl/core-commons'
 import { lastModifiedMiddleware } from '../../src/logic/last-modified-middleware'
-import { Headers, Request } from 'node-fetch'
 import { Context } from '../../src/types'
 
 let mockedResponse: IHttpServerComponent.IResponse

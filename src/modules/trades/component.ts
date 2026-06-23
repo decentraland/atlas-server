@@ -1,7 +1,7 @@
 import { IBaseComponent } from '@well-known-components/interfaces'
 import { AppComponents } from '../../types'
 import { ContractName, getContract } from 'decentraland-transactions'
-import { IPgComponent } from '@well-known-components/pg-component'
+import { IPgComponent } from '@dcl/pg-component'
 import { ChainId, ListingStatus, TradeType } from '@dcl/schemas'
 import SQL from 'sql-template-strings'
 

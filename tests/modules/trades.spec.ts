@@ -1,6 +1,6 @@
 import { ChainId } from '@dcl/schemas'
 import { ILoggerComponent } from '@well-known-components/interfaces'
-import { IPgComponent } from '@well-known-components/pg-component'
+import { IPgComponent } from '@dcl/pg-component'
 import { createTradesComponent, ITradesComponent } from '../../src/modules/trades/component'
 
 describe('trades component', () => {
@@ -25,6 +25,8 @@ describe('trades component', () => {
       query: mockQuery,
       streamQuery: jest.fn(),
       getPool: jest.fn(),
+      withTransaction: jest.fn(),
+      withAsyncContextTransaction: jest.fn(),
       start: jest.fn(),
       stop: jest.fn(),
     }

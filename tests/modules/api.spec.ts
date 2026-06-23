@@ -4,7 +4,7 @@ import {
   ILoggerComponent,
   IMetricsComponent,
 } from '@well-known-components/interfaces'
-import { ISubgraphComponent } from '@well-known-components/thegraph-component'
+import { ISubgraphComponent } from '@dcl/thegraph-component'
 import { convertRentalListingToTileRentalListing } from '../../src/adapters/rentals'
 import {
   fromMillisecondsToSeconds,

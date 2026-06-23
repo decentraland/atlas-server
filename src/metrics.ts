@@ -1,9 +1,7 @@
 import { IMetricsComponent } from '@well-known-components/interfaces'
-import {
-  getDefaultHttpMetrics,
-  validateMetricsDeclaration,
-} from '@well-known-components/metrics'
-import { metricDeclarations as theGraphMetrics } from '@well-known-components/thegraph-component'
+import { getDefaultHttpMetrics } from '@dcl/http-server'
+import { validateMetricsDeclaration } from '@dcl/metrics'
+import { metricDeclarations as theGraphMetrics } from '@dcl/thegraph-component'
 import { metricDeclarations as loggerMetrics } from '@well-known-components/logger'
 
 export const metricDeclarations = {
