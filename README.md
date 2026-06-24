@@ -1,152 +1,270 @@
-# Atlas-server
+# Atlas Server
 
 [![Coverage Status](https://coveralls.io/repos/github/decentraland/atlas-server/badge.svg?branch=master)](https://coveralls.io/github/decentraland/atlas-server?branch=master)
 
-🗺 A server for the atlas map
+The Atlas Server is a comprehensive API solution designed for the Decentraland Genesis City map. This service provides tile data, map image generation, parcel and estate metadata, and district information for the Decentraland ecosystem.
 
-## Setup
+This server interacts with The Graph subgraph for on-chain marketplace data, PostgreSQL for trades data, AWS S3 or MinIO for map image storage, and the Signatures Server for rental listings to provide a complete atlas experience for Decentraland applications.
 
-1. Run `npm install`
-2. Run `npm run build`
-3. Run `npm start`
+## Table of Contents
 
-## Local development
+- [Features](#features)
+- [Dependencies & Related Services](#dependencies--related-services)
+- [API Documentation](#api-documentation)
+- [Getting Started](#getting-started)
+  - [Prerequisites](#prerequisites)
+  - [Installation](#installation)
+  - [Configuration](#configuration)
+  - [Running the Service](#running-the-service)
+- [Testing](#testing)
+- [How to Contribute](#how-to-contribute)
+- [License](#license)
 
-1. Run `docker-compose up` to start the minio service
-2. Run `npm start` to start the server
+## Features
 
-## Config
+- **Tile Data**: Serve all map tiles with comprehensive metadata (ownership, pricing, estate info, rental status) in v1 (legacy) and v2 formats
+- **Map Image Generation**: Generate PNG images of the Genesis City map with customizable dimensions, zoom, and highlighted selections
+- **Parcel Metadata**: Provide parcel details using the [OpenSea Metadata Standard](https://docs.opensea.io/docs/metadata-standards) for marketplace compatibility
+- **Estate Metadata**: Provide estate details with size, parcels list, and OpenSea-compatible metadata
+- **District Information**: Serve Genesis City districts data and user contributions
+- **Mini-Map Rendering**: Generate optimized mini-map images for embedded views
+- **Rental Integration**: Include rental listing information for LAND parcels and estates
+- **Caching & Performance**: Efficient caching with Last-Modified headers and S3 storage for generated assets
 
-The env variables and their default values are the following:
+## Dependencies & Related Services
 
-```
-PORT=5000
-HOST=0.0.0.0
-SUBGRAPH_URL=https://api.thegraph.com/subgraphs/name/decentraland/marketplace
-SUBGRAPH_COMPONENT_QUERY_TIMEOUT=30000
-API_BATCH_SIZE=1000
-API_CONCURRENCY=10
-REFRESH_INTERVAL=60
+This service interacts with the following services:
 
-# AWS S3 Configuration for local development (using minio)
-AWS_ACCESS_KEY_ID=admin
-AWS_SECRET_ACCESS_KEY=password
-AWS_S3_BUCKET=atlas-server
-AWS_S3_REGION=us-east-1
-AWS_S3_ENDPOINT=http://0.0.0.0:9000
-```
+- **[Decentraland Marketplace](https://github.com/decentraland/marketplace)**: Frontend that displays the atlas map
+- **[Decentraland Explorer](https://github.com/decentraland/explorer)**: Uses atlas for world navigation
 
-You can `cp .env.example .env` and tweak the ones you want to change
+External dependencies:
 
-## Endpoints
+- **The Graph Subgraph**: Marketplace subgraph for on-chain parcel, estate, and order data
+- **PostgreSQL**: Database for trades data (via dapps database)
+- **AWS S3 or MinIO**: Object storage for generated map images and tile data
+- **Signatures Server**: Rental listings data for LAND parcels
 
-### Tiles
+## API Documentation
 
-- `/v1/tiles`: Returns all the tiles in the map, with the legacy format:
+### Base URL
 
-```
+The service runs on port `5000` by default.
+
+### Authentication
+
+All endpoints are public and do not require authentication.
+
+### Key Endpoints
+
+| Category      | Endpoint                                   | Description                                    |
+| ------------- | ------------------------------------------ | ---------------------------------------------- |
+| Health        | `GET /v2/ping`                             | Service health check                           |
+| Health        | `GET /v2/ready`                            | Service readiness check                        |
+| Tiles         | `GET /v1/tiles`                            | Get all tiles (legacy format) - **Deprecated** |
+| Tiles         | `GET /v2/tiles`                            | Get all tiles (current format)                 |
+| Tiles         | `GET /v2/tiles/info`                       | Get tiles metadata/info                        |
+| Map           | `GET /v1/map.png`                          | Generate map image                             |
+| Map           | `GET /v2/map.png`                          | Generate map image (v2)                        |
+| Map           | `GET /v1/minimap.png`                      | Generate mini-map image                        |
+| Map           | `GET /v1/estatemap.png`                    | Generate estate map image                      |
+| Parcels       | `GET /v1/parcels/:x/:y/map.png`            | Generate map centered on parcel                |
+| Parcels       | `GET /v2/parcels/:x/:y`                    | Get parcel metadata (OpenSea format)           |
+| Estates       | `GET /v1/estates/:id/map.png`              | Generate map centered on estate                |
+| Estates       | `GET /v2/estates/:id`                      | Get estate metadata (OpenSea format)           |
+| Tokens        | `GET /v2/contracts/:address/tokens/:id`    | Get token metadata by contract                 |
+| Districts     | `GET /v2/districts`                        | List all districts                             |
+| Districts     | `GET /v2/districts/:id`                    | Get district details                           |
+| Contributions | `GET /v2/addresses/:address/contributions` | Get user contributions                         |
+
+### Tiles Endpoint
+
+The `/v2/tiles` endpoint returns all tiles in the map with the following format:
+
+```json
 {
-  type: number
-  x: number
-  y: number
-  owner?: string
-  estate_id?: string
-  name?: string
-  top?: number
-  left?: number
-  topLeft?: number
-  price?: number
+  "id": "string",
+  "x": "number",
+  "y": "number",
+  "type": "'owned' | 'unowned' | 'plaza' | 'road' | 'district'",
+  "top": "boolean",
+  "left": "boolean",
+  "topLeft": "boolean",
+  "updatedAt": "number",
+  "name": "string (optional)",
+  "owner": "string (optional)",
+  "estateId": "string (optional)",
+  "tokenId": "string (optional)",
+  "price": "number (optional)"
 }
 ```
 
-This endpoint has been **deprecated**, you should use the `/v2/tiles` endpoint, more info below.
+**Query Parameters:**
 
-- `/v2/tiles`: Returns all the tiles in the map, with the following format:
+| Parameter     | Description                       | Example                          |
+| ------------- | --------------------------------- | -------------------------------- |
+| `x1,y1,x2,y2` | Filter tiles by coordinates range | `?x1=10&y1=10&x2=20&y2=20`       |
+| `include`     | Select specific fields to include | `?include=type,top,left,topLeft` |
+| `exclude`     | Exclude specific fields           | `?exclude=updatedAt,tokenId`     |
 
-```
-{
-  id: string
-  x: number
-  y: number
-  type: 'owned' | 'unowned' | 'plaza' | 'road' | 'district'
-  top: boolean
-  left: boolean
-  topLeft: boolean
-  updatedAt: number
-  name?: string
-  owner?: string
-  estateId?: string
-  tokenId?: string
-  price?: number
-}
-```
+### Map Image Endpoint
 
-**Filter**: You can filter the results and the payloads using the following query params:
+The `/v1/map.png` endpoint generates a PNG of the Genesis City map with customization options:
 
-- `x1,y1,x2,y2`: You can request just a piece of the map, for example this will only return tiles between `10,10` and `20,20`:
+| Parameter  | Description                               | Example                       |
+| ---------- | ----------------------------------------- | ----------------------------- |
+| `width`    | Image width in pixels                     | `?width=1024`                 |
+| `height`   | Image height in pixels                    | `?height=1024`                |
+| `size`     | Tile size in pixels                       | `?size=10`                    |
+| `center`   | Map center coordinates                    | `?center=20,20`               |
+| `selected` | Highlighted parcels (semicolon-separated) | `?selected=10,10;10,11;11,10` |
+| `on-sale`  | Highlight parcels on sale in blue         | `?on-sale=true`               |
 
-```
-/v2/tiles?x1=10&y1=10&x2=20&y2=20
-```
-
-- `include`: You can select which fields to include in each tile, for example this would include only `type`, `top`, `left` and `topLeft`:
-
-```
-/v2/tiles?include=type,top,left,topLeft
-```
-
-- `exclude`: The opposite to the filter above, the fields you pass in this filter will be excluded from each tile, for example if you don't cate about the `updatedAt` and `tokenId` fields you can do:
-
-```
-/v2/tiles?exclude=updatedAt,tokenId
-```
-
-### Map
-
-- `/v1/map.png`: This endpoint returns a PNG of the genesis map. You can customize the following via query params:
-
-  - `width`: The width in pixels of the image, ie: `?width=1024`
-
-  - `height`: The height in pixels of the image, ie: `?height=1024`
-
-  - `size`: The size in pixels of each tile, for instance if `size` is `10`, all the tiles will be 10x10px, ie: `?size=10`
-
-  - `center`: The coords on which to center the map, ie: `?center=20,20`
-
-  - `selected`: A list of coords to be highlighted, separated with semicolons, ie: `?selected=10,10;10,11;11,10;11,11`
-
-  - `on-sale`: If true, the parcels and estates on sale will be displayed in blue.
-
-Example:
+**Example:**
 
 ```
 /v1/map.png?center=23,-23&selected=23,-23&size=20&width=2048&height=2048
 ```
 
-![example](https://user-images.githubusercontent.com/2781777/100786738-5324fd00-33f1-11eb-93c0-41bfe0bc799c.png)
+### Parcel/Estate Metadata
 
-- `/v1/parcels/:x/:y/map.png`: This endpoint returns a PNG of the map already centered and highlighting a Parcel. You can also adjust `width`, `height` and `size` via query params
+The `/v2/parcels/:x/:y` and `/v2/estates/:id` endpoints return metadata following the [OpenSea Metadata Standard](https://docs.opensea.io/docs/metadata-standards).
 
-- `/v1/estates/:id/map.png`: This endpoint returns a PNG of the map already centered and highlighting an Estate. You can also adjust `width`, `height` and `size` via query params
+**Contract Addresses (Mainnet):**
 
-- `/v2/parcels/:x/:y`: This endpoint returns metadata about a parcel by passing its coordinates. The metadata uses the [OpenSea Metadata Standard](https://docs.opensea.io/docs/metadata-standards).
+- LAND: `0xf87e31492faf9a91b02ee0deaad50d51d56d5d4d`
+- Estate: `0x959e104e1a4db6317fa58f8295f586e1a978c297`
 
-- `/v2/estates/:id`: This endpoint returns metadata about an estate by passing its id. The metadata uses the [OpenSea Metadata Standard](https://docs.opensea.io/docs/metadata-standards).
+## Getting Started
 
-- `/v2/contracts/:address/tokens/:id`: This endpoint returns metadata about a parcel or an estate, by passing the contract address and the token id. The contract address for LAND on mainnet is `0xf87e31492faf9a91b02ee0deaad50d51d56d5d4d` and the contract address for Estate on mainnet is `0x959e104e1a4db6317fa58f8295f586e1a978c297`. The metadata uses the [OpenSea Metadata Standard](https://docs.opensea.io/docs/metadata-standards).
+### Prerequisites
 
-- `/v2/districts`: Returns a list of all Districts in Genesis City.
+Before running this service, ensure you have the following installed:
 
-- `/v2/districts/:id`: Returns a specific district by `id`.
+- **Node.js**: Version 18 or higher
+- **npm**: Package manager
+- **Docker**: For containerized development (MinIO)
 
-- `/v2/addresses/:address/contributions`: Returns a list of contributions made by specific address. Each contribution includes the amount of parcels and the district `id` they were contributed to.
+**Apple M1 Users**: If `npm install` fails on `node-canvas`, install these dependencies:
 
-### Troubleshooting
+```bash
+brew install pkg-config cairo pango libpng jpeg giflib librsvg
+```
 
-- Installing `node-canvas` on Apple M1:
+### Installation
 
-If the `npm install` fails on the dependency `node-canvas` and you are running on an Apple M1 chip, try installing these dependencies via brew: `brew install pkg-config cairo pango libpng jpeg giflib librsvg`.
+1. Clone the repository:
+
+```bash
+git clone https://github.com/decentraland/atlas-server.git
+cd atlas-server
+```
+
+2. Install dependencies:
+
+```bash
+npm install
+```
+
+3. Build the project:
+
+```bash
+npm run build
+```
+
+### Configuration
+
+The service uses environment variables for configuration. Create a `.env` file:
+
+```bash
+cp .env.example .env
+```
+
+Key configuration variables:
+
+| Variable                           | Default                                                            | Description                     |
+| ---------------------------------- | ------------------------------------------------------------------ | ------------------------------- |
+| `PORT`                             | `5000`                                                             | Server port                     |
+| `HOST`                             | `0.0.0.0`                                                          | Server host                     |
+| `SUBGRAPH_URL`                     | `https://api.thegraph.com/subgraphs/name/decentraland/marketplace` | The Graph subgraph URL          |
+| `SUBGRAPH_COMPONENT_QUERY_TIMEOUT` | `30000`                                                            | Subgraph query timeout (ms)     |
+| `API_BATCH_SIZE`                   | `1000`                                                             | Batch size for API queries      |
+| `API_CONCURRENCY`                  | `10`                                                               | Concurrent API requests         |
+| `REFRESH_INTERVAL`                 | `60`                                                               | Data refresh interval (seconds) |
+| `AWS_ACCESS_KEY_ID`                | `admin`                                                            | S3/MinIO access key             |
+| `AWS_SECRET_ACCESS_KEY`            | `password`                                                         | S3/MinIO secret key             |
+| `AWS_S3_BUCKET`                    | `atlas-server`                                                     | S3 bucket name                  |
+| `AWS_S3_REGION`                    | `us-east-1`                                                        | S3 region                       |
+| `AWS_S3_ENDPOINT`                  | `http://0.0.0.0:9000`                                              | S3/MinIO endpoint               |
+
+### Running the Service
+
+#### Setting up the environment
+
+Start the MinIO service for local object storage:
+
+```bash
+docker-compose up -d
+```
+
+This will start:
+
+- MinIO on port `9000` (API) and `9001` (Console UI)
+
+#### Running in development mode
+
+To run the service in development mode with hot reload:
+
+```bash
+npm run start:dev
+```
+
+To run in production mode:
+
+```bash
+npm run build
+npm start
+```
+
+## Testing
+
+This service includes test coverage.
+
+### Running Tests
+
+Run all tests:
+
+```bash
+npm test
+```
+
+### Test Structure
+
+- **Unit Tests**: Located in `tests/` - Test adapters, logic, and modules
+  - `tests/adapters/` - Adapter tests (legacy-tiles, rentals)
+  - `tests/logic/` - Logic tests (error handling, middleware, NFTs)
+  - `tests/modules/` - Module tests (api, rentals, trades)
+
+## Troubleshooting
+
+### Installing node-canvas on Apple M1
+
+If the `npm install` fails on the dependency `node-canvas` and you are running on an Apple M1 chip, install these dependencies via brew:
+
+```bash
+brew install pkg-config cairo pango libpng jpeg giflib librsvg
+```
 
 ## AI Agent Context
 
 For detailed AI Agent context, see [docs/ai-agent-context.md](docs/ai-agent-context.md).
+
+---
+
+**Note**: Remember to configure your environment variables before running the service. The service requires access to The Graph subgraph and optionally S3/MinIO for image storage to function properly.
+
+### Migrations
+
+<!-- Remove this section if the service does not have a database -->
+
+The service does not manage its own database migrations. It reads from the dapps database which is managed by the marketplace-server.
