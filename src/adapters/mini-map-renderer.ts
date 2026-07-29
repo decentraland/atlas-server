@@ -7,10 +7,12 @@ export type MiniMapRendererComponent = {
 }
 
 /**
- * This minimap encodes information of districts and neighbours into the visible channels
+ * This minimap encodes information of the tiles and neighbours into the visible channels
  * RED = (top & 1) << 3 | (left & 1) << 4 | (topLeft & 1) << 5
- * GREEN = (isDistrict & 1) << 5 | (isRoad & 1) << 6 | (isOwned & 1) << 7
+ * GREEN = (isRoad & 1) << 6 | (isOwned & 1) << 7
  * BLUE = 0
+ *
+ * Bit 5 of GREEN flagged districts and is left unset: DAO proposal 9ee1965f-6a96-45f9-bb20-f60baa13607f
  */
 export async function createMiniMapRendererComponent(components: {
   map: IMapComponent
@@ -34,10 +36,6 @@ export async function createMiniMapRendererComponent(components: {
       if (topLeft) flagsR |= 32
 
       switch (type) {
-        case 'district': {
-          flagsG = 32
-          break
-        }
         case 'road': {
           flagsG = 64
           break

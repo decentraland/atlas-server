@@ -27,12 +27,12 @@ export interface IMapComponent {
   getLastUploadedTilesUrl: () => { v1?: string; v2?: string }
 }
 
+// Districts are not a tile type: DAO proposal 9ee1965f-6a96-45f9-bb20-f60baa13607f
 export enum TileType {
   OWNED = 'owned',
   UNOWNED = 'unowned',
   PLAZA = 'plaza',
   ROAD = 'road',
-  DISTRICT = 'district',
 }
 
 export type Tile = {
@@ -89,7 +89,7 @@ export const tileFields = [
 
 export type SpecialTile = {
   id: string
-  type: TileType.PLAZA | TileType.ROAD | TileType.DISTRICT
+  type: TileType.PLAZA | TileType.ROAD
   top: boolean
   left: boolean
   topLeft: boolean
