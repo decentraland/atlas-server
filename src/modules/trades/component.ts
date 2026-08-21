@@ -1,8 +1,7 @@
 import { IBaseComponent } from '@well-known-components/interfaces'
 import { AppComponents } from '../../types'
-import { ContractName, getContract } from 'decentraland-transactions'
 import { IPgComponent } from '@dcl/pg-component'
-import { ChainId, ListingStatus, TradeType } from '@dcl/schemas'
+import { ListingStatus, TradeType } from '@dcl/schemas'
 import SQL from 'sql-template-strings'
 
 export type Trade = {
@@ -29,14 +28,6 @@ export async function createTradesComponent(
 
   async function getActiveTrades(): Promise<Trade[]> {
     try {
-      const chainId = parseInt(
-        process.env.CHAIN_ID || ChainId.ETHEREUM_MAINNET.toString()
-      ) as ChainId
-
-      const marketplaceEthereum = getContract(
-        ContractName.OffChainMarketplace,
-        chainId
-      )
       const MARKETPLACE_SQUID_SCHEMA = 'squid_marketplace'
       const query = SQL`
       WITH trades_owner_ok AS (
@@ -94,10 +85,12 @@ export async function createTradesComponent(
               FILTER (WHERE assets_with_values.direction = 'sent')
               AS sent_token_id,
             CASE
-              WHEN COUNT(CASE WHEN trade_status.action = 'cancelled' THEN 1 END) > 0 THEN 'cancelled'
-              WHEN t.expires_at < now()::timestamptz(3) THEN '${
-                ListingStatus.CANCELLED
-              }'
+              /* Only the SIGNER's cancellation. cancelSignature takes no signer check and the contract
+                 scopes the flag to keccak256(caller, digest) while settlement reads keccak256(signer,
+                 digest), so a stranger cancelling is a no-op on chain. Counting it here let anyone
+                 grief a listing off the map while it stayed settleable. */
+              WHEN COUNT(CASE WHEN trade_status.action = 'cancelled' AND LOWER(trade_status.caller) = LOWER(t.signer) THEN 1 END) > 0 THEN 'cancelled'
+              WHEN t.expires_at < now()::timestamptz(3) THEN '${ListingStatus.CANCELLED}'
               WHEN (
                 (signer_signature_index.index IS NOT NULL AND signer_signature_index.index != (t.checks ->> 'signerSignatureIndex')::int)
                 OR (signer_signature_index.index IS NULL AND (t.checks ->> 'signerSignatureIndex')::int != 0)
@@ -106,9 +99,9 @@ export async function createTradesComponent(
                 (contract_signature_index.index IS NOT NULL AND contract_signature_index.index != (t.checks ->> 'contractSignatureIndex')::int)
                 OR (contract_signature_index.index IS NULL AND (t.checks ->> 'contractSignatureIndex')::int != 0)
               ) THEN '${ListingStatus.CANCELLED}'
-              WHEN COUNT(CASE WHEN trade_status.action = 'executed' THEN 1 END) >= (t.checks ->> 'uses')::int then '${
-                ListingStatus.SOLD
-              }'
+              /* DISTINCT because the assets join multiplies each trade into one row per asset, so
+                 fills were counted twice and a multi-use listing read sold early. */
+              WHEN COUNT(DISTINCT trade_status.id) FILTER (WHERE trade_status.action = 'executed') >= (t.checks ->> 'uses')::int then '${ListingStatus.SOLD}'
             ELSE '${ListingStatus.OPEN}'
             END AS status
           FROM marketplace.trades AS t
@@ -135,16 +128,26 @@ export async function createTradesComponent(
           LEFT JOIN ${MARKETPLACE_SQUID_SCHEMA}.nft AS nft ON (ta.contract_address = nft.contract_address AND erc721_asset.token_id::numeric = nft.token_id)
           LEFT JOIN ${MARKETPLACE_SQUID_SCHEMA}.account as account ON (account.id = nft.owner_id)
         ) AS assets_with_values ON t.id = assets_with_values.trade_id
-        LEFT JOIN squid_trades.trade AS trade_status ON trade_status.signature = t.hashed_signature
-        LEFT JOIN squid_trades.signature_index AS signer_signature_index ON LOWER(signer_signature_index.address) = LOWER(t.signer)
-        LEFT JOIN (
-          SELECT *
-          FROM squid_trades.signature_index signature_index
-          WHERE LOWER(signature_index.address) IN ('${marketplaceEthereum.address.toLowerCase()}')
-        ) AS contract_signature_index ON t.network = contract_signature_index.network
-        WHERE t.type = '${TradeType.PUBLIC_ITEM_ORDER}' or t.type = '${
-            TradeType.PUBLIC_NFT_ORDER
-          }'
+        /* Either identifier: V1/V2 key a cancellation on keccak256(signature bytes), V3 on the trade's
+           EIP-712 digest, and the indexer writes whichever applies into its signature column. */
+        LEFT JOIN squid_trades.trade AS trade_status ON trade_status.signature = ANY(ARRAY[t.hashed_signature, t.trade_digest])
+        /* signerSignatureIndex is storage on each marketplace deployment, so the same signer holds an
+           independent counter per version, and a row's identity is address + contract + network. Matching
+           on address alone returned several rows, which split one trade into several GROUP BY groups with
+           contradictory statuses - and since this query then keeps only status = open, the stale group
+           survived and a cancelled listing stayed on the map. */
+        LEFT JOIN squid_trades.signature_index AS signer_signature_index
+          ON signer_signature_index.address = LOWER(t.signer)
+          AND signer_signature_index.contract = LOWER(t.contract)
+          AND signer_signature_index.network = CASE WHEN t.network = 'MATIC' THEN 'POLYGON' ELSE t.network END
+        /* Keyed on the trade's own marketplace rather than a hardcoded list holding only Ethereum V1:
+           each version keeps an independent contractSignatureIndex, and the trade signed the value it read
+           from the version it targets. Exact on the row's whole identity so it matches at most one. */
+        LEFT JOIN squid_trades.signature_index AS contract_signature_index
+          ON contract_signature_index.address = LOWER(t.contract)
+          AND contract_signature_index.contract = LOWER(t.contract)
+          AND contract_signature_index.network = CASE WHEN t.network = 'MATIC' THEN 'POLYGON' ELSE t.network END
+        WHERE t.type = '${TradeType.PUBLIC_ITEM_ORDER}' or t.type = '${TradeType.PUBLIC_NFT_ORDER}'
         GROUP BY t.id, t.type, t.created_at, t.network, t.chain_id, t.signer, t.checks, contract_signature_index.index, signer_signature_index.index
       )
       SELECT * FROM trades_with_status WHERE status = '${ListingStatus.OPEN}'

@@ -95,4 +95,64 @@ describe('trades component', () => {
       })
     })
   })
+
+  /**
+   * Pins the trade-status predicates this query depends on.
+   *
+   * Assertions on the query TEXT, not on results: there is no database harness here, so unlike
+   * marketplace-server there is nowhere to seed indexer rows and assert a status. Each predicate below is
+   * one that was missing and produced a wrong status on the map. Behavioural coverage of the same rules
+   * lives in marketplace-server's trades-status integration spec.
+   */
+  describe('when building the active trades query', () => {
+    let queryText: string
+
+    beforeEach(async () => {
+      mockQuery.mockResolvedValue({ rows: [], rowCount: 0 })
+      await tradesComponent.getActiveTrades()
+      queryText = mockQuery.mock.calls[0][0].text
+    })
+
+    it('should match a trade on either identifier, so a V3 cancellation resolves', () => {
+      expect(queryText).toContain(
+        'trade_status.signature = ANY(ARRAY[t.hashed_signature, t.trade_digest])'
+      )
+    })
+
+    // cancelSignature takes no signer check, and the contract scopes the flag to keccak256(caller, digest)
+    // while settlement reads keccak256(signer, digest), so a stranger cancelling is a no-op on chain.
+    it('should count a cancellation only when the canceller is the trade signer', () => {
+      expect(queryText).toContain(
+        "trade_status.action = 'cancelled' AND LOWER(trade_status.caller) = LOWER(t.signer)"
+      )
+    })
+
+    it('should count executed fills per indexer row rather than per joined asset row', () => {
+      expect(queryText).toContain(
+        "COUNT(DISTINCT trade_status.id) FILTER (WHERE trade_status.action = 'executed')"
+      )
+    })
+
+    it('should scope the signer index to the marketplace that holds it', () => {
+      expect(queryText).toContain(
+        'signer_signature_index.contract = LOWER(t.contract)'
+      )
+    })
+
+    it('should key the contract index on the trade marketplace', () => {
+      expect(queryText).toContain(
+        'contract_signature_index.address = LOWER(t.contract)'
+      )
+    })
+
+    it('should no longer restrict the contract index to one hardcoded marketplace', () => {
+      expect(queryText).not.toContain('WHERE LOWER(signature_index.address) IN')
+    })
+
+    // The indexer spells Polygon POLYGON while trades.network holds @dcl/schemas' MATIC.
+    it('should translate the network name for both index joins', () => {
+      expect(queryText.match(/THEN 'POLYGON'/g)).toHaveLength(2)
+    })
+  })
+
 }) 
