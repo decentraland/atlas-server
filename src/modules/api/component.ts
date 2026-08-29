@@ -554,7 +554,7 @@ export async function createApiComponent(components: {
       rentalListing?.updatedAt || 0
     )
 
-    // special tiles are plazas, districts and roads
+    // special tiles are plazas and roads
     const specialTile = id in specialTiles ? specialTiles[id] : null
 
     const tile: Tile = {

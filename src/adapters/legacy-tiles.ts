@@ -6,8 +6,6 @@ export function getLegacyTile(tile: Partial<Tile>): number {
     return 10
   }
   switch (tile.type) {
-    case TileType.DISTRICT:
-      return 5
     case TileType.OWNED:
       return 9
     case TileType.UNOWNED:
