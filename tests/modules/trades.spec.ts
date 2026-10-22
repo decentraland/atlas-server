@@ -79,19 +79,15 @@ describe('trades component', () => {
     })
 
     describe('and the query fails', () => {
-      let result: any[]
+      let error: Error
 
-      beforeEach(async () => {
-        mockQuery.mockRejectedValueOnce(new Error('Database error'))
-        result = await tradesComponent.getActiveTrades()
+      beforeEach(() => {
+        error = new Error('Database error')
+        mockQuery.mockRejectedValueOnce(error)
       })
 
-      it('should return an empty array', () => {
-        expect(result).toEqual([])
-      })
-
-      it('should have attempted to query once', () => {
-        expect(mockQuery).toHaveBeenCalledTimes(1)
+      it('should reject with the query error', async () => {
+        await expect(tradesComponent.getActiveTrades()).rejects.toBe(error)
       })
     })
   })

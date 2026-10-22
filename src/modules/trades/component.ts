@@ -158,7 +158,7 @@ export async function createTradesComponent(
       return result.rows
     } catch (error) {
       logger.error(`Error fetching active trades: ${error}`)
-      return []
+      throw error
     }
   }
 
