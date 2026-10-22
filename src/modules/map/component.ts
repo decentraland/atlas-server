@@ -33,6 +33,8 @@ export async function createMapComponent(
   // config
   const refreshInterval =
     (await config.requireNumber('REFRESH_INTERVAL')) * 1000
+  const rentalsSweepInterval =
+    ((await config.getNumber('RENTALS_SWEEP_INTERVAL')) ?? 3600) * 1000
   const landContractAddress = await config.requireString(
     'LAND_CONTRACT_ADDRESS'
   )
@@ -57,6 +59,7 @@ export async function createMapComponent(
   // last trades fetched, reused when fetching them fails
   let activeTrades: Trade[] = []
   let cursors: Cursors = { land: 0, rentals: 0 }
+  let lastRentalsSweepAt = 0
   let lastUpdatedAt = 0 // newest change fetched, in ms
   let dataUpdatedAt = 0 // last change to the served data, in ms
   let lastUploadedTilesUrl: { v1?: string; v2?: string } = {}
@@ -333,6 +336,8 @@ export async function createMapComponent(
 
     baseTiles = initialBaseTiles
     cursors = result.cursors
+    // the full fetch reads every open rental listing
+    lastRentalsSweepAt = Date.now()
     lastUpdatedAt = result.updatedAt
     dataUpdatedAt = result.updatedAt
     tiles.resolve(tilesWithTrades)
@@ -436,7 +441,14 @@ export async function createMapComponent(
           const oldParcels = await parcels
           const oldEstates = await estates
 
-          const result = await api.fetchUpdatedData(cursors, baseTiles)
+          const sweepRentals =
+            Date.now() - lastRentalsSweepAt >= rentalsSweepInterval
+          const result = await api.fetchUpdatedData(cursors, baseTiles, {
+            sweepRentals,
+          })
+          if (result.rentalsSwept) {
+            lastRentalsSweepAt = Date.now()
+          }
           const hasUpdates =
             result.tiles.length > 0 ||
             result.parcels.length > 0 ||

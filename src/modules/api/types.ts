@@ -22,6 +22,8 @@ export type Result = Batch & {
   /** UTC ms of the newest change in the result. */
   updatedAt: number
   cursors: Cursors
+  /** True when the full sweep of open rental listings ran and was applied. */
+  rentalsSwept?: boolean
 }
 
 export type NFT = {
@@ -49,7 +51,8 @@ export interface IApiComponent {
    */
   fetchUpdatedData: (
     cursors: Cursors,
-    oldTiles: Record<string, Tile>
+    oldTiles: Record<string, Tile>,
+    options?: { sweepRentals?: boolean }
   ) => Promise<Result>
   getDissolvedEstate: (estateId: string) => Promise<NFT | null>
 }
@@ -63,6 +66,7 @@ export type OrderFragment = {
 }
 
 export type EstateFragment = {
+  id: string
   tokenId: string
   name: string | null
   updatedAt: string
@@ -71,9 +75,6 @@ export type EstateFragment = {
     data: {
       description: string | null
     } | null
-    parcels: {
-      nft: ParcelFragment
-    }[]
   }
 }
 
@@ -98,7 +99,6 @@ export type ParcelFragment = {
       data: {
         description: string | null
       } | null
-      parcels: { x: string; y: string }[]
       nft: {
         name: string
         owner: { id: string } | null

@@ -78,6 +78,7 @@ async function waitUntil(condition: () => boolean) {
 describe('map component', () => {
   let map: IMapComponent & IBaseComponent
   let refreshIntervalInSeconds: number
+  let rentalsSweepIntervalInSeconds: number
   let fetchData: jest.Mock
   let fetchUpdatedData: jest.Mock
   let getTilesJson: jest.Mock
@@ -89,6 +90,7 @@ describe('map component', () => {
 
   beforeEach(async () => {
     refreshIntervalInSeconds = 0.001
+    rentalsSweepIntervalInSeconds = 3600
     freshResult = {
       tiles: [buildTile('1,1'), buildTile('0,0', { type: TileType.PLAZA })],
       parcels: [],
@@ -113,6 +115,7 @@ describe('map component', () => {
   async function createMap() {
     const config = {
       requireNumber: jest.fn().mockResolvedValue(refreshIntervalInSeconds),
+      getNumber: jest.fn().mockResolvedValue(rentalsSweepIntervalInSeconds),
       requireString: jest.fn((name: string) =>
         Promise.resolve(
           name === 'ESTATE_CONTRACT_ADDRESS'
@@ -613,6 +616,35 @@ describe('map component', () => {
 
       it('should keep serving the previous tiles unchanged', async () => {
         expect((await map.getTiles())['1,1'].owner).toBe('0xold')
+      })
+    })
+
+    describe('and the rentals sweep interval has not elapsed since the full fetch', () => {
+      beforeEach(async () => {
+        fetchData.mockResolvedValueOnce(freshResult)
+        await startAndWaitUntilReady()
+        await waitUntil(() => fetchUpdatedData.mock.calls.length >= 1)
+      })
+
+      it('should not ask for the rentals sweep', () => {
+        expect(fetchUpdatedData.mock.calls[0][2]).toEqual({
+          sweepRentals: false,
+        })
+      })
+    })
+
+    describe('and the rentals sweep interval has elapsed', () => {
+      beforeEach(async () => {
+        rentalsSweepIntervalInSeconds = 0
+        fetchData.mockResolvedValueOnce(freshResult)
+        await startAndWaitUntilReady()
+        await waitUntil(() => fetchUpdatedData.mock.calls.length >= 1)
+      })
+
+      it('should ask for the rentals sweep', () => {
+        expect(fetchUpdatedData.mock.calls[0][2]).toEqual({
+          sweepRentals: true,
+        })
       })
     })
 

@@ -18,6 +18,7 @@ import {
   IApiComponent,
   NFT,
   ParcelFragment,
+  Result,
 } from '../../src/modules/api/types'
 import { Tile, TileType } from '../../src/modules/map/types'
 import { IRentalsComponent } from '../../src/modules/rentals'
@@ -27,6 +28,49 @@ const EXTERNAL_BASE_URL = 'http://external-base-url.com'
 const LAND_CONTRACT_ADDRESS = '0x1'
 const ESTATE_CONTRACT_ADDRESS = '0x2'
 const date = Date.now()
+const SNAPSHOT_BLOCK = 10
+const SNAPSHOT_TIMESTAMP = fromMillisecondsToSeconds(date) + 10
+
+type SubgraphWorld = {
+  parcels?: ParcelFragment[]
+  estates?: EstateFragment[]
+  estateParcels?: ParcelFragment[]
+  timestamp?: number
+}
+
+// answers the snapshot and id-paged queries the api makes, like the subgraph would
+function mockLandUpdates(world: SubgraphWorld): jest.Mock {
+  return jest.fn((query: string) => {
+    if (query.includes('_meta')) {
+      return Promise.resolve({
+        _meta: {
+          block: {
+            number: SNAPSHOT_BLOCK,
+            timestamp: world.timestamp ?? SNAPSHOT_TIMESTAMP,
+          },
+        },
+      })
+    }
+    const first = Number(/first: (\d+)/.exec(query)![1])
+    const lastId = /id_gt: "([^"]*)"/.exec(query)![1]
+    const estateIds = /searchParcelEstateId_in: (\[[^\]]*\])/.exec(query)
+    const items: { id: string }[] = estateIds
+      ? (world.estateParcels ?? []).filter((parcel) =>
+          (JSON.parse(estateIds[1]) as string[]).includes(
+            parcel.searchParcelEstateId!
+          )
+        )
+      : query.includes('category: estate')
+      ? world.estates ?? []
+      : world.parcels ?? []
+    return Promise.resolve({
+      nfts: [...items]
+        .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
+        .filter((item) => item.id > lastId)
+        .slice(0, first),
+    })
+  })
+}
 
 let apiComponent: IApiComponent
 let configComponentMock: IConfigComponent
@@ -93,10 +137,6 @@ beforeEach(async () => {
         },
         tokenId: '1',
         size: 2,
-        parcels: [
-          { x: '1', y: '1' },
-          { x: '1', y: '2' },
-        ],
         nft: {
           name: 'Estate 0',
           owner: {
@@ -288,7 +328,7 @@ beforeEach(async () => {
     }),
   }
   rentalsComponentMock = {
-    getRentalsListingsOfNFTs: jest.fn(),
+    getOpenRentalListings: jest.fn(),
     getUpdatedRentalListings: jest.fn(),
   }
   subgraphComponentMock = {
@@ -345,12 +385,10 @@ describe('when fetching data', () => {
     })
   })
 
-  describe('and fetching the rental listings of the retrieved nfts fails', () => {
+  describe('and fetching the open rental listings fails', () => {
     beforeEach(() => {
-      subgraphComponentMock.query = jest
-        .fn()
-        .mockResolvedValueOnce({ nfts: [{ id: 'aNFTId' }] })
-      rentalsComponentMock.getRentalsListingsOfNFTs = jest
+      subgraphComponentMock.query = mockLandUpdates({})
+      rentalsComponentMock.getOpenRentalListings = jest
         .fn()
         .mockRejectedValueOnce(new Error('An error ocurred'))
     })
@@ -373,11 +411,21 @@ describe('when fetching data', () => {
       ]
       subgraphComponentMock.query = jest
         .fn()
+        .mockResolvedValueOnce({
+          _meta: { block: { number: SNAPSHOT_BLOCK, timestamp: 1234 } },
+        })
         .mockResolvedValueOnce({ nfts: nftFragments })
         .mockResolvedValueOnce({ nfts: [] })
-      rentalsComponentMock.getRentalsListingsOfNFTs = jest
+      rentalsComponentMock.getOpenRentalListings = jest
         .fn()
-        .mockResolvedValueOnce({})
+        .mockResolvedValueOnce([])
+    })
+
+    it("should read the batches at the snapshot's block", async () => {
+      await apiComponent.fetchData()
+      expect(
+        (subgraphComponentMock.query as jest.Mock).mock.calls[1][0]
+      ).toContain(`block: { number: ${SNAPSHOT_BLOCK} }`)
     })
 
     it('should return the tiles, the parcels and the estates', () => {
@@ -394,10 +442,7 @@ describe('when fetching data', () => {
         ],
         estates: [fstEstateNFT],
         updatedAt: fromSecondsToMilliseconds(Number(defaultParcel.updatedAt)),
-        cursors: {
-          land: Number(defaultParcel.updatedAt),
-          rentals: expect.any(Number),
-        },
+        cursors: { land: 1234, rentals: expect.any(Number) },
       })
     })
   })
@@ -450,10 +495,6 @@ describe('when fetching data', () => {
             ...defaultFstParcelEstate.parcel.estate!,
             tokenId: '2',
             size: 2,
-            parcels: [
-              { x: '4', y: '3' },
-              { x: '5', y: '3' },
-            ],
             nft: {
               ...defaultFstParcelEstate.parcel.estate?.nft!,
               name: 'Estate 1',
@@ -491,8 +532,9 @@ describe('when fetching data', () => {
 
       fourthParcelRentalListing = {
         id: 'fourthParcelRentalId',
+        status: RentalStatus.OPEN,
         nftId: fourthParcel.id,
-        expiration: date,
+        expiration: date + 100000000,
         createdAt: date,
         updatedAt: date,
         periods: [{ minDays: 1, maxDays: 1, pricePerDay: '10000000' }],
@@ -506,18 +548,21 @@ describe('when fetching data', () => {
 
       subgraphComponentMock.query = jest
         .fn()
+        .mockResolvedValueOnce({
+          _meta: {
+            block: { number: SNAPSHOT_BLOCK, timestamp: maxDateInSeconds },
+          },
+        })
         .mockResolvedValueOnce({ nfts: nftFragments.splice(0, 3) })
         .mockResolvedValueOnce({ nfts: nftFragments.splice(0, 6) })
         .mockResolvedValueOnce({ nfts: [] })
-      rentalsComponentMock.getRentalsListingsOfNFTs = jest
+      rentalsComponentMock.getOpenRentalListings = jest
         .fn()
-        .mockResolvedValueOnce({})
-        .mockResolvedValueOnce({
-          [fourthParcelRentalListing.nftId]: fourthParcelRentalListing,
-          [fifthParcelEstateRentalListing.nftId]:
-            fifthParcelEstateRentalListing,
-        })
-        .mockResolvedValueOnce({})
+        .mockResolvedValueOnce([
+          fourthParcelRentalListing,
+          fifthParcelEstateRentalListing,
+          { ...fourthParcelRentalListing, nftId: 'parcel-0x0-404' },
+        ])
     })
 
     it('should return the tiles, the parcels and the estates with their rental listings', () => {
@@ -826,16 +871,13 @@ describe('when fetching update data', () => {
       updatedAt: (maxDateInSeconds - 1).toString(),
     }
     fstEstate = {
+      id: 'estate-0x0-1',
       tokenId: '1',
       name: 'Estate 0',
       updatedAt: maxDateInSeconds.toString(),
       estate: {
         size: 2,
         data: { description: '' },
-        parcels: [
-          { nft: defaultFstParcelEstate },
-          { nft: defaultSndParcelEstate },
-        ],
       },
     }
     fstParcelTile = {
@@ -904,9 +946,11 @@ describe('when fetching update data', () => {
         ...defaultParcel,
         updatedAt: (cursors.land + 5).toString(),
       }
-      subgraphComponentMock.query = jest
-        .fn()
-        .mockResolvedValueOnce({ parcels: [updatedParcel], estates: [] })
+      subgraphComponentMock.query = mockLandUpdates({
+        estateParcels: [defaultFstParcelEstate, defaultSndParcelEstate],
+        parcels: [updatedParcel],
+        estates: [],
+      })
       rentalsComponentMock.getUpdatedRentalListings = jest
         .fn()
         .mockRejectedValueOnce(new Error('An error ocurred'))
@@ -915,7 +959,7 @@ describe('when fetching update data', () => {
     it('should advance the land cursor and keep the rentals cursor', async () => {
       const result = await apiComponent.fetchUpdatedData(cursors, {})
       expect(result.cursors).toEqual({
-        land: cursors.land + 5,
+        land: SNAPSHOT_TIMESTAMP,
         rentals: cursors.rentals,
       })
     })
@@ -972,32 +1016,36 @@ describe('when fetching update data', () => {
 
   describe('and there are no parcels, estates or rental listings updated', () => {
     beforeEach(() => {
-      subgraphComponentMock.query = jest
-        .fn()
-        .mockResolvedValueOnce({ parcels: [], estates: [] })
+      subgraphComponentMock.query = mockLandUpdates({
+        estateParcels: [defaultFstParcelEstate, defaultSndParcelEstate],
+        parcels: [],
+        estates: [],
+      })
       rentalsComponentMock.getUpdatedRentalListings = jest
         .fn()
         .mockResolvedValueOnce([])
     })
 
-    it('should return no assets and keep the cursors', () => {
+    it("should return no assets, move the land cursor to the snapshot block's timestamp and keep the rentals cursor", () => {
       return expect(
         apiComponent.fetchUpdatedData(cursors, {})
       ).resolves.toEqual({
         tiles: [],
         parcels: [],
         estates: [],
-        updatedAt: cursors.rentals,
-        cursors,
+        updatedAt: fromSecondsToMilliseconds(SNAPSHOT_TIMESTAMP),
+        cursors: { land: SNAPSHOT_TIMESTAMP, rentals: cursors.rentals },
       })
     })
   })
 
   describe('and there are only parcels to be updated', () => {
     beforeEach(() => {
-      subgraphComponentMock.query = jest
-        .fn()
-        .mockResolvedValueOnce({ parcels: [defaultParcel], estates: [] })
+      subgraphComponentMock.query = mockLandUpdates({
+        estateParcels: [defaultFstParcelEstate, defaultSndParcelEstate],
+        parcels: [defaultParcel],
+        estates: [],
+      })
       rentalsComponentMock.getUpdatedRentalListings = jest
         .fn()
         .mockResolvedValueOnce([])
@@ -1010,20 +1058,19 @@ describe('when fetching update data', () => {
         tiles: [defaultParcelTile],
         parcels: [defaultParcelNFT],
         estates: [],
-        updatedAt: defaultParcelTile.updatedAt,
-        cursors: {
-          land: Number(defaultParcel.updatedAt),
-          rentals: cursors.rentals,
-        },
+        updatedAt: fromSecondsToMilliseconds(SNAPSHOT_TIMESTAMP),
+        cursors: { land: SNAPSHOT_TIMESTAMP, rentals: cursors.rentals },
       })
     })
   })
 
   describe('and there are only estates to be updated', () => {
     beforeEach(() => {
-      subgraphComponentMock.query = jest
-        .fn()
-        .mockResolvedValueOnce({ parcels: [], estates: [fstEstate] })
+      subgraphComponentMock.query = mockLandUpdates({
+        estateParcels: [defaultFstParcelEstate, defaultSndParcelEstate],
+        parcels: [],
+        estates: [fstEstate],
+      })
       rentalsComponentMock.getUpdatedRentalListings = jest
         .fn()
         .mockResolvedValueOnce([])
@@ -1036,28 +1083,20 @@ describe('when fetching update data', () => {
         tiles: [defaultFstParcelEstateTile, defaultSndParcelEstateTile],
         parcels: [defaultFstParcelEstateNFT, defaultSndParcelEstateNFT],
         estates: [fstEstateNFT],
-        updatedAt: fromSecondsToMilliseconds(Number(fstEstate.updatedAt)),
-        cursors: {
-          land: Number(fstEstate.updatedAt),
-          rentals: cursors.rentals,
-        },
+        updatedAt: fromSecondsToMilliseconds(SNAPSHOT_TIMESTAMP),
+        cursors: { land: SNAPSHOT_TIMESTAMP, rentals: cursors.rentals },
       })
     })
   })
 
   describe('and an updated estate was dissolved', () => {
     beforeEach(() => {
-      subgraphComponentMock.query = jest.fn().mockResolvedValueOnce({
-        parcels: [],
+      subgraphComponentMock.query = mockLandUpdates({
         estates: [
           {
             ...fstEstate,
             name: 'Old estate',
-            estate: {
-              size: 0,
-              data: { description: 'Gone' },
-              parcels: [],
-            },
+            estate: { size: 0, data: { description: 'Gone' } },
           },
         ],
       })
@@ -1086,7 +1125,8 @@ describe('when fetching update data', () => {
 
   describe('and there are parcels and estates to be updated', () => {
     beforeEach(() => {
-      subgraphComponentMock.query = jest.fn().mockResolvedValueOnce({
+      subgraphComponentMock.query = mockLandUpdates({
+        estateParcels: [defaultFstParcelEstate, defaultSndParcelEstate],
         parcels: [fstParcel],
         estates: [fstEstate],
       })
@@ -1110,15 +1150,16 @@ describe('when fetching update data', () => {
           defaultSndParcelEstateNFT,
         ],
         estates: [fstEstateNFT],
-        updatedAt: fromSecondsToMilliseconds(maxDateInSeconds),
-        cursors: { land: maxDateInSeconds, rentals: cursors.rentals },
+        updatedAt: fromSecondsToMilliseconds(SNAPSHOT_TIMESTAMP),
+        cursors: { land: SNAPSHOT_TIMESTAMP, rentals: cursors.rentals },
       })
     })
   })
 
   describe('and there are only listings that belong to a parcel to be be updated', () => {
     beforeEach(() => {
-      subgraphComponentMock.query = jest.fn().mockResolvedValueOnce({
+      subgraphComponentMock.query = mockLandUpdates({
+        estateParcels: [defaultFstParcelEstate, defaultSndParcelEstate],
         parcels: [],
         estates: [],
       })
@@ -1152,7 +1193,8 @@ describe('when fetching update data', () => {
 
   describe('and there are only listings that belong to an estate to be updated', () => {
     beforeEach(() => {
-      subgraphComponentMock.query = jest.fn().mockResolvedValueOnce({
+      subgraphComponentMock.query = mockLandUpdates({
+        estateParcels: [defaultFstParcelEstate, defaultSndParcelEstate],
         parcels: [],
         estates: [],
       })
@@ -1194,7 +1236,8 @@ describe('when fetching update data', () => {
 
   describe('and there are only listing that belong to estates and parcels to be updated', () => {
     beforeEach(() => {
-      subgraphComponentMock.query = jest.fn().mockResolvedValueOnce({
+      subgraphComponentMock.query = mockLandUpdates({
+        estateParcels: [defaultFstParcelEstate, defaultSndParcelEstate],
         parcels: [],
         estates: [],
       })
@@ -1247,7 +1290,8 @@ describe('when fetching update data', () => {
 
   describe('and there are only rental listings that belong to parcels that are not open anymore', () => {
     beforeEach(() => {
-      subgraphComponentMock.query = jest.fn().mockResolvedValueOnce({
+      subgraphComponentMock.query = mockLandUpdates({
+        estateParcels: [defaultFstParcelEstate, defaultSndParcelEstate],
         parcels: [],
         estates: [],
       })
@@ -1284,7 +1328,8 @@ describe('when fetching update data', () => {
 
   describe('and there are only rental listings that belong to estates that are not open anymore', () => {
     beforeEach(() => {
-      subgraphComponentMock.query = jest.fn().mockResolvedValueOnce({
+      subgraphComponentMock.query = mockLandUpdates({
+        estateParcels: [defaultFstParcelEstate, defaultSndParcelEstate],
         parcels: [],
         estates: [],
       })
@@ -1355,7 +1400,8 @@ describe('when fetching update data', () => {
         name: updatedDefaultParcel.name!,
       }
 
-      subgraphComponentMock.query = jest.fn().mockResolvedValueOnce({
+      subgraphComponentMock.query = mockLandUpdates({
+        estateParcels: [defaultFstParcelEstate, defaultSndParcelEstate],
         parcels: [updatedDefaultParcel],
         estates: [],
       })
@@ -1395,13 +1441,7 @@ describe('when fetching update data', () => {
         searchParcelEstateId: defaultFstParcelEstate.searchParcelEstateId,
         parcel: {
           ...defaultParcel.parcel,
-          estate: {
-            ...defaultFstParcelEstate.parcel.estate!,
-            parcels: [
-              ...defaultFstParcelEstate.parcel.estate!.parcels,
-              { x: '0', y: '2' },
-            ],
-          },
+          estate: defaultFstParcelEstate.parcel.estate,
         },
       }
       updatedDefaultParcelTileIntoFstEstate = {
@@ -1413,17 +1453,14 @@ describe('when fetching update data', () => {
 
       updatedFstEstate = {
         ...fstEstate,
-        estate: {
-          ...fstEstate.estate,
-          parcels: [
-            ...fstEstate.estate.parcels,
-            {
-              nft: updatedDefaultParcelIntoFstEstate,
-            },
-          ],
-        },
+        estate: { ...fstEstate.estate, size: 3 },
       }
-      subgraphComponentMock.query = jest.fn().mockResolvedValueOnce({
+      subgraphComponentMock.query = mockLandUpdates({
+        estateParcels: [
+          updatedDefaultParcelIntoFstEstate,
+          defaultFstParcelEstate,
+          defaultSndParcelEstate,
+        ],
         parcels: [updatedDefaultParcelIntoFstEstate],
         estates: [updatedFstEstate],
       })
@@ -1492,7 +1529,8 @@ describe('when fetching update data', () => {
         }
         oldTiles[tile.id] = tile
       }
-      subgraphComponentMock.query = jest.fn().mockResolvedValueOnce({
+      subgraphComponentMock.query = mockLandUpdates({
+        estateParcels: [defaultFstParcelEstate, defaultSndParcelEstate],
         parcels: [],
         estates: [],
       })
@@ -1515,7 +1553,8 @@ describe('when fetching update data', () => {
 
   describe('and an updated parcel has an order with its creation time', () => {
     beforeEach(() => {
-      subgraphComponentMock.query = jest.fn().mockResolvedValueOnce({
+      subgraphComponentMock.query = mockLandUpdates({
+        estateParcels: [defaultFstParcelEstate, defaultSndParcelEstate],
         parcels: [
           {
             ...defaultParcel,
@@ -1538,218 +1577,258 @@ describe('when fetching update data', () => {
     })
   })
 
-  describe('and calculating the cursors', () => {
-    let maxDateInSeconds: number
-    let maxDateInMilliseconds: number
+  describe('and an updated estate has more parcels than fit in a page', () => {
+    let estateParcels: ParcelFragment[]
+    let result: Result
 
-    describe('and there are no updates', () => {
-      beforeEach(() => {
-        subgraphComponentMock.query = jest.fn().mockResolvedValueOnce({
-          parcels: [],
-          estates: [],
-        })
-        rentalsComponentMock.getUpdatedRentalListings = jest
+    beforeEach(async () => {
+      estateParcels = Array.from({ length: 150 }, (_, i) => ({
+        ...defaultFstParcelEstate,
+        id: `parcel-0x0-big-${String(i).padStart(3, '0')}`,
+        tokenId: `big-${i}`,
+        searchParcelX: i === 149 ? '18' : '1000',
+        searchParcelY: i === 149 ? '-139' : `${i}`,
+      }))
+      subgraphComponentMock.query = mockLandUpdates({
+        estates: [fstEstate],
+        estateParcels,
+      })
+      rentalsComponentMock.getUpdatedRentalListings = jest
+        .fn()
+        .mockResolvedValueOnce([])
+      result = await apiComponent.fetchUpdatedData(cursors, {})
+    })
+
+    it('should update the tiles of all its parcels', () => {
+      expect(result.tiles.length).toBe(150)
+    })
+
+    it("should compute the estate's proximity from all its parcels", () => {
+      expect(result.estates[0].attributes).toEqual(
+        expect.arrayContaining([
+          {
+            trait_type: 'Distance to Plaza',
+            value: 5,
+            display_type: 'number',
+          },
+          { trait_type: 'Distance to Road', value: 0, display_type: 'number' },
+        ])
+      )
+    })
+  })
+
+  describe('and more parcels changed in the same second than fit in a page', () => {
+    let result: Result
+
+    beforeEach(async () => {
+      subgraphComponentMock.query = mockLandUpdates({
+        parcels: [0, 1, 2].map((i) => ({
+          ...defaultParcel,
+          id: `parcel-0x0-${i}`,
+          tokenId: `${i}`,
+          searchParcelX: `${i}`,
+        })),
+      })
+      rentalsComponentMock.getUpdatedRentalListings = jest
+        .fn()
+        .mockResolvedValueOnce([])
+      result = await apiComponent.fetchUpdatedData(cursors, {})
+    })
+
+    it('should return all of them', () => {
+      expect(result.tiles.map((tile) => tile.id)).toEqual(['0,1', '1,1', '2,1'])
+    })
+  })
+
+  describe('and parcels and estates changed', () => {
+    let queries: string[]
+
+    beforeEach(async () => {
+      subgraphComponentMock.query = mockLandUpdates({
+        parcels: [fstParcel],
+        estates: [fstEstate],
+        estateParcels: [defaultFstParcelEstate, defaultSndParcelEstate],
+      })
+      rentalsComponentMock.getUpdatedRentalListings = jest
+        .fn()
+        .mockResolvedValueOnce([])
+      await apiComponent.fetchUpdatedData(cursors, {})
+      queries = (subgraphComponentMock.query as jest.Mock).mock.calls.map(
+        ([query]) => query
+      )
+    })
+
+    it("should read every page at the snapshot's block", () => {
+      expect(
+        queries
+          .filter((query) => !query.includes('_meta'))
+          .every((query) =>
+            query.includes(`block: { number: ${SNAPSHOT_BLOCK} }`)
+          )
+      ).toBe(true)
+    })
+
+    it('should read the snapshot first', () => {
+      expect(queries[0]).toContain('_meta')
+    })
+  })
+
+  describe('and the rentals sweep is requested', () => {
+    let result: Result
+    let staleEstateTile: Tile
+
+    beforeEach(() => {
+      staleEstateTile = {
+        ...defaultFstParcelEstateTile,
+        rentalListing: convertRentalListingToTileRentalListing(
+          fstEstateRentalListing
+        ),
+      }
+      subgraphComponentMock.query = mockLandUpdates({})
+      rentalsComponentMock.getUpdatedRentalListings = jest
+        .fn()
+        .mockResolvedValueOnce([])
+    })
+
+    describe('and the open listings are fetched', () => {
+      beforeEach(async () => {
+        rentalsComponentMock.getOpenRentalListings = jest
           .fn()
-          .mockResolvedValueOnce([])
+          .mockResolvedValueOnce([
+            {
+              ...defaultParcelRentalListing,
+              expiration: date + 100000000,
+            },
+            // still open but already expired
+            {
+              ...fstEstateRentalListing,
+              nftId: `estate-${ESTATE_CONTRACT_ADDRESS}-1`,
+              expiration: date - 1000,
+            },
+          ])
+        result = await apiComponent.fetchUpdatedData(
+          cursors,
+          {
+            [defaultParcelTile.id]: defaultParcelTile,
+            [staleEstateTile.id]: staleEstateTile,
+          },
+          { sweepRentals: true }
+        )
       })
 
-      it('should keep both cursors', async () => {
-        const result = await apiComponent.fetchUpdatedData(cursors, {})
-        expect(result.cursors).toEqual(cursors)
+      it('should add the missing listings and drop the ones that are no longer open or expired', () => {
+        expect(result.tiles).toEqual([
+          {
+            ...defaultParcelTile,
+            rentalListing: convertRentalListingToTileRentalListing({
+              ...defaultParcelRentalListing,
+              expiration: date + 100000000,
+            }),
+          },
+          defaultFstParcelEstateTile,
+        ])
+      })
+
+      it('should report the sweep as done', () => {
+        expect(result.rentalsSwept).toBe(true)
       })
     })
 
-    describe('and there are only parcels updates', () => {
-      let maxDateInSeconds: number
-      beforeEach(() => {
-        maxDateInSeconds = fromMillisecondsToSeconds(Date.now())
-        const parcel1 = {
-          ...defaultParcel,
-          id: '1',
-          tokenId: '1',
-          searchParcelX: '0',
-          searchParcelY: '1',
-          updatedAt: maxDateInSeconds.toString(),
-        }
+    describe('and fetching the open listings fails', () => {
+      beforeEach(async () => {
+        rentalsComponentMock.getOpenRentalListings = jest
+          .fn()
+          .mockRejectedValueOnce(new Error('signatures down'))
+        result = await apiComponent.fetchUpdatedData(
+          cursors,
+          { [staleEstateTile.id]: staleEstateTile },
+          { sweepRentals: true }
+        )
+      })
 
-        const parcel2 = {
-          ...defaultParcel,
-          id: '2',
-          tokenId: '2',
-          searchParcelX: '0',
-          searchParcelY: '2',
-          updatedAt: (maxDateInSeconds - 1).toString(),
-        }
-        subgraphComponentMock.query = jest.fn().mockResolvedValueOnce({
-          parcels: [parcel1, parcel2],
-          estates: [],
+      it('should keep the current listings and not report the sweep as done', () => {
+        expect({ tiles: result.tiles, swept: result.rentalsSwept }).toEqual({
+          tiles: [],
+          swept: undefined,
+        })
+      })
+    })
+  })
+
+  describe('and calculating the cursors', () => {
+    let snapshotTimestamp: number
+
+    beforeEach(() => {
+      snapshotTimestamp = fromMillisecondsToSeconds(date) + 10
+    })
+
+    describe('and there are no updates', () => {
+      beforeEach(() => {
+        subgraphComponentMock.query = mockLandUpdates({
+          timestamp: snapshotTimestamp,
         })
         rentalsComponentMock.getUpdatedRentalListings = jest
           .fn()
           .mockResolvedValueOnce([])
       })
 
-      it('should move the land cursor to the newest parcel and keep the rentals cursor', async () => {
+      it("should move the land cursor to the snapshot block's timestamp and keep the rentals cursor", async () => {
         const result = await apiComponent.fetchUpdatedData(cursors, {})
         expect(result.cursors).toEqual({
-          land: maxDateInSeconds,
+          land: snapshotTimestamp,
           rentals: cursors.rentals,
         })
       })
     })
 
-    describe('and there are only estates updates', () => {
-      beforeEach(() => {
-        maxDateInSeconds = fromMillisecondsToSeconds(Date.now())
-        const parcel1Estate = {
-          ...defaultFstParcelEstate,
-          parcel: {
-            ...defaultFstParcelEstate.parcel,
-            estate: {
-              ...defaultFstParcelEstate.parcel.estate,
-              nft: {
-                ...defaultFstParcelEstate.parcel.estate!.nft,
-                updatedAt: maxDateInSeconds.toString(),
-              },
-            },
-          },
-          updatedAt: (maxDateInSeconds - 1).toString(),
-        }
-        const parcel2Estate = {
-          ...defaultSndParcelEstate,
-          parcel: {
-            ...defaultSndParcelEstate.parcel,
-            estate: {
-              ...defaultSndParcelEstate.parcel.estate!,
-              nft: {
-                ...defaultSndParcelEstate.parcel.estate!.nft,
-                updatedAt: maxDateInSeconds.toString(),
-              },
-            },
-          },
-          updatedAt: (maxDateInSeconds - 2).toString(),
-        }
-        const estate: EstateFragment = {
-          ...fstEstate,
-          estate: {
-            ...fstEstate.estate,
-            parcels: [
-              { nft: parcel1Estate as ParcelFragment },
-              { nft: parcel2Estate as ParcelFragment },
-            ],
-          },
-          updatedAt: maxDateInSeconds.toString(),
-        }
+    describe('and there are updates on parcels and listings', () => {
+      let maxDateInMilliseconds: number
 
-        subgraphComponentMock.query = jest.fn().mockResolvedValueOnce({
-          parcels: [],
-          estates: [estate],
+      beforeEach(() => {
+        maxDateInMilliseconds = Date.now()
+        subgraphComponentMock.query = mockLandUpdates({
+          parcels: [
+            {
+              ...defaultParcel,
+              updatedAt: (snapshotTimestamp - 5).toString(),
+            },
+          ],
+          timestamp: snapshotTimestamp,
+        })
+        rentalsComponentMock.getUpdatedRentalListings = jest
+          .fn()
+          .mockResolvedValueOnce([
+            { ...defaultParcelRentalListing, updatedAt: maxDateInMilliseconds },
+            {
+              ...fstEstateRentalListing,
+              updatedAt: maxDateInMilliseconds - 1,
+            },
+          ])
+      })
+
+      it("should move the land cursor to the snapshot block's timestamp and the rentals cursor to the newest listing", async () => {
+        const result = await apiComponent.fetchUpdatedData(cursors, {})
+        expect(result.cursors).toEqual({
+          land: snapshotTimestamp,
+          rentals: maxDateInMilliseconds,
+        })
+      })
+    })
+
+    describe('and the snapshot is older than the land cursor', () => {
+      beforeEach(() => {
+        cursors = { ...cursors, land: snapshotTimestamp + 100 }
+        subgraphComponentMock.query = mockLandUpdates({
+          timestamp: snapshotTimestamp,
         })
         rentalsComponentMock.getUpdatedRentalListings = jest
           .fn()
           .mockResolvedValueOnce([])
       })
 
-      it('should move the land cursor to the newest estate', async () => {
+      it('should keep the land cursor', async () => {
         const result = await apiComponent.fetchUpdatedData(cursors, {})
-        expect(result.cursors.land).toBe(maxDateInSeconds)
-      })
-    })
-
-    describe('and there are only listings updates', () => {
-      beforeEach(() => {
-        subgraphComponentMock.query = jest.fn().mockResolvedValueOnce({
-          parcels: [],
-          estates: [],
-        })
-        maxDateInMilliseconds = Date.now()
-
-        const rentalListing1 = {
-          ...defaultParcelRentalListing,
-          updatedAt: maxDateInMilliseconds,
-        }
-        const rentalListing2 = {
-          ...fstEstateRentalListing,
-          updatedAt: maxDateInMilliseconds - 1,
-        }
-        rentalsComponentMock.getUpdatedRentalListings = jest
-          .fn()
-          .mockResolvedValueOnce([rentalListing1, rentalListing2])
-      })
-
-      it('should move the rentals cursor to the newest listing and keep the land cursor', async () => {
-        const result = await apiComponent.fetchUpdatedData(cursors, {})
-        expect(result.cursors).toEqual({
-          land: cursors.land,
-          rentals: maxDateInMilliseconds,
-        })
-      })
-    })
-
-    describe('and there are updates on parcels, estates and listings', () => {
-      beforeEach(() => {
-        maxDateInMilliseconds = Date.now()
-
-        const rentalListing1 = {
-          ...defaultParcelRentalListing,
-          updatedAt: maxDateInMilliseconds,
-        }
-
-        const parcel1 = {
-          ...defaultParcel,
-          id: '1',
-          tokenId: '1',
-          searchParcelX: '0',
-          searchParcelY: '1',
-          updatedAt: (
-            fromMillisecondsToSeconds(maxDateInMilliseconds) - 1
-          ).toString(),
-        }
-
-        const parcel1Estate = {
-          ...defaultSndParcelEstate,
-          parcel: {
-            ...defaultSndParcelEstate.parcel,
-            estate: {
-              ...defaultSndParcelEstate.parcel.estate!,
-              nft: {
-                ...defaultSndParcelEstate.parcel.estate!.nft,
-                updatedAt: (
-                  fromMillisecondsToSeconds(maxDateInMilliseconds) - 2
-                ).toString(),
-              },
-            },
-          },
-          updatedAt: (
-            fromMillisecondsToSeconds(maxDateInMilliseconds) - 3
-          ).toString(),
-        }
-        const estate: EstateFragment = {
-          ...fstEstate,
-          estate: {
-            ...fstEstate.estate,
-            parcels: [{ nft: parcel1Estate as ParcelFragment }],
-          },
-          updatedAt: (
-            fromMillisecondsToSeconds(maxDateInMilliseconds) - 2
-          ).toString(),
-        }
-
-        subgraphComponentMock.query = jest.fn().mockResolvedValueOnce({
-          parcels: [parcel1],
-          estates: [estate],
-        })
-        rentalsComponentMock.getUpdatedRentalListings = jest
-          .fn()
-          .mockResolvedValueOnce([rentalListing1])
-      })
-
-      it('should move each cursor to the newest change of its own source', async () => {
-        const result = await apiComponent.fetchUpdatedData(cursors, {})
-        expect(result.cursors).toEqual({
-          land: fromMillisecondsToSeconds(maxDateInMilliseconds) - 1,
-          rentals: maxDateInMilliseconds,
-        })
+        expect(result.cursors.land).toBe(snapshotTimestamp + 100)
       })
     })
   })
