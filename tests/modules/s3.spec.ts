@@ -93,20 +93,17 @@ describe('when using the S3 component', () => {
       })
     })
 
-    describe('and tiles are uploaded and read back', () => {
-      let result: { url: string; tiles: Record<string, Tile> | null }
+    describe('and tiles and a timestamp are uploaded', () => {
+      let url: string
 
       beforeEach(async () => {
-        result = {
-          url: await s3.uploadTilesJson('v2', { [tile.id]: tile }),
-          tiles: await s3.getTilesJson('v2'),
-        }
+        url = await s3.uploadTilesJson('v2', { [tile.id]: tile })
+        await s3.uploadTimestamp(1234)
       })
 
-      it('should not reach S3 and behave as an empty bucket', () => {
-        expect({ ...result, sends: sendSpy.mock.calls.length }).toEqual({
+      it('should not reach S3 and return no URL', () => {
+        expect({ url, sends: sendSpy.mock.calls.length }).toEqual({
           url: '',
-          tiles: null,
           sends: 0,
         })
       })
@@ -146,11 +143,11 @@ describe('when using the S3 component', () => {
         })
       })
 
-      describe('and the v1 file URL is requested', () => {
+      describe('and the v1 tiles are uploaded', () => {
         let url: string
 
         beforeEach(async () => {
-          url = await s3.getFileUrl('v1')
+          url = await s3.uploadTilesJson('v1', { [tile.id]: tile })
         })
 
         it('should return the public S3 URL of the v1 file', () => {
@@ -160,35 +157,26 @@ describe('when using the S3 component', () => {
         })
       })
 
-      describe('and tiles are uploaded and read back', () => {
-        let tiles: Record<string, Tile> | null
+      describe('and the stored tiles are read from the bucket', () => {
+        let stored: unknown
 
         beforeEach(async () => {
           await s3.uploadTilesJson('v2', { [tile.id]: tile })
-          tiles = await s3.getTilesJson('v2')
+          stored = JSON.parse(
+            Buffer.from(bucket.get('tiles/v2/latest.json')!.bytes).toString(
+              'utf8'
+            )
+          )
         })
 
-        it('should read the same tiles that were uploaded', () => {
-          expect(tiles).toEqual({ [tile.id]: tile })
-        })
-      })
-
-      describe('and tiles of a version that was never uploaded are read', () => {
-        let tiles: Record<string, Tile> | null
-
-        beforeEach(async () => {
-          await s3.uploadTilesJson('v2', { [tile.id]: tile })
-          tiles = await s3.getTilesJson('v1')
-        })
-
-        it('should return null', () => {
-          expect(tiles).toBeNull()
+        it('should hold the tiles response that was uploaded', () => {
+          expect(stored).toEqual({ ok: true, data: { [tile.id]: tile } })
         })
       })
 
       describe('and a timestamp is uploaded', () => {
         beforeEach(async () => {
-          await s3.uploadTimestamp(1234, 2)
+          await s3.uploadTimestamp(1234)
         })
 
         it('should store it under the timestamp key of the bucket', () => {
@@ -201,28 +189,20 @@ describe('when using the S3 component', () => {
         })
       })
 
-      describe('and a timestamp is uploaded and read back', () => {
-        let timestamp: Awaited<ReturnType<IS3Component['getTimestamp']>>
+      describe('and the stored timestamp is read from the bucket', () => {
+        let stored: unknown
 
         beforeEach(async () => {
-          await s3.uploadTimestamp(1234, 2)
-          timestamp = await s3.getTimestamp()
+          await s3.uploadTimestamp(1234)
+          stored = JSON.parse(
+            Buffer.from(bucket.get('tiles/timestamp.json')!.bytes).toString(
+              'utf8'
+            )
+          )
         })
 
-        it('should read the same timestamp and format version', () => {
-          expect(timestamp).toEqual({ timestamp: 1234, version: 2 })
-        })
-      })
-
-      describe('and the timestamp was never uploaded', () => {
-        let timestamp: Awaited<ReturnType<IS3Component['getTimestamp']>>
-
-        beforeEach(async () => {
-          timestamp = await s3.getTimestamp()
-        })
-
-        it('should return null', () => {
-          expect(timestamp).toBeNull()
+        it('should hold only the timestamp', () => {
+          expect(stored).toEqual({ timestamp: 1234 })
         })
       })
 
@@ -253,11 +233,11 @@ describe('when using the S3 component', () => {
         })
       })
 
-      describe('and the v2 file URL is requested', () => {
+      describe('and the v2 tiles are uploaded', () => {
         let url: string
 
         beforeEach(async () => {
-          url = await s3.getFileUrl('v2')
+          url = await s3.uploadTilesJson('v2', { [tile.id]: tile })
         })
 
         it('should return the path-style URL on the endpoint', () => {
