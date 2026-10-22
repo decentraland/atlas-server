@@ -146,14 +146,14 @@ export async function createMapComponent(
       const v2 = await s3.uploadTilesJson('v2', tilesData)
       componentLogger.info(`Uploaded v2 tiles to ${v2}`)
 
-      // redirect only once both files hold the data being served
-      lastUploadedTilesUrl = { v1, v2 }
-
       // Upload timestamp separately
       await s3.uploadTimestamp(lastUpdatedAt, TILES_CACHE_VERSION)
       componentLogger.info(`Uploaded timestamp to S3`)
+
+      // redirect only once the whole upload succeeded
+      lastUploadedTilesUrl = { v1, v2 }
     } catch (error) {
-      // a failed upload can leave the files in S3 older than the served data
+      // after a failed upload the files in S3 may be older than the served data
       lastUploadedTilesUrl = {}
       componentLogger.warn(
         `Failed to upload tiles to S3 (will serve from memory): ${error}`
