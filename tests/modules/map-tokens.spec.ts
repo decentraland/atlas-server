@@ -35,6 +35,7 @@ describe('when looking up a token in the map', () => {
       parcels: [parcel],
       estates: [],
       updatedAt: 1000,
+      cursors: { land: 1, rentals: 1000 },
     }
     const config = {
       requireNumber: jest.fn().mockResolvedValue(60),
@@ -57,10 +58,7 @@ describe('when looking up a token in the map', () => {
       config,
       logs: { getLogger: () => logger },
       s3: {
-        getTilesJson: jest.fn().mockResolvedValue(null),
-        getTimestamp: jest.fn().mockResolvedValue(null),
         uploadTilesJson: jest.fn().mockResolvedValue('https://cdn.example.com'),
-        getFileUrl: jest.fn().mockResolvedValue('https://cdn.example.com'),
         uploadTimestamp: jest.fn().mockResolvedValue(undefined),
       } as unknown as IS3Component,
       trades: {

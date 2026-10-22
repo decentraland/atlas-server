@@ -10,7 +10,21 @@ export type Batch = {
   parcels: NFT[]
   estates: NFT[]
 }
-export type Result = Batch & { updatedAt: number }
+/** Where the next incremental fetch resumes, one cursor per source. */
+export type Cursors = {
+  /** Timestamp (seconds) of the subgraph head when the last land fetch started; the next one re-reads a window before it. */
+  land: number
+  /** Signatures server updatedAt (ms) of the newest rental listing change applied. */
+  rentals: number
+}
+
+export type Result = Batch & {
+  /** UTC ms of the newest of both cursors, the land one converted to ms. */
+  updatedAt: number
+  cursors: Cursors
+  /** True when the full sweep of open rental listings ran and was applied. */
+  rentalsSwept?: boolean
+}
 
 export type NFT = {
   id: string
@@ -31,9 +45,14 @@ export type Attribute = {
 export interface IApiComponent {
   events: EventEmitter
   fetchData: () => Promise<Result>
+  /**
+   * Fetches the land and rental listing changes after the given cursors.
+   * @throws When the land changes can't be fetched; a rental listings failure keeps their cursor.
+   */
   fetchUpdatedData: (
-    updatedAfter: number,
-    oldTiles: Record<string, Tile>
+    cursors: Cursors,
+    oldTiles: Record<string, Tile>,
+    options?: { sweepRentals?: boolean }
   ) => Promise<Result>
   getDissolvedEstate: (estateId: string) => Promise<NFT | null>
 }
@@ -42,14 +61,20 @@ export type OrderFragment = {
   price: string
   /** The time in milliseconds when the order expires */
   expiresAt: string
+  /** The time in seconds when the order was created */
+  createdAt?: string
 }
 
 export type EstateFragment = {
+  id: string
+  tokenId: string
+  name: string | null
   updatedAt: string
   estate: {
-    parcels: {
-      nft: ParcelFragment
-    }[]
+    size: number | null
+    data: {
+      description: string | null
+    } | null
   }
 }
 
@@ -74,7 +99,6 @@ export type ParcelFragment = {
       data: {
         description: string | null
       } | null
-      parcels: { x: string; y: string }[]
       nft: {
         name: string
         owner: { id: string } | null

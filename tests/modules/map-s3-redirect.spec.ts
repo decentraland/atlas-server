@@ -17,7 +17,6 @@ import { AppComponents } from '../../src/types'
 
 jest.mock('../../src/modules/map/data/specialTiles.json', () => ({}))
 
-const CACHE_VERSION = 2
 const V1_URL = 'https://cdn.example.com/tiles/v1/latest.json'
 const V2_URL = 'https://cdn.example.com/tiles/v2/latest.json'
 
@@ -49,8 +48,6 @@ describe('when the map uploads the tiles to S3', () => {
   let map: IMapComponent & IBaseComponent
   let fetchData: jest.Mock
   let fetchUpdatedData: jest.Mock
-  let getTilesJson: jest.Mock
-  let getTimestamp: jest.Mock
   let uploadTilesJson: jest.Mock
   let uploadTimestamp: jest.Mock
   let freshResult: Result
@@ -62,6 +59,7 @@ describe('when the map uploads the tiles to S3', () => {
       parcels: [],
       estates: [],
       updatedAt: 5000,
+      cursors: { land: 5, rentals: 5000 },
     }
     fetchData = jest.fn().mockResolvedValue(freshResult)
     fetchUpdatedData = jest.fn().mockResolvedValue({
@@ -69,9 +67,8 @@ describe('when the map uploads the tiles to S3', () => {
       parcels: [],
       estates: [],
       updatedAt: 5000,
+      cursors: { land: 5, rentals: 5000 },
     })
-    getTilesJson = jest.fn().mockResolvedValue(null)
-    getTimestamp = jest.fn().mockResolvedValue(null)
     uploadTilesJson = jest.fn()
     uploadTimestamp = jest.fn().mockResolvedValue(undefined)
   })
@@ -91,12 +88,7 @@ describe('when the map uploads the tiles to S3', () => {
       }),
     }
     const s3 = {
-      getTilesJson,
-      getTimestamp,
       uploadTilesJson,
-      getFileUrl: jest.fn((version: string) =>
-        Promise.resolve(version === 'v1' ? V1_URL : V2_URL)
-      ),
       uploadTimestamp,
     } as unknown as IS3Component
     const trades = {
@@ -141,43 +133,6 @@ describe('when the map uploads the tiles to S3', () => {
     })
   })
 
-  describe('and the tiles were loaded from the S3 cache', () => {
-    beforeEach(() => {
-      getTilesJson.mockResolvedValueOnce({ '1,1': buildTile('1,1') })
-      getTimestamp.mockResolvedValueOnce({
-        timestamp: 3000,
-        version: CACHE_VERSION,
-      })
-    })
-
-    describe('and the upload of the served tiles succeeds', () => {
-      beforeEach(async () => {
-        uploadTilesJson.mockImplementation((version: string) =>
-          Promise.resolve(version === 'v1' ? V1_URL : V2_URL)
-        )
-        await startAndWaitUntilReady(3600)
-      })
-
-      it('should expose the uploaded urls for the redirect', () => {
-        expect(map.getLastUploadedTilesUrl()).toEqual({
-          v1: V1_URL,
-          v2: V2_URL,
-        })
-      })
-    })
-
-    describe('and the upload of the served tiles fails', () => {
-      beforeEach(async () => {
-        uploadTilesJson.mockRejectedValue(new Error('S3 unavailable'))
-        await startAndWaitUntilReady(3600)
-      })
-
-      it('should not expose the cached files for the redirect', () => {
-        expect(map.getLastUploadedTilesUrl()).toEqual({})
-      })
-    })
-  })
-
   describe('and the tiles upload succeeds but the timestamp upload fails', () => {
     beforeEach(async () => {
       uploadTilesJson.mockImplementation((version: string) =>
@@ -216,6 +171,7 @@ describe('when the map uploads the tiles to S3', () => {
         parcels: [],
         estates: [],
         updatedAt: 6000,
+        cursors: { land: 6, rentals: 6000 },
       })
       await startAndWaitUntilReady(0.001)
       await waitUntil(() => uploadTilesJson.mock.calls.length >= 3)

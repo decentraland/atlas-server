@@ -39,7 +39,6 @@
     "canvas": "^3.2.3",
     "cli-progress": "^3.9.0",
     "fp-future": "^1.0.1",
-    "p-limit": "^3.1.0",
     "sql-template-strings": "^2.2.2"
   },
   "devDependencies": {

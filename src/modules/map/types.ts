@@ -6,6 +6,7 @@ export type MapConfig = {
   LAND_CONTRACT_ADDRESS: string
   ESTATE_CONTRACT_ADDRESS: string
   REFRESH_INTERVAL: number
+  RENTALS_SWEEP_INTERVAL: number
 }
 
 export enum MapEvents {
@@ -68,6 +69,8 @@ export type Tile = {
   expiresAt?: number
   /** The rental listing associated with the parcel ir represents or estate that the tile is in. */
   rentalListing?: TileRentalListing
+  /** Internal: UTC ms when the active order was created, used to rank it against trades. Never served. */
+  orderCreatedAt?: number
 }
 
 export const tileFields = [

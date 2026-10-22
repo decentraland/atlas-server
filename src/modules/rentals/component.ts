@@ -1,4 +1,3 @@
-import pLimit from 'p-limit'
 import { RentalStatus, RentalListing } from '@dcl/schemas'
 import { IFetchComponent } from '@dcl/core-commons'
 import {
@@ -11,8 +10,6 @@ import {
   SignaturesServerErrorResponse,
 } from './types'
 
-const HTTP_MAX_URL_LENGTH = 2048
-const MAX_CONCURRENT_REQUEST = 2
 const LIMIT_RENTAL_LISTINGS = 100
 const RENTALS_REQUEST_TIMEOUT = 30000
 
@@ -82,59 +79,50 @@ export async function createRentalsComponent(components: {
     }
   }
 
-  /** Gets the open rental listings of the NFTs identified by the given NFT ids.
-   * @param nftIds The ids of the NFTs to get the rental listings for.
-   * @throws An error if the request fails.
+  /** Gets every open rental listing, page by page.
+   * @throws An error if a request fails.
    */
-  async function getRentalsListingsOfNFTs(
-    nftIds: string[]
-  ): Promise<Record<string, RentalListing>> {
-    const baseUrl = `/v1/rentals-listings?rentalStatus=${RentalStatus.OPEN}`
-    const limit = pLimit(MAX_CONCURRENT_REQUEST)
-    componentLogger.info(`Getting rental listings for ${nftIds.length} NFTs`)
-    // Build URLs to get all the queried NFTs
-    let urls: string[] = []
-    let url = baseUrl
-    for (let nftId of nftIds) {
-      if (url.length < HTTP_MAX_URL_LENGTH - signaturesServerURL.length) {
-        url += `&nftIds=${nftId}`
-      } else {
-        urls.push(url)
-        url = baseUrl + `&nftIds=${nftId}`
-      }
-    }
-
-    // Push the last url
-    if (url !== baseUrl) {
-      urls.push(url)
-    }
-
-    const results: SignaturesServerPaginatedResponse<RentalListing[]>[] =
-      await Promise.all(
-        urls.map((url, i) =>
-          limit(() => {
-            componentLogger.info(`Rental listings request ${i}: ${url}`)
-            return fetchRentalListings(url).catch((error) => {
-              limit.clearQueue()
-              throw error
-            })
-          })
-        )
+  async function getOpenRentalListings(): Promise<RentalListing[]> {
+    let total = 0
+    let rentalListings: RentalListing[] = []
+    componentLogger.info(`Starting to fetch the open rental listings`)
+    do {
+      const page = await fetchRentalListings(
+        `/v1/rentals-listings?status=${RentalStatus.OPEN}&limit=${LIMIT_RENTAL_LISTINGS}&offset=${rentalListings.length}`
       )
-    componentLogger.info(`Finished to get the NFTs rental listings`)
-    return (
-      results
-        .flatMap((result) => result.data.results)
-        // Although no returned rental should be null or undefined, there have been cases where the rental listing was not accessible
-        // this is a temporary change to see if the access problems were related to retrieved rental listings
-        .filter(Boolean)
-        .reduce((rentalListings, rentalListing) => {
-          return {
-            ...rentalListings,
-            [rentalListing.nftId]: rentalListing,
-          }
-        }, {})
+      rentalListings = rentalListings.concat(page.data.results)
+      total = page.data.total
+      if (page.data.results.length === 0) {
+        break
+      }
+    } while (rentalListings.length < total)
+    componentLogger.info(
+      `Finished fetching ${rentalListings.length} open rental listings`
     )
+    // Although no returned rental should be null or undefined, there have been cases where the rental listing was not accessible
+    return rentalListings.filter(Boolean)
+  }
+
+  /** Gets the open rental listings of the given NFTs, a page of ids at a time.
+   * @param nftIds The ids of the NFTs (parcels or estates).
+   * @throws An error if a request fails.
+   */
+  async function getOpenRentalListingsOfNfts(
+    nftIds: string[]
+  ): Promise<RentalListing[]> {
+    const rentalListings: RentalListing[] = []
+    for (let i = 0; i < nftIds.length; i += LIMIT_RENTAL_LISTINGS) {
+      const ids = nftIds.slice(i, i + LIMIT_RENTAL_LISTINGS)
+      const page = await fetchRentalListings(
+        `/v1/rentals-listings?status=${
+          RentalStatus.OPEN
+        }&limit=${LIMIT_RENTAL_LISTINGS}&${ids
+          .map((id) => `nftIds=${encodeURIComponent(id)}`)
+          .join('&')}`
+      )
+      rentalListings.push(...page.data.results.filter(Boolean))
+    }
+    return rentalListings
   }
 
   /** Gets the updated rental listings that were updated after the given date.
@@ -165,7 +153,8 @@ export async function createRentalsComponent(components: {
   }
 
   return {
-    getRentalsListingsOfNFTs,
+    getOpenRentalListings,
+    getOpenRentalListingsOfNfts,
     getUpdatedRentalListings,
   }
 }

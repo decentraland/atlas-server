@@ -29,7 +29,6 @@ jest.mock('../../src/modules/map/data/specialTiles.json', () => ({
 
 const LAND_CONTRACT_ADDRESS = '0xland'
 const ESTATE_CONTRACT_ADDRESS = '0xestate'
-const CACHE_VERSION = 2
 const futureExpiration = Math.round(Date.now() / 1000) + 3600
 const pastExpiration = Math.round(Date.now() / 1000) - 3600
 
@@ -78,6 +77,7 @@ async function waitUntil(condition: () => boolean) {
 describe('map component', () => {
   let map: IMapComponent & IBaseComponent
   let refreshIntervalInSeconds: number
+  let rentalsSweepIntervalInSeconds: number
   let fetchData: jest.Mock
   let fetchUpdatedData: jest.Mock
   let getTilesJson: jest.Mock
@@ -89,11 +89,13 @@ describe('map component', () => {
 
   beforeEach(async () => {
     refreshIntervalInSeconds = 0.001
+    rentalsSweepIntervalInSeconds = 3600
     freshResult = {
       tiles: [buildTile('1,1'), buildTile('0,0', { type: TileType.PLAZA })],
       parcels: [],
       estates: [],
       updatedAt: 5000,
+      cursors: { land: 5, rentals: 5000 },
     }
     fetchData = jest.fn()
     fetchUpdatedData = jest.fn().mockResolvedValue({
@@ -101,6 +103,7 @@ describe('map component', () => {
       parcels: [],
       estates: [],
       updatedAt: 5000,
+      cursors: { land: 5, rentals: 5000 },
     })
     getTilesJson = jest.fn().mockResolvedValue(null)
     getTimestamp = jest.fn().mockResolvedValue(null)
@@ -110,7 +113,13 @@ describe('map component', () => {
 
   async function createMap() {
     const config = {
-      requireNumber: jest.fn().mockResolvedValue(refreshIntervalInSeconds),
+      requireNumber: jest.fn((name: string) =>
+        Promise.resolve(
+          name === 'RENTALS_SWEEP_INTERVAL'
+            ? rentalsSweepIntervalInSeconds
+            : refreshIntervalInSeconds
+        )
+      ),
       requireString: jest.fn((name: string) =>
         Promise.resolve(
           name === 'ESTATE_CONTRACT_ADDRESS'
@@ -132,7 +141,6 @@ describe('map component', () => {
       getTilesJson,
       getTimestamp,
       uploadTilesJson,
-      getFileUrl: jest.fn().mockResolvedValue('https://cdn.example.com'),
       uploadTimestamp: jest.fn().mockResolvedValue(undefined),
     } as unknown as IS3Component
     const trades = { getActiveTrades } as unknown as ITradesComponent
@@ -202,14 +210,20 @@ describe('map component', () => {
       })
     })
 
-    describe('and the S3 cache was written by an older version', () => {
+    describe('and S3 has tiles uploaded by a previous run', () => {
       beforeEach(async () => {
-        getTilesJson.mockResolvedValueOnce(
-          toRecord([buildTile('1,1', { name: 'Cached' })])
+        getTilesJson.mockResolvedValue(
+          toRecord([buildTile('1,1', { name: 'Cached', owner: '0xstale' })])
         )
-        getTimestamp.mockResolvedValueOnce({ timestamp: 3000 })
+        getTimestamp.mockResolvedValue({ timestamp: 3000, version: 2 })
         fetchData.mockResolvedValueOnce(freshResult)
         await startAndWaitUntilReady()
+      })
+
+      it('should not read them', () => {
+        expect(
+          getTilesJson.mock.calls.length + getTimestamp.mock.calls.length
+        ).toBe(0)
       })
 
       it('should serve the freshly fetched tiles', async () => {
@@ -221,116 +235,70 @@ describe('map component', () => {
       it('should use the timestamp of the fresh data', () => {
         expect(map.getLastUpdatedAt()).toBe(5000)
       })
+
+      it('should poll from the cursors of the fresh data', async () => {
+        await waitUntil(() => fetchUpdatedData.mock.calls.length >= 1)
+        expect(fetchUpdatedData.mock.calls[0][0]).toEqual(freshResult.cursors)
+      })
     })
 
-    describe('and the S3 cache has tiles with outdated special types', () => {
+    describe('and a tile has an order newer than an active trade', () => {
       beforeEach(async () => {
-        getTilesJson.mockResolvedValueOnce(
-          toRecord([
-            buildTile('1,1', { type: TileType.DISTRICT }),
-            buildTile('0,0', { type: TileType.PLAZA }),
-          ])
-        )
-        getTimestamp.mockResolvedValueOnce({
-          timestamp: 3000,
-          version: CACHE_VERSION,
-        })
+        freshResult.tiles = [
+          buildTile('1,1', {
+            price: 20,
+            expiresAt: futureExpiration,
+            orderCreatedAt: 3000,
+            updatedAt: 9000,
+          }),
+        ]
+        fetchData.mockResolvedValueOnce(freshResult)
+        getActiveTrades.mockResolvedValueOnce([buildTrade()])
+        await startAndWaitUntilReady()
+      })
+
+      it('should show the order price', async () => {
+        expect((await map.getTiles())['1,1'].price).toBe(20)
+      })
+    })
+
+    describe('and a tile updated after its order was created has an older order than an active trade', () => {
+      beforeEach(async () => {
+        freshResult.tiles = [
+          buildTile('1,1', {
+            price: 20,
+            expiresAt: futureExpiration,
+            orderCreatedAt: 1000,
+            updatedAt: 9000,
+          }),
+        ]
+        fetchData.mockResolvedValueOnce(freshResult)
+        getActiveTrades.mockResolvedValueOnce([buildTrade()])
+        await startAndWaitUntilReady()
+      })
+
+      it('should show the trade price', async () => {
+        expect((await map.getTiles())['1,1'].price).toBe(3)
+      })
+    })
+
+    describe('and a tile has an order', () => {
+      beforeEach(async () => {
+        freshResult.tiles = [
+          buildTile('1,1', {
+            price: 20,
+            expiresAt: futureExpiration,
+            orderCreatedAt: 1000,
+          }),
+        ]
         fetchData.mockResolvedValueOnce(freshResult)
         await startAndWaitUntilReady()
       })
 
-      it('should serve the freshly fetched tiles', async () => {
-        await expect(map.getTiles()).resolves.toEqual(
-          toRecord(freshResult.tiles)
+      it('should not serve the order creation time', async () => {
+        expect((await map.getTiles())['1,1']).not.toHaveProperty(
+          'orderCreatedAt'
         )
-      })
-    })
-
-    describe('and the S3 cache is up to date', () => {
-      let cachedTiles: Tile[]
-
-      beforeEach(() => {
-        getTimestamp.mockResolvedValueOnce({
-          timestamp: 3000,
-          version: CACHE_VERSION,
-        })
-      })
-
-      describe('and its tiles have no prices', () => {
-        beforeEach(async () => {
-          cachedTiles = [
-            buildTile('1,1', { name: 'Cached' }),
-            buildTile('0,0', { type: TileType.PLAZA }),
-          ]
-          getTilesJson.mockResolvedValueOnce(toRecord(cachedTiles))
-          fetchData.mockResolvedValueOnce(freshResult)
-          await startAndWaitUntilReady()
-        })
-
-        it('should serve the cached tiles', async () => {
-          await expect(map.getTiles()).resolves.toEqual(toRecord(cachedTiles))
-        })
-
-        it('should use the cached timestamp', () => {
-          expect(map.getLastUpdatedAt()).toBe(3000)
-        })
-      })
-
-      describe('and a cached tile has a price the fresh data does not have', () => {
-        beforeEach(async () => {
-          getTilesJson.mockResolvedValueOnce(
-            toRecord([
-              buildTile('1,1', { price: 10, expiresAt: futureExpiration }),
-            ])
-          )
-          fetchData.mockResolvedValueOnce(freshResult)
-          await startAndWaitUntilReady()
-        })
-
-        it('should drop the cached price', async () => {
-          expect((await map.getTiles())['1,1'].price).toBeUndefined()
-        })
-      })
-
-      describe('and a cached tile was priced by a trade that is still active', () => {
-        beforeEach(async () => {
-          getTilesJson.mockResolvedValueOnce(
-            toRecord([buildTile('1,1', { price: 3, updatedAt: 2000 })])
-          )
-          freshResult.tiles = [
-            buildTile('1,1', {
-              price: 20,
-              expiresAt: futureExpiration,
-              updatedAt: 1000,
-            }),
-          ]
-          fetchData.mockResolvedValueOnce(freshResult)
-          getActiveTrades.mockResolvedValueOnce([buildTrade()])
-          await startAndWaitUntilReady()
-        })
-
-        it('should show the trade price over the older order', async () => {
-          expect((await map.getTiles())['1,1'].price).toBe(3)
-        })
-      })
-
-      describe('and the fresh data has an order price for a cached tile', () => {
-        beforeEach(async () => {
-          getTilesJson.mockResolvedValueOnce(toRecord([buildTile('1,1')]))
-          freshResult.tiles = [
-            buildTile('1,1', { price: 20, expiresAt: futureExpiration }),
-          ]
-          fetchData.mockResolvedValueOnce(freshResult)
-          await startAndWaitUntilReady()
-        })
-
-        it('should use the fresh order price', async () => {
-          const tile = (await map.getTiles())['1,1']
-          expect({ price: tile.price, expiresAt: tile.expiresAt }).toEqual({
-            price: 20,
-            expiresAt: futureExpiration,
-          })
-        })
       })
     })
 
@@ -525,6 +493,230 @@ describe('map component', () => {
 
       it('should move the last updated time forward', () => {
         expect(map.getLastUpdatedAt()).toBeGreaterThan(lastUpdatedAtAtReady)
+      })
+    })
+
+    describe('and an update brings a tile whose rental listing has expired', () => {
+      beforeEach(async () => {
+        fetchData.mockResolvedValueOnce(freshResult)
+        fetchUpdatedData.mockResolvedValueOnce({
+          tiles: [
+            buildTile('1,1', {
+              rentalListing: {
+                expiration: Date.now() - 1000,
+                periods: [],
+                updatedAt: 6000,
+              },
+            }),
+          ],
+          parcels: [],
+          estates: [],
+          updatedAt: 6000,
+          cursors: { land: 5, rentals: 6000 },
+        })
+        await startAndWaitUntilReady()
+        await waitUntil(() => fetchUpdatedData.mock.calls.length >= 2)
+      })
+
+      it('should remove the rental listing from the tile', async () => {
+        expect((await map.getTiles())['1,1'].rentalListing).toBeUndefined()
+      })
+    })
+
+    describe('and an update returns new cursors', () => {
+      beforeEach(async () => {
+        fetchData.mockResolvedValueOnce(freshResult)
+        fetchUpdatedData.mockResolvedValueOnce({
+          tiles: [],
+          parcels: [],
+          estates: [],
+          updatedAt: 5000,
+          cursors: { land: 9, rentals: 9000 },
+        })
+        await startAndWaitUntilReady()
+        await waitUntil(() => fetchUpdatedData.mock.calls.length >= 2)
+      })
+
+      it('should resume the next update from them', () => {
+        expect(fetchUpdatedData.mock.calls[1][0]).toEqual({
+          land: 9,
+          rentals: 9000,
+        })
+      })
+    })
+
+    describe('and fetching the land updates fails', () => {
+      beforeEach(async () => {
+        fetchData.mockResolvedValueOnce(freshResult)
+        fetchUpdatedData.mockRejectedValueOnce(new Error('Subgraph 502'))
+        await startAndWaitUntilReady()
+        await waitUntil(() => fetchUpdatedData.mock.calls.length >= 2)
+      })
+
+      it('should retry from the previous cursors', () => {
+        expect(fetchUpdatedData.mock.calls[1][0]).toEqual(freshResult.cursors)
+      })
+
+      it('should keep serving the previous tiles', async () => {
+        await expect(map.getTiles()).resolves.toEqual(
+          toRecord(freshResult.tiles)
+        )
+      })
+    })
+
+    describe('and a parcel leaves an estate', () => {
+      beforeEach(async () => {
+        freshResult.tiles = [
+          buildTile('1,1', { estateId: '7' }),
+          buildTile('2,1', { estateId: '7' }),
+          buildTile('1,2', { estateId: '7' }),
+          buildTile('1,0', { estateId: '7' }),
+          buildTile('2,0', { estateId: '7' }),
+        ]
+        fetchData.mockResolvedValueOnce(freshResult)
+        fetchUpdatedData.mockResolvedValueOnce({
+          tiles: [buildTile('1,1')],
+          parcels: [],
+          estates: [],
+          updatedAt: 6000,
+          cursors: { land: 6, rentals: 5000 },
+        })
+        await startAndWaitUntilReady()
+        await waitUntil(() => fetchUpdatedData.mock.calls.length >= 2)
+      })
+
+      it('should unstitch the neighbours that depended on it', async () => {
+        const tiles = await map.getTiles()
+        expect({
+          rightLeft: tiles['2,1'].left,
+          bottomTop: tiles['1,0'].top,
+          bottomRightTopLeft: tiles['2,0'].topLeft,
+        }).toEqual({
+          rightLeft: false,
+          bottomTop: false,
+          bottomRightTopLeft: false,
+        })
+      })
+    })
+
+    describe('and the trades are being fetched after an update', () => {
+      beforeEach(async () => {
+        freshResult.tiles = [buildTile('1,1', { owner: '0xold' })]
+        fetchData.mockResolvedValueOnce(freshResult)
+        fetchUpdatedData.mockResolvedValueOnce({
+          tiles: [buildTile('1,1', { owner: '0xnew' })],
+          parcels: [],
+          estates: [],
+          updatedAt: 6000,
+          cursors: { land: 6, rentals: 5000 },
+        })
+        getActiveTrades
+          .mockResolvedValueOnce([])
+          .mockReturnValueOnce(future<Trade[]>())
+        await startAndWaitUntilReady()
+        await waitUntil(() => getActiveTrades.mock.calls.length >= 2)
+      })
+
+      it('should keep serving the previous tiles unchanged', async () => {
+        expect((await map.getTiles())['1,1'].owner).toBe('0xold')
+      })
+    })
+
+    describe('and the rentals sweep interval has not elapsed since the full fetch', () => {
+      beforeEach(async () => {
+        fetchData.mockResolvedValueOnce(freshResult)
+        await startAndWaitUntilReady()
+        await waitUntil(() => fetchUpdatedData.mock.calls.length >= 1)
+      })
+
+      it('should not ask for the rentals sweep', () => {
+        expect(fetchUpdatedData.mock.calls[0][2]).toEqual({
+          sweepRentals: false,
+        })
+      })
+    })
+
+    describe('and the rentals sweep interval has elapsed', () => {
+      beforeEach(async () => {
+        rentalsSweepIntervalInSeconds = 0
+        fetchData.mockResolvedValueOnce(freshResult)
+        await startAndWaitUntilReady()
+        await waitUntil(() => fetchUpdatedData.mock.calls.length >= 1)
+      })
+
+      it('should ask for the rentals sweep', () => {
+        expect(fetchUpdatedData.mock.calls[0][2]).toEqual({
+          sweepRentals: true,
+        })
+      })
+    })
+
+    describe('and fetching the land updates keeps failing', () => {
+      beforeEach(() => {
+        fetchUpdatedData.mockRejectedValue(new Error('Subgraph 502'))
+      })
+
+      describe('and a trade opens', () => {
+        beforeEach(async () => {
+          fetchData.mockResolvedValueOnce(freshResult)
+          getActiveTrades
+            .mockResolvedValueOnce([])
+            .mockResolvedValue([buildTrade()])
+          await startAndWaitUntilReady()
+          await waitUntil(() => getActiveTrades.mock.calls.length >= 3)
+        })
+
+        it('should still show the trade price', async () => {
+          expect((await map.getTiles())['1,1'].price).toBe(3)
+        })
+      })
+
+      describe('and a rental listing expires', () => {
+        let expiration: number
+
+        beforeEach(async () => {
+          expiration = Date.now() + 100
+          freshResult.tiles = [
+            buildTile('1,1', {
+              rentalListing: { expiration, periods: [], updatedAt: 1000 },
+            }),
+          ]
+          fetchData.mockResolvedValueOnce(freshResult)
+          await startAndWaitUntilReady()
+          await waitUntil(() => Date.now() > expiration + 50)
+        })
+
+        it('should still remove the rental listing', async () => {
+          expect((await map.getTiles())['1,1'].rentalListing).toBeUndefined()
+        })
+      })
+    })
+
+    describe('and an update only re-reads what the map already has', () => {
+      let uploadsAtReady: number
+      let lastUpdatedAtAtReady: number
+
+      beforeEach(async () => {
+        freshResult.tiles = [buildTile('1,1', { estateId: '7', top: true })]
+        fetchData.mockResolvedValueOnce(freshResult)
+        fetchUpdatedData.mockResolvedValue({
+          tiles: [buildTile('1,1', { estateId: '7' })],
+          parcels: [],
+          estates: [],
+          updatedAt: 9000,
+          cursors: { land: 9, rentals: 5000 },
+        })
+        await startAndWaitUntilReady()
+        uploadsAtReady = uploadTilesJson.mock.calls.length
+        lastUpdatedAtAtReady = map.getLastUpdatedAt()
+        await waitUntil(() => fetchUpdatedData.mock.calls.length >= 3)
+      })
+
+      it('should neither upload the tiles nor move the last updated time', () => {
+        expect({
+          uploads: uploadTilesJson.mock.calls.length - uploadsAtReady,
+          lastUpdatedAt: map.getLastUpdatedAt(),
+        }).toEqual({ uploads: 0, lastUpdatedAt: lastUpdatedAtAtReady })
       })
     })
 
