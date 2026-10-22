@@ -189,6 +189,51 @@ describe('when getting the open rental listings by NFT id', () => {
       expect(result).toEqual(expectedResult)
     })
   })
+
+  describe('and the signatures server returns tens of thousands of rental listings', () => {
+    let startedAt: number
+    let elapsed: number
+
+    beforeEach(async () => {
+      rentalIds = Array.from({ length: 30000 }, (_, i) => `parcel-${i}`)
+      fetchMock.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: jest.fn().mockResolvedValueOnce({
+          ok: true,
+          data: {
+            results: rentalIds.map((id) => ({ id, nftId: id })),
+            page: 1,
+            pages: 1,
+            limit: 30000,
+            total: 30000,
+          },
+        }),
+      })
+      fetchMock.mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: jest.fn().mockResolvedValue({
+          ok: true,
+          data: { results: [], page: 1, pages: 1, limit: 0, total: 0 },
+        }),
+      })
+      startedAt = Date.now()
+      result = await rentalsComponent.getRentalsListingsOfNFTs(rentalIds)
+      elapsed = Date.now() - startedAt
+    })
+
+    afterEach(() => {
+      fetchMock.mockReset()
+    })
+
+    it('should index them by nft id in linear time', () => {
+      expect({
+        indexed: Object.keys(result).length,
+        fast: elapsed < 1000,
+      }).toEqual({ indexed: 30000, fast: true })
+    })
+  })
 })
 
 describe('when getting the updated rental listings', () => {

@@ -109,19 +109,16 @@ export async function createRentalsComponent(components: {
         )
       )
     componentLogger.info(`Finished to get the NFTs rental listings`)
-    return (
-      results
-        .flatMap((result) => result.data.results)
+    const rentalListings: Record<string, RentalListing> = {}
+    for (const result of results) {
+      for (const rentalListing of result.data.results) {
         // Although no returned rental should be null or undefined, there have been cases where the rental listing was not accessible
-        // this is a temporary change to see if the access problems were related to retrieved rental listings
-        .filter(Boolean)
-        .reduce((rentalListings, rentalListing) => {
-          return {
-            ...rentalListings,
-            [rentalListing.nftId]: rentalListing,
-          }
-        }, {})
-    )
+        if (rentalListing) {
+          rentalListings[rentalListing.nftId] = rentalListing
+        }
+      }
+    }
+    return rentalListings
   }
 
   /** Gets the updated rental listings that were updated after the given date.
