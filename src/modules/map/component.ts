@@ -11,10 +11,18 @@ import {
   computeEstate,
   hasStaleSpecialTiles,
   isExpired,
-  sleep,
 } from './utils'
 import { toLegacyTiles } from '../../adapters/legacy-tiles'
+import { Trade } from '../trades/component'
 import { AppComponents } from '../../types'
+
+// bump to discard tiles cached in S3 by an incompatible version
+const TILES_CACHE_VERSION = 2
+
+type TradePrice = {
+  tile: Tile
+  replaced: Pick<Tile, 'price' | 'expiresAt' | 'updatedAt'>
+}
 
 export async function createMapComponent(
   components: Pick<
@@ -45,7 +53,11 @@ export async function createMapComponent(
   let tokens = future<Record<string, NFT>>()
   let ready = false
   let stopped = false
-  let lastUpdatedAt = 0 // in ms
+  const pendingSleeps = new Map<NodeJS.Timeout, () => void>()
+  // tiles currently priced by a trade and the order price each one replaced
+  let tradePrices = new Map<string, TradePrice>()
+  let lastUpdatedAt = 0 // subgraph cursor, in ms
+  let dataUpdatedAt = 0 // last change to the served data, in ms
   let lastUploadedTilesUrl: { v1?: string; v2?: string } = {}
 
   // sort
@@ -138,7 +150,7 @@ export async function createMapComponent(
       componentLogger.info(`Uploaded v2 tiles to ${lastUploadedTilesUrl.v2}`)
 
       // Upload timestamp separately
-      await s3.uploadTimestamp(lastUpdatedAt)
+      await s3.uploadTimestamp(lastUpdatedAt, TILES_CACHE_VERSION)
       componentLogger.info(`Uploaded timestamp to S3`)
     } catch (error) {
       componentLogger.warn(
@@ -151,42 +163,65 @@ export async function createMapComponent(
     }
   }
 
-  // order prices always carry expiresAt, so a price without one came from a trade
-  function hasTradePrice(tile: Tile) {
-    return tile.price !== undefined && tile.expiresAt === undefined
+  // resolves early when the component stops
+  function sleep(ms: number) {
+    return new Promise<void>((resolve) => {
+      const timer = setTimeout(() => {
+        pendingSleeps.delete(timer)
+        resolve()
+      }, ms)
+      pendingSleeps.set(timer, resolve)
+    })
+  }
+
+  function isTradeForTile(trade: Trade, tile: Tile) {
+    if (!tile.nftId || !tile.tokenId || !trade.sent_token_id) {
+      return false
+    }
+    const contract = trade.contract_address_sent?.toLowerCase()
+    if (!contract) {
+      return false
+    }
+    return tile.estateId
+      ? contract === estateContractAddress.toLowerCase() &&
+          tile.estateId === trade.sent_token_id
+      : tile.nftId.includes(contract) && tile.tokenId === trade.sent_token_id
+  }
+
+  // puts back the order price (or no price) on tiles that still show last pass' trade price
+  function restoreTradePrices(tiles: Record<string, Tile>) {
+    const newTiles = { ...tiles }
+    for (const [id, { tile, replaced }] of tradePrices) {
+      // a tile rebuilt from newer subgraph data already carries its current order
+      if (newTiles[id] !== tile) {
+        continue
+      }
+      const restored: Tile = { ...tile, updatedAt: replaced.updatedAt }
+      delete restored.price
+      delete restored.expiresAt
+      if (
+        replaced.price !== undefined &&
+        replaced.expiresAt !== undefined &&
+        !isExpired({ ...restored, expiresAt: replaced.expiresAt })
+      ) {
+        restored.price = replaced.price
+        restored.expiresAt = replaced.expiresAt
+      }
+      newTiles[id] = restored
+    }
+    return newTiles
   }
 
   async function updateTilesWithTrades(tiles: Record<string, Tile>) {
     try {
       const activeTrades = await trades.getActiveTrades()
-      const newTiles: Record<string, Tile> = {}
-
-      // drop the previous pass' trade prices so closed trades stop showing
-      for (const id in tiles) {
-        const tile = tiles[id]
-        if (hasTradePrice(tile)) {
-          newTiles[id] = { ...tile }
-          delete newTiles[id].price
-        } else {
-          newTiles[id] = tile
-        }
-      }
+      const newTiles = restoreTradePrices(tiles)
+      const newTradePrices = new Map<string, TradePrice>()
 
       for (const trade of activeTrades) {
-        // Find tiles that match the trade's contract and token
-        const matchingTiles = Object.values(newTiles).filter((tile) => {
-          const matches =
-            tile.nftId &&
-            tile.tokenId &&
-            trade.contract_address_sent &&
-            trade.sent_token_id &&
-            ((!tile.estateId &&
-              tile.nftId.includes(trade.contract_address_sent) &&
-              tile.tokenId === trade.sent_token_id) ||
-              (tile.estateId && tile.estateId === trade.sent_token_id))
-
-          return matches
-        })
+        const matchingTiles = Object.values(newTiles).filter((tile) =>
+          isTradeForTile(trade, tile)
+        )
 
         for (const tile of matchingTiles) {
           const tradeCreatedAt = new Date(trade.created_at).getTime()
@@ -200,21 +235,61 @@ export async function createMapComponent(
             componentLogger.info(
               `Updating tile ${tile.id} price from ${tile.price} to ${tradePrice}`
             )
-            const { expiresAt, ...tileWithoutOrder } = tile
-            newTiles[tile.id] = {
+            const { price, expiresAt, ...tileWithoutOrder } = tile
+            const tradeTile: Tile = {
               ...tileWithoutOrder,
               price: tradePrice,
               updatedAt: tradeCreatedAt,
             }
+            newTiles[tile.id] = tradeTile
+            newTradePrices.set(tile.id, {
+              tile: tradeTile,
+              replaced: newTradePrices.get(tile.id)?.replaced ?? {
+                price,
+                expiresAt,
+                updatedAt: tile.updatedAt,
+              },
+            })
           }
         }
       }
 
+      tradePrices = newTradePrices
       return newTiles
     } catch (error) {
       componentLogger.error(`Failed to update tiles with trades: ${error}`)
       return tiles
     }
+  }
+
+  // cached prices may come from trades that are gone, so take them from the fresh fetch
+  function withFreshPrices(cachedTiles: Tile[], freshTiles: Tile[]): Tile[] {
+    const freshById = new Map(freshTiles.map((tile) => [tile.id, tile]))
+    return cachedTiles.map((cachedTile) => {
+      const { price, expiresAt, ...tile } = cachedTile
+      const freshTile = freshById.get(tile.id)
+      return freshTile && freshTile.price !== undefined
+        ? { ...tile, price: freshTile.price, expiresAt: freshTile.expiresAt }
+        : tile
+    })
+  }
+
+  function havePricesChanged(
+    oldTiles: Record<string, Tile>,
+    newTiles: Record<string, Tile>
+  ) {
+    for (const id in newTiles) {
+      const oldTile = oldTiles[id]
+      const newTile = newTiles[id]
+      if (
+        !oldTile ||
+        oldTile.price !== newTile.price ||
+        oldTile.expiresAt !== newTile.expiresAt
+      ) {
+        return true
+      }
+    }
+    return false
   }
 
   async function loadInitialData() {
@@ -225,8 +300,13 @@ export async function createMapComponent(
     ])
 
     const cache =
-      cachedTiles && cachedTimestamp
-        ? { tiles: Object.values(cachedTiles), timestamp: cachedTimestamp }
+      cachedTiles &&
+      cachedTimestamp &&
+      cachedTimestamp.version === TILES_CACHE_VERSION
+        ? {
+            tiles: Object.values(cachedTiles),
+            timestamp: cachedTimestamp.timestamp,
+          }
         : null
 
     let initialTiles: Record<string, Tile>
@@ -237,8 +317,6 @@ export async function createMapComponent(
       componentLogger.info(
         'Found cached tiles in S3, using them to initialize the component'
       )
-      updatedAt = cache.timestamp
-      initialTiles = addSpecialTiles(addTiles(cache.tiles, {}))
 
       // Set the lastUploadedTilesUrl when loading from cache
       lastUploadedTilesUrl = {
@@ -246,12 +324,15 @@ export async function createMapComponent(
         v2: await s3.getFileUrl('v2'),
       }
 
-      // Fetch only the necessary data for parcels and estates
       result = await batchApi.fetchData()
+      updatedAt = cache.timestamp
+      initialTiles = addSpecialTiles(
+        addTiles(withFreshPrices(cache.tiles, result.tiles), {})
+      )
     } else {
       componentLogger.info(
-        cache
-          ? 'Cached tiles in S3 have outdated special tiles, fetching fresh data'
+        cachedTiles
+          ? 'Cached tiles in S3 are outdated, fetching fresh data'
           : 'No cached tiles found in S3, fetching fresh data'
       )
       result = await batchApi.fetchData()
@@ -260,15 +341,25 @@ export async function createMapComponent(
     }
 
     const tilesWithTrades = await updateTilesWithTrades(initialTiles)
+    const initialParcels = addParcels(result.parcels, {})
+    const initialEstates = addEstates(result.estates, {})
+    const initialTokens = addTokens(result.parcels, result.estates, {})
 
     lastUpdatedAt = updatedAt
+    dataUpdatedAt = updatedAt
     tiles.resolve(tilesWithTrades)
-    parcels.resolve(addParcels(result.parcels, {}))
-    estates.resolve(addEstates(result.estates, {}))
-    tokens.resolve(addTokens(result.parcels, result.estates, {}))
+    parcels.resolve(initialParcels)
+    estates.resolve(initialEstates)
+    tokens.resolve(initialTokens)
     ready = true
 
+    if (stopped) {
+      return
+    }
     await uploadTilesToS3(tilesWithTrades)
+    if (stopped) {
+      return
+    }
     events.emit(MapEvents.READY, {
       tiles: Object.values(tilesWithTrades),
       parcels: result.parcels,
@@ -307,6 +398,11 @@ export async function createMapComponent(
     },
     async stop() {
       stopped = true
+      for (const [timer, resolve] of pendingSleeps) {
+        clearTimeout(timer)
+        resolve()
+      }
+      pendingSleeps.clear()
     },
   }
 
@@ -353,14 +449,21 @@ export async function createMapComponent(
           const oldEstates = await estates
 
           const result = await api.fetchUpdatedData(lastUpdatedAt, oldTiles)
-          if (result.tiles.length > 0) {
-            // update tiles
-            const newTiles = expireOrders(addTiles(result.tiles, oldTiles))
-            // Add trade prices
-            const tilesWithTrades = await updateTilesWithTrades(newTiles)
-            tiles = future()
-            tiles.resolve(tilesWithTrades)
+          const hasUpdates = result.tiles.length > 0
+          // trades and order expirations are re-applied even without subgraph changes
+          const newTiles = expireOrders(
+            hasUpdates ? addTiles(result.tiles, oldTiles) : oldTiles
+          )
+          const tilesWithTrades = await updateTilesWithTrades(newTiles)
+          // always swap in the new tiles: tradePrices tracks these objects
+          tiles = future()
+          tiles.resolve(tilesWithTrades)
 
+          if (!hasUpdates && !havePricesChanged(oldTiles, tilesWithTrades)) {
+            return
+          }
+
+          if (hasUpdates) {
             // update parcels
             const newParcels = addParcels(result.parcels, oldParcels)
             parcels = future()
@@ -383,17 +486,29 @@ export async function createMapComponent(
 
             // update lastUpdatedAt
             lastUpdatedAt = result.updatedAt
+          }
 
-            // upload new tiles to S3
-            await uploadTilesToS3(tilesWithTrades)
+          // a trade-only change must still move Last-Modified forward by at least a second
+          dataUpdatedAt = Math.max(
+            hasUpdates ? result.updatedAt : Date.now(),
+            dataUpdatedAt + 1000
+          )
 
+          if (stopped) {
+            return
+          }
+
+          // upload new tiles to S3
+          await uploadTilesToS3(tilesWithTrades)
+
+          if (hasUpdates && !stopped) {
             events.emit(MapEvents.UPDATE, result)
           }
         } catch (error) {
           events.emit(MapEvents.ERROR, error)
+        } finally {
+          await sleep(refreshInterval)
         }
-
-        await sleep(refreshInterval)
       })
     }
   }
@@ -476,7 +591,7 @@ export async function createMapComponent(
   }
 
   function getLastUpdatedAt() {
-    return lastUpdatedAt
+    return dataUpdatedAt
   }
 
   return {

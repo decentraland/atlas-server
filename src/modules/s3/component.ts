@@ -10,14 +10,20 @@ import {
 } from '@well-known-components/interfaces'
 import { Tile, LegacyTile } from '../map/types'
 
+export type TilesTimestamp = {
+  timestamp: number
+  /** Format version of the cached tiles, missing on files from older releases. */
+  version?: number
+}
+
 export interface IS3Component {
   uploadTilesJson(
     version: string,
     tiles: Record<string, Partial<Tile | LegacyTile>>
   ): Promise<string>
-  uploadTimestamp(timestamp: number): Promise<void>
+  uploadTimestamp(timestamp: number, version: number): Promise<void>
   getTilesJson(version: string): Promise<Record<string, Tile> | null>
-  getTimestamp(): Promise<number | null>
+  getTimestamp(): Promise<TilesTimestamp | null>
   getFileUrl(version: string): Promise<string>
 }
 
@@ -109,7 +115,10 @@ export async function createS3Component(components: {
       }
     }
 
-    async function uploadTimestamp(timestamp: number): Promise<void> {
+    async function uploadTimestamp(
+      timestamp: number,
+      version: number
+    ): Promise<void> {
       const key = 'tiles/timestamp.json'
 
       try {
@@ -117,7 +126,7 @@ export async function createS3Component(components: {
           new PutObjectCommand({
             Bucket: bucketName,
             Key: key,
-            Body: JSON.stringify({ timestamp }),
+            Body: JSON.stringify({ timestamp, version }),
             ContentType: 'application/json',
             CacheControl: 'public, max-age=60',
             Metadata: {
@@ -158,7 +167,7 @@ export async function createS3Component(components: {
       }
     }
 
-    async function getTimestamp(): Promise<number | null> {
+    async function getTimestamp(): Promise<TilesTimestamp | null> {
       const key = 'tiles/timestamp.json'
 
       try {
@@ -173,7 +182,9 @@ export async function createS3Component(components: {
         if (!body) return null
 
         const data = JSON.parse(body)
-        return data.timestamp
+        return typeof data.timestamp === 'number'
+          ? { timestamp: data.timestamp, version: data.version }
+          : null
       } catch (error) {
         componentLogger.warn(`Failed to get timestamp from S3: ${error}`)
         return null

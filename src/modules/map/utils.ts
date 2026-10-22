@@ -66,13 +66,20 @@ const specialTileTypes = new Set<TileType>([
   TileType.DISTRICT,
 ])
 
-// true when a tile's special type disagrees with the current specialTiles data
+// true when a tile disagrees with the current specialTiles data
 export function hasStaleSpecialTiles(tiles: Tile[]): boolean {
-  return tiles.some((tile) =>
-    tile.id in specialTiles
-      ? tile.type !== specialTiles[tile.id].type
-      : specialTileTypes.has(tile.type)
-  )
+  return tiles.some((tile) => {
+    if (!(tile.id in specialTiles)) {
+      return specialTileTypes.has(tile.type)
+    }
+    const specialTile = specialTiles[tile.id]
+    return (
+      tile.type !== specialTile.type ||
+      tile.top !== specialTile.top ||
+      tile.left !== specialTile.left ||
+      tile.topLeft !== specialTile.topLeft
+    )
+  })
 }
 
 export function isExpired(tile: Tile) {

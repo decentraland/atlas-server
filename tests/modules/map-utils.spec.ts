@@ -65,6 +65,16 @@ describe('when checking cached tiles against the special tiles', () => {
     })
   })
 
+  describe('and a special tile has different neighbour flags', () => {
+    beforeEach(() => {
+      tiles = [{ ...buildTile('0,0', TileType.PLAZA), top: true }]
+    })
+
+    it('should report them as stale', () => {
+      expect(hasStaleSpecialTiles(tiles)).toBe(true)
+    })
+  })
+
   describe('and a special tile id is missing', () => {
     beforeEach(() => {
       tiles = [buildTile('1,1', TileType.UNOWNED)]
