@@ -8,9 +8,18 @@ import {
 
 const BACKGROUND = [0x18, 0x14, 0x1a, 255]
 
-function pixelAt(canvas: Canvas, x: number, y: number): number[] {
-  return Array.from(canvas.getContext('2d').getImageData(x, y, 1, 1).data)
+// largest per-channel difference to the expected RGBA color; tolerates cairo build differences
+function colorDistance(
+  canvas: Canvas,
+  x: number,
+  y: number,
+  expected: number[]
+): number {
+  const pixel = canvas.getContext('2d').getImageData(x, y, 1, 1).data
+  return Math.max(...expected.map((value, i) => Math.abs(pixel[i] - value)))
 }
+
+const TOLERANCE = 2
 
 describe('when rendering the map', () => {
   let canvas: Canvas
@@ -18,7 +27,8 @@ describe('when rendering the map', () => {
   let layers: Layer[]
 
   beforeEach(() => {
-    // 30x30 px with 10 px tiles: parcels -1..1 on both axes, center (0,0) in the middle
+    // 30x30 px with 10 px tiles: parcels -1..1 on both axes, center (0,0) in the middle;
+    // the assertions sample tile centres, away from the padded edges
     canvas = createCanvas(30, 30)
     tiles = {
       '0,0': { color: '#ff0000' },
@@ -51,15 +61,21 @@ describe('when rendering the map', () => {
     })
 
     it('should paint the center parcel in the middle of the image', () => {
-      expect(pixelAt(canvas, 15, 15)).toEqual([255, 0, 0, 255])
+      expect(
+        colorDistance(canvas, 15, 15, [255, 0, 0, 255])
+      ).toBeLessThanOrEqual(TOLERANCE)
     })
 
     it('should paint parcels with a greater y above and a greater x to the right', () => {
-      expect(pixelAt(canvas, 25, 5)).toEqual([0, 255, 0, 255])
+      expect(
+        colorDistance(canvas, 25, 5, [0, 255, 0, 255])
+      ).toBeLessThanOrEqual(TOLERANCE)
     })
 
     it('should paint the background where a layer has no tile', () => {
-      expect(pixelAt(canvas, 5, 25)).toEqual(BACKGROUND)
+      expect(colorDistance(canvas, 5, 25, BACKGROUND)).toBeLessThanOrEqual(
+        TOLERANCE
+      )
     })
   })
 
@@ -88,7 +104,9 @@ describe('when rendering the map', () => {
     })
 
     it('should paint the later layer on top', () => {
-      expect(pixelAt(canvas, 15, 15)).toEqual([0, 0, 255, 255])
+      expect(
+        colorDistance(canvas, 15, 15, [0, 0, 255, 255])
+      ).toBeLessThanOrEqual(TOLERANCE)
     })
   })
 })

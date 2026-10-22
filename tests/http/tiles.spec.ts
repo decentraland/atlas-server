@@ -189,4 +189,47 @@ describe('when requesting the tiles', () => {
       })
     })
   })
+
+  describe('and the tiles were uploaded to S3 and the redirect is enabled', () => {
+    let uploadedUrls: { v1: string; v2: string }
+
+    beforeEach(async () => {
+      uploadedUrls = {
+        v1: 'https://cdn.test/tiles/v1/latest.json',
+        v2: 'https://cdn.test/tiles/v2/latest.json',
+      }
+      map = createFixtureMap({ tiles, lastUploadedTilesUrl: uploadedUrls })
+      server = await startTestServer({
+        map,
+        configureStubs: (stubs) =>
+          stubs.features.getIsFeatureEnabled.mockResolvedValue(true),
+      })
+    })
+
+    describe('and the v2 tiles are requested without filters', () => {
+      beforeEach(async () => {
+        response = await server.fetch('/v2/tiles', { redirect: 'manual' })
+      })
+
+      it('should redirect to the uploaded v2 file', () => {
+        expect({
+          redirected: response.status >= 300 && response.status < 400,
+          location: response.headers.get('location'),
+        }).toEqual({ redirected: true, location: uploadedUrls.v2 })
+      })
+    })
+
+    describe('and the v1 tiles are requested without filters', () => {
+      beforeEach(async () => {
+        response = await server.fetch('/v1/tiles', { redirect: 'manual' })
+      })
+
+      it('should redirect to the uploaded v1 file', () => {
+        expect({
+          redirected: response.status >= 300 && response.status < 400,
+          location: response.headers.get('location'),
+        }).toEqual({ redirected: true, location: uploadedUrls.v1 })
+      })
+    })
+  })
 })

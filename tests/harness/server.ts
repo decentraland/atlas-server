@@ -8,8 +8,8 @@
  *   response = await server.fetch('/v2/tiles')
  *   await server.stop()
  *
- * Import this module before anything from src/ so its jest.mock calls apply.
- * As in production, Lifecycle.run exits the process if the wiring throws.
+ * The external factories are replaced by ./mocks.ts, a setupFiles entry of the
+ * "http" jest project, so route tests must live under tests/http.
  */
 import { AddressInfo } from 'net'
 import { Server } from 'http'
@@ -24,49 +24,6 @@ import {
   harnessState,
   MapOverride,
 } from './stubs'
-
-jest.mock('@dcl/thegraph-component', () => {
-  const actual = jest.requireActual('@dcl/thegraph-component')
-  return {
-    ...actual,
-    // components.ts creates the live subgraph first and the batch one second
-    createSubgraphComponent: async () => {
-      const { harnessState, getStubs } = require('./stubs')
-      const { subgraph, batchSubgraph } = getStubs()
-      return harnessState.subgraphsCreated++ === 0 ? subgraph : batchSubgraph
-    },
-  }
-})
-
-// not spreading the actual module: jest cannot resolve pg's export map from pg-cursor
-jest.mock('@dcl/pg-component', () => ({
-  createPgComponent: async () => require('./stubs').getStubs().database,
-}))
-
-jest.mock('@dcl/traced-fetch-component', () => ({
-  ...jest.requireActual('@dcl/traced-fetch-component'),
-  createTracedFetcherComponent: async () => require('./stubs').getStubs().fetch,
-}))
-
-jest.mock('@dcl/features-component', () => ({
-  ...jest.requireActual('@dcl/features-component'),
-  createFeaturesComponent: async () => require('./stubs').getStubs().features,
-}))
-
-jest.mock('../../src/modules/s3/component', () => ({
-  ...jest.requireActual('../../src/modules/s3/component'),
-  createS3Component: async () => require('./stubs').getStubs().s3,
-}))
-
-jest.mock('../../src/modules/map/component', () => {
-  const actual = jest.requireActual('../../src/modules/map/component')
-  return {
-    ...actual,
-    createMapComponent: async (components: unknown) =>
-      require('./stubs').harnessState.map ??
-      actual.createMapComponent(components),
-  }
-})
 
 export const TEST_LAND_CONTRACT_ADDRESS =
   '0x0000000000000000000000000000000000001a2d'
@@ -103,6 +60,27 @@ function silenceAppOutput(): jest.SpyInstance[] {
     (method) => jest.spyOn(console, method).mockImplementation(() => undefined)
   )
   return [stderrSpy, ...consoleSpies]
+}
+
+const STUBBED_FACTORIES = [
+  'createSubgraphComponent',
+  'createPgComponent',
+  'createTracedFetcherComponent',
+  'createFeaturesComponent',
+  'createS3Component',
+  'createMapComponent',
+]
+
+function assertExternalFactoriesStubbed() {
+  const missing = STUBBED_FACTORIES.filter(
+    (name) => !harnessState.stubbedFactories.has(name)
+  )
+  if (missing.length > 0) {
+    throw new Error(
+      `The app was wired with the real ${missing.join(', ')}: ` +
+        'tests using the server harness must live under tests/http'
+    )
+  }
 }
 
 export type TestServerOptions = {
@@ -147,6 +125,7 @@ export async function startTestServer(
   harnessState.stubs = stubs
   harnessState.map = options.map
   harnessState.subgraphsCreated = 0
+  harnessState.stubbedFactories.clear()
 
   function restore() {
     harnessState.stubs = undefined
@@ -163,25 +142,44 @@ export async function startTestServer(
     }
   }
 
-  let program: Lifecycle.ComponentBasedProgram<AppComponents>
+  // wired outside Lifecycle.run, which exits the process instead of rejecting
+  let components: AppComponents
   try {
-    program = await Lifecycle.run<AppComponents>({ main, initComponents })
+    components = await initComponents()
+    assertExternalFactoriesStubbed()
   } catch (error) {
     restore()
     throw error
   }
+  const program = await Lifecycle.run<AppComponents>({
+    main,
+    initComponents: async () => components,
+  })
 
   const server = await getUnderlyingServer<Server>(program.components.server)
   const { port } = server.address() as AddressInfo
   const baseUrl = `http://127.0.0.1:${port}`
+  const responses: Response[] = []
 
   return {
     baseUrl,
     components: program.components,
     stubs,
-    fetch: (path, init) => fetch(`${baseUrl}${path}`, init),
+    async fetch(path, init) {
+      const response = await fetch(`${baseUrl}${path}`, init)
+      responses.push(response)
+      return response
+    },
     async stop() {
       try {
+        // release the sockets of bodies a test never read
+        await Promise.all(
+          responses.map((response) =>
+            response.bodyUsed
+              ? undefined
+              : response.body?.cancel().catch(() => undefined)
+          )
+        )
         await program.stop()
       } finally {
         restore()

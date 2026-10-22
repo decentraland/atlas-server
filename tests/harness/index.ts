@@ -1,4 +1,4 @@
-// server must load first: its jest.mock calls have to precede any src/ import
+// the external factories are stubbed by ./mocks.ts (setupFiles of the http jest project)
 export * from './server'
 export * from './fixtures'
 export * from './stubs'

@@ -44,13 +44,16 @@ type HarnessState = {
   stubs: ExternalStubs | undefined
   map: MapOverride | undefined
   subgraphsCreated: number
+  /** Names of the factories ./mocks.ts answered while wiring the app. */
+  stubbedFactories: Set<string>
 }
 
-// read by the jest.mock factories in ./server.ts while src/components.ts wires the app
+// read by the jest.mock factories in ./mocks.ts while src/components.ts wires the app
 export const harnessState: HarnessState = {
   stubs: undefined,
   map: undefined,
   subgraphsCreated: 0,
+  stubbedFactories: new Set(),
 }
 
 export function getStubs(): ExternalStubs {
