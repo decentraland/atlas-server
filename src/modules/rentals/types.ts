@@ -19,5 +19,6 @@ export type SignaturesServerErrorResponse<T> = {
 
 export type IRentalsComponent = {
   getOpenRentalListings(): Promise<RentalListing[]>
+  getOpenRentalListingsOfNfts(nftIds: string[]): Promise<RentalListing[]>
   getUpdatedRentalListings(updatedAfter: number): Promise<RentalListing[]>
 }

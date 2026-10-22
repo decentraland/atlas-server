@@ -6,6 +6,7 @@ export type MapConfig = {
   LAND_CONTRACT_ADDRESS: string
   ESTATE_CONTRACT_ADDRESS: string
   REFRESH_INTERVAL: number
+  RENTALS_SWEEP_INTERVAL: number
 }
 
 export enum MapEvents {

@@ -113,8 +113,13 @@ describe('map component', () => {
 
   async function createMap() {
     const config = {
-      requireNumber: jest.fn().mockResolvedValue(refreshIntervalInSeconds),
-      getNumber: jest.fn().mockResolvedValue(rentalsSweepIntervalInSeconds),
+      requireNumber: jest.fn((name: string) =>
+        Promise.resolve(
+          name === 'RENTALS_SWEEP_INTERVAL'
+            ? rentalsSweepIntervalInSeconds
+            : refreshIntervalInSeconds
+        )
+      ),
       requireString: jest.fn((name: string) =>
         Promise.resolve(
           name === 'ESTATE_CONTRACT_ADDRESS'
@@ -684,6 +689,34 @@ describe('map component', () => {
         it('should still remove the rental listing', async () => {
           expect((await map.getTiles())['1,1'].rentalListing).toBeUndefined()
         })
+      })
+    })
+
+    describe('and an update only re-reads what the map already has', () => {
+      let uploadsAtReady: number
+      let lastUpdatedAtAtReady: number
+
+      beforeEach(async () => {
+        freshResult.tiles = [buildTile('1,1', { estateId: '7', top: true })]
+        fetchData.mockResolvedValueOnce(freshResult)
+        fetchUpdatedData.mockResolvedValue({
+          tiles: [buildTile('1,1', { estateId: '7' })],
+          parcels: [],
+          estates: [],
+          updatedAt: 9000,
+          cursors: { land: 9, rentals: 5000 },
+        })
+        await startAndWaitUntilReady()
+        uploadsAtReady = uploadTilesJson.mock.calls.length
+        lastUpdatedAtAtReady = map.getLastUpdatedAt()
+        await waitUntil(() => fetchUpdatedData.mock.calls.length >= 3)
+      })
+
+      it('should neither upload the tiles nor move the last updated time', () => {
+        expect({
+          uploads: uploadTilesJson.mock.calls.length - uploadsAtReady,
+          lastUpdatedAt: map.getLastUpdatedAt(),
+        }).toEqual({ uploads: 0, lastUpdatedAt: lastUpdatedAtAtReady })
       })
     })
 

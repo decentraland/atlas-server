@@ -30,6 +30,8 @@ const LAND_CONTRACT_ADDRESS = '0x1'
 const ESTATE_CONTRACT_ADDRESS = '0x2'
 const date = Date.now()
 const SNAPSHOT_BLOCK = 10
+// the snapshot is pinned 5 blocks behind the head
+const PINNED_BLOCK = SNAPSHOT_BLOCK - 5
 const HEAD_TIMESTAMP = 1234
 const headResponse = {
   _meta: { block: { number: SNAPSHOT_BLOCK, timestamp: HEAD_TIMESTAMP } },
@@ -40,6 +42,8 @@ type SubgraphWorld = {
   parcels?: ParcelFragment[]
   estates?: EstateFragment[]
   estateParcels?: ParcelFragment[]
+  // estates only returned when asked for by id
+  estatesById?: EstateFragment[]
   timestamp?: number
 }
 
@@ -59,7 +63,12 @@ function mockLandUpdates(world: SubgraphWorld): jest.Mock {
     const first = Number(/first: (\d+)/.exec(query)![1])
     const lastId = /id_gt: "([^"]*)"/.exec(query)![1]
     const estateIds = /searchParcelEstateId_in: (\[[^\]]*\])/.exec(query)
-    const items: { id: string }[] = estateIds
+    const ids = /[{ ,]id_in: (\[[^\]]*\])/.exec(query)
+    const items: { id: string }[] = ids
+      ? (world.estatesById ?? []).filter((estate) =>
+          (JSON.parse(ids[1]) as string[]).includes(estate.id)
+        )
+      : estateIds
       ? (world.estateParcels ?? []).filter((parcel) =>
           (JSON.parse(estateIds[1]) as string[]).includes(
             parcel.searchParcelEstateId!
@@ -130,7 +139,7 @@ beforeEach(async () => {
       price: '2000000000000000000',
       expiresAt: (date + 100000000).toString(),
     },
-    searchParcelEstateId: 'estate-0x0-1',
+    searchParcelEstateId: 'estate-0x2-1',
     parcel: {
       data: {
         name: 'Parcel 1',
@@ -334,6 +343,7 @@ beforeEach(async () => {
   }
   rentalsComponentMock = {
     getOpenRentalListings: jest.fn(),
+    getOpenRentalListingsOfNfts: jest.fn().mockResolvedValue([]),
     getUpdatedRentalListings: jest.fn(),
   }
   subgraphComponentMock = {
@@ -464,7 +474,7 @@ describe('when fetching data', () => {
       await apiComponent.fetchData()
       expect(
         (subgraphComponentMock.query as jest.Mock).mock.calls[1][0]
-      ).toContain(`block: { number: ${SNAPSHOT_BLOCK} }`)
+      ).toContain(`block: { number: ${PINNED_BLOCK} }`)
     })
 
     it('should return the tiles, the parcels and the estates', () => {
@@ -522,7 +532,7 @@ describe('when fetching data', () => {
         name: 'Parcel 4',
         searchParcelX: '4',
         searchParcelY: '3',
-        searchParcelEstateId: 'estate-0x0-2',
+        searchParcelEstateId: 'estate-0x2-2',
         tokenId: '4',
         updatedAt: (maxDateInSeconds - 1).toString(),
         parcel: {
@@ -906,7 +916,7 @@ describe('when fetching update data', () => {
       updatedAt: (maxDateInSeconds - 1).toString(),
     }
     fstEstate = {
-      id: 'estate-0x0-1',
+      id: 'estate-0x2-1',
       tokenId: '1',
       name: 'Estate 0',
       updatedAt: maxDateInSeconds.toString(),
@@ -1745,7 +1755,7 @@ describe('when fetching update data', () => {
         queries
           .filter((query) => !query.includes('_meta'))
           .every((query) =>
-            query.includes(`block: { number: ${SNAPSHOT_BLOCK} }`)
+            query.includes(`block: { number: ${PINNED_BLOCK} }`)
           )
       ).toBe(true)
     })
@@ -1816,6 +1826,53 @@ describe('when fetching update data', () => {
       })
     })
 
+    describe('and an estate listing the tiles show is still open', () => {
+      beforeEach(async () => {
+        rentalsComponentMock.getOpenRentalListings = jest
+          .fn()
+          .mockResolvedValueOnce([
+            { ...fstEstateRentalListing, expiration: date + 100000000 },
+          ])
+        result = await apiComponent.fetchUpdatedData(
+          cursors,
+          { [staleEstateTile.id]: staleEstateTile },
+          { sweepRentals: true }
+        )
+      })
+
+      it('should keep it on the tiles', () => {
+        expect(result.tiles).toEqual([])
+      })
+    })
+
+    describe('and a listing the tiles show is missing from the sweep but still open', () => {
+      beforeEach(async () => {
+        rentalsComponentMock.getOpenRentalListings = jest
+          .fn()
+          .mockResolvedValueOnce([])
+        rentalsComponentMock.getOpenRentalListingsOfNfts = jest
+          .fn()
+          .mockResolvedValueOnce([
+            { ...fstEstateRentalListing, expiration: date + 100000000 },
+          ])
+        result = await apiComponent.fetchUpdatedData(
+          cursors,
+          { [staleEstateTile.id]: staleEstateTile },
+          { sweepRentals: true }
+        )
+      })
+
+      it('should look it up by nft id before removing it', () => {
+        expect(
+          rentalsComponentMock.getOpenRentalListingsOfNfts
+        ).toHaveBeenCalledWith([fstEstateRentalListing.nftId])
+      })
+
+      it('should keep it on the tiles', () => {
+        expect(result.tiles).toEqual([])
+      })
+    })
+
     describe('and fetching the open listings fails', () => {
       beforeEach(async () => {
         rentalsComponentMock.getOpenRentalListings = jest
@@ -1834,6 +1891,177 @@ describe('when fetching update data', () => {
           swept: undefined,
         })
       })
+    })
+  })
+
+  describe('and a parcel left an estate', () => {
+    let leavingParcel: ParcelFragment
+    let oldTiles: Record<string, Tile>
+    let result: Result
+
+    beforeEach(() => {
+      leavingParcel = {
+        ...defaultParcel,
+        searchParcelX: '1',
+        searchParcelY: '3',
+      }
+      oldTiles = {
+        '1,3': { ...defaultFstParcelEstateTile, id: '1,3', x: 1, y: 3 },
+      }
+      rentalsComponentMock.getUpdatedRentalListings = jest
+        .fn()
+        .mockResolvedValueOnce([])
+    })
+
+    describe('and the estate keeps other parcels', () => {
+      beforeEach(async () => {
+        subgraphComponentMock.query = mockLandUpdates({
+          parcels: [leavingParcel],
+          estateParcels: [defaultFstParcelEstate, defaultSndParcelEstate],
+        })
+        result = await apiComponent.fetchUpdatedData(cursors, oldTiles)
+      })
+
+      it('should rebuild the estate from its remaining parcels', () => {
+        expect(result.estates).toEqual([fstEstateNFT])
+      })
+    })
+
+    describe('and the estate was left without parcels', () => {
+      beforeEach(async () => {
+        subgraphComponentMock.query = mockLandUpdates({
+          parcels: [leavingParcel],
+          estatesById: [
+            { ...fstEstate, estate: { size: 0, data: { description: '' } } },
+          ],
+        })
+        result = await apiComponent.fetchUpdatedData(cursors, oldTiles)
+      })
+
+      it('should return the estate as dissolved', () => {
+        expect(result.estates).toEqual([
+          expect.objectContaining({
+            id: '1',
+            attributes: [
+              { trait_type: 'Size', value: 0, display_type: 'number' },
+            ],
+          }),
+        ])
+      })
+    })
+  })
+
+  describe('and more than a hundred estates were updated', () => {
+    let estateQueries: string[]
+    let result: Result
+
+    beforeEach(async () => {
+      const estates = Array.from({ length: 150 }, (_, i) => ({
+        ...fstEstate,
+        id: `estate-${ESTATE_CONTRACT_ADDRESS}-${1000 + i}`,
+        tokenId: `${1000 + i}`,
+      }))
+      subgraphComponentMock.query = mockLandUpdates({
+        estates,
+        estateParcels: estates.map((estate, i) => ({
+          ...defaultFstParcelEstate,
+          id: `parcel-0x0-e${1000 + i}`,
+          searchParcelX: `${i}`,
+          searchParcelY: '50',
+          searchParcelEstateId: estate.id,
+        })),
+      })
+      rentalsComponentMock.getUpdatedRentalListings = jest
+        .fn()
+        .mockResolvedValueOnce([])
+      result = await apiComponent.fetchUpdatedData(cursors, {})
+      estateQueries = (subgraphComponentMock.query as jest.Mock).mock.calls
+        .map(([query]) => query as string)
+        .filter((query) => query.includes('searchParcelEstateId_in'))
+    })
+
+    it('should update the tiles of all their parcels', () => {
+      expect(result.tiles.length).toBe(150)
+    })
+
+    it('should ask for at most a hundred estates per query', () => {
+      expect(
+        estateQueries.every(
+          (query) =>
+            JSON.parse(/searchParcelEstateId_in: (\[[^\]]*\])/.exec(query)![1])
+              .length <= 100
+        )
+      ).toBe(true)
+    })
+  })
+
+  describe('and the pinned block is not available yet on the first try', () => {
+    let result: Result
+
+    beforeEach(async () => {
+      const land = mockLandUpdates({ parcels: [defaultParcel] })
+      let failed = false
+      subgraphComponentMock.query = jest.fn((query: string) => {
+        if (!failed && !query.includes('_meta')) {
+          failed = true
+          return Promise.reject(
+            new Error(
+              'Failed to decode `block.number` value: `subgraph has only indexed up to block number 4 and data for block number 5 is therefore not yet available`'
+            )
+          )
+        }
+        return land(query)
+      }) as jest.Mock
+      rentalsComponentMock.getUpdatedRentalListings = jest
+        .fn()
+        .mockResolvedValueOnce([])
+      result = await apiComponent.fetchUpdatedData(cursors, {})
+    })
+
+    it('should retry the query and return the changes', () => {
+      expect(result.tiles).toEqual([defaultParcelTile])
+    })
+  })
+
+  describe('and a pinned query fails for another reason', () => {
+    beforeEach(() => {
+      const land = mockLandUpdates({ parcels: [defaultParcel] })
+      subgraphComponentMock.query = jest.fn((query: string) =>
+        query.includes('_meta')
+          ? land(query)
+          : Promise.reject(new Error('Unexpected `}`'))
+      ) as jest.Mock
+      rentalsComponentMock.getUpdatedRentalListings = jest
+        .fn()
+        .mockResolvedValueOnce([])
+    })
+
+    it('should fail the update without retrying', async () => {
+      await expect(apiComponent.fetchUpdatedData(cursors, {})).rejects.toThrow(
+        'Unexpected `}`'
+      )
+      expect((subgraphComponentMock.query as jest.Mock).mock.calls.length).toBe(
+        3
+      )
+    })
+  })
+
+  describe('and the land cursor is set', () => {
+    let parcelsQuery: string
+
+    beforeEach(async () => {
+      subgraphComponentMock.query = mockLandUpdates({})
+      rentalsComponentMock.getUpdatedRentalListings = jest
+        .fn()
+        .mockResolvedValueOnce([])
+      await apiComponent.fetchUpdatedData({ ...cursors, land: 10000 }, {})
+      parcelsQuery = (subgraphComponentMock.query as jest.Mock).mock.calls
+        .map(([query]) => query as string)
+        .find((query) => query.includes('category: parcel'))!
+    })
+
+    it('should re-read the changes made in the overlap window before it', () => {
+      expect(parcelsQuery).toContain('updatedAt_gt: "9700"')
     })
   })
 

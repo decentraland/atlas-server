@@ -90,6 +90,28 @@ export async function createRentalsComponent(components: {
     return rentalListings.filter(Boolean)
   }
 
+  /** Gets the open rental listings of the given NFTs, a page of ids at a time.
+   * @param nftIds The ids of the NFTs (parcels or estates).
+   * @throws An error if a request fails.
+   */
+  async function getOpenRentalListingsOfNfts(
+    nftIds: string[]
+  ): Promise<RentalListing[]> {
+    const rentalListings: RentalListing[] = []
+    for (let i = 0; i < nftIds.length; i += LIMIT_RENTAL_LISTINGS) {
+      const ids = nftIds.slice(i, i + LIMIT_RENTAL_LISTINGS)
+      const page = await fetchRentalListings(
+        `/v1/rentals-listings?status=${
+          RentalStatus.OPEN
+        }&limit=${LIMIT_RENTAL_LISTINGS}&${ids
+          .map((id) => `nftIds=${encodeURIComponent(id)}`)
+          .join('&')}`
+      )
+      rentalListings.push(...page.data.results.filter(Boolean))
+    }
+    return rentalListings
+  }
+
   /** Gets the updated rental listings that were updated after the given date.
    * @param updatedAfter A UTC timestamp in milliseconds of the rental listings update time.
    * @throws An error if the request fails.
@@ -119,6 +141,7 @@ export async function createRentalsComponent(components: {
 
   return {
     getOpenRentalListings,
+    getOpenRentalListingsOfNfts,
     getUpdatedRentalListings,
   }
 }

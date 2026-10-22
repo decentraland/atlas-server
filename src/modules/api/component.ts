@@ -31,7 +31,6 @@ import { coordsToId, specialTiles } from '../map/utils'
 import { IRentalsComponent } from '../rentals/types'
 import {
   ApiEvents,
-  Batch,
   Cursors,
   ParcelFragment,
   IApiComponent,
@@ -106,8 +105,32 @@ const estateFields = `{
 
 // keeps the id_in list of a query short
 const ESTATE_IDS_PER_QUERY = 100
+// pin a few blocks behind the head so every indexer behind the gateway has the block
+const SNAPSHOT_LAG_BLOCKS = 5
+// land queries re-read this window before the cursor, covering the lag and reorgs; re-applying is idempotent
+const LAND_OVERLAP_SECONDS = 300
+// waits before retrying a query whose pinned block an indexer has not reached yet
+const BLOCK_RETRY_DELAYS_MS = [500, 1000, 2000]
 
+/** The block every query of a fetch is pinned to, and the head's timestamp (seconds) when it was read. */
 type Snapshot = { block: number; timestamp: number }
+
+type FetchedBatch = {
+  tiles: Tile[]
+  parcels: NFT[]
+  fragments: ParcelFragment[]
+}
+
+function isBlockNotAvailableError(error: unknown): boolean {
+  return (
+    isErrorWithMessage(error) &&
+    error.message.includes('Failed to decode `block.number`')
+  )
+}
+
+function sleep(ms: number) {
+  return new Promise<void>((resolve) => setTimeout(resolve, ms))
+}
 
 export async function createApiComponent(components: {
   config: IConfigComponent
@@ -146,7 +169,27 @@ export async function createApiComponent(components: {
         `The subgraph did not report the timestamp of block ${number}`
       )
     }
-    return { block: number, timestamp }
+    return { block: Math.max(number - SNAPSHOT_LAG_BLOCKS, 0), timestamp }
+  }
+
+  // retries a pinned query an indexer behind the gateway can't serve yet
+  async function queryPinned<T>(query: string): Promise<T> {
+    for (let attempt = 0; ; attempt++) {
+      try {
+        return await subgraph.query<T>(query)
+      } catch (error) {
+        if (
+          attempt >= BLOCK_RETRY_DELAYS_MS.length ||
+          !isBlockNotAvailableError(error)
+        ) {
+          throw error
+        }
+        componentLogger.warn(
+          `The pinned block is not available yet, retrying in ${BLOCK_RETRY_DELAYS_MS[attempt]}ms`
+        )
+        await sleep(BLOCK_RETRY_DELAYS_MS[attempt])
+      }
+    }
   }
 
   // pages a query by id so a full page never truncates it
@@ -159,7 +202,7 @@ export async function createApiComponent(components: {
     const items: T[] = []
     let lastId = ''
     while (true) {
-      const { nfts } = await subgraph.query<{ nfts: T[] }>(
+      const { nfts } = await queryPinned<{ nfts: T[] }>(
         `{
           nfts: ${entity}(
             first: ${batchSize},
@@ -259,7 +302,7 @@ export async function createApiComponent(components: {
 
     // auxiliaries for fetching in batches
 
-    let batches: Promise<Batch>[] = []
+    let batches: Promise<FetchedBatch>[] = []
     let total = 0
     let complete = false
     let lastTokenId = ''
@@ -336,7 +379,7 @@ export async function createApiComponent(components: {
     lastTokenId = '',
     page = 0
   ) {
-    const { nfts } = await subgraph.query<{ nfts: ParcelFragment[] }>(
+    const { nfts } = await queryPinned<{ nfts: ParcelFragment[] }>(
       `{
         nfts(
           first: ${batchSize},
@@ -351,7 +394,7 @@ export async function createApiComponent(components: {
         ) ${parcelFields}
       }`
     )
-    return nfts.reduce<Batch & { fragments: ParcelFragment[] }>(
+    return nfts.reduce<FetchedBatch>(
       (batch, nft) => {
         const tileRentalListing =
           rentalListingsByNftId[nft.searchParcelEstateId ?? nft.id]
@@ -360,23 +403,45 @@ export async function createApiComponent(components: {
         batch.fragments.push(nft)
         return batch
       },
-      { tiles: [], parcels: [], estates: [], fragments: [] }
+      { tiles: [], parcels: [], fragments: [] }
     )
   }
 
+  function getRentalNftId(tile: Tile) {
+    return tile.estateId ? toEstateNftId(tile.estateId) : tile.nftId
+  }
+
   // the tiles whose rental listing disagrees with the open listings, corrected
-  function reconcileRentalListings(
-    oldTiles: Record<string, Tile>,
-    openRentalListings: RentalListing[]
-  ): Tile[] {
-    const openByNftId = indexOpenRentalListings(openRentalListings)
+  async function sweepRentalListings(
+    oldTiles: Record<string, Tile>
+  ): Promise<Tile[]> {
+    const openByNftId = indexOpenRentalListings(
+      await rentals.getOpenRentalListings()
+    )
+    // offset paging can skip a row when another closes mid-sweep, so removals are confirmed by id
+    const missingNftIds = new Set<string>()
+    for (const tile of Object.values(oldTiles)) {
+      const nftId = getRentalNftId(tile)
+      if (tile.rentalListing && nftId && !openByNftId[nftId]) {
+        missingNftIds.add(nftId)
+      }
+    }
+    if (missingNftIds.size) {
+      Object.assign(
+        openByNftId,
+        indexOpenRentalListings(
+          await rentals.getOpenRentalListingsOfNfts(Array.from(missingNftIds))
+        )
+      )
+    }
+
     const tiles: Tile[] = []
     for (const tile of Object.values(oldTiles)) {
-      if (!tile.nftId) {
+      const nftId = getRentalNftId(tile)
+      if (!nftId) {
         continue
       }
-      const expected =
-        openByNftId[tile.estateId ? toEstateNftId(tile.estateId) : tile.nftId]
+      const expected = openByNftId[nftId]
       if (expected) {
         if (tile.rentalListing?.updatedAt !== expected.updatedAt) {
           tiles.push({ ...tile, rentalListing: expected })
@@ -394,7 +459,10 @@ export async function createApiComponent(components: {
     oldTiles: Record<string, Tile>
   ) {
     const snapshot = await getSnapshot()
-    const updatedAfter = `updatedAt_gt: "${cursors.land}"`
+    const updatedAfter = `updatedAt_gt: "${Math.max(
+      cursors.land - LAND_OVERLAP_SECONDS,
+      0
+    )}"`
     const [parcels, estates] = await Promise.all([
       queryAllById<ParcelFragment>(
         'nfts',
@@ -431,7 +499,28 @@ export async function createApiComponent(components: {
       Array.from(affectedEstateIds),
       snapshot
     )
-    return { snapshot, parcels, estates, estateParcels }
+
+    // removing a parcel doesn't touch the estate's updatedAt, so an emptied estate is read by id
+    const estatesWithParcels = new Set(
+      estateParcels.map((parcel) => parcel.searchParcelEstateId)
+    )
+    const updatedEstateIds = new Set(estates.map((estate) => estate.id))
+    const emptiedEstateIds = Array.from(affectedEstateIds).filter(
+      (id) => !estatesWithParcels.has(id) && !updatedEstateIds.has(id)
+    )
+    const emptiedEstates: EstateFragment[] = []
+    for (let i = 0; i < emptiedEstateIds.length; i += ESTATE_IDS_PER_QUERY) {
+      const ids = emptiedEstateIds.slice(i, i + ESTATE_IDS_PER_QUERY)
+      emptiedEstates.push(
+        ...(await queryAllById<EstateFragment>(
+          'nfts',
+          `category: estate, id_in: ${JSON.stringify(ids)}`,
+          estateFields,
+          snapshot
+        ))
+      )
+    }
+    return { snapshot, parcels, estates, estateParcels, emptiedEstates }
   }
 
   async function fetchUpdatedData(
@@ -443,15 +532,15 @@ export async function createApiComponent(components: {
       // timestamp in signatures server has microsecond precision. Adding one to avoid returning
       // the same rental listing previously saved
       rentals.getUpdatedRentalListings(cursors.rentals + 1)
-    const openRentalListings = options.sweepRentals
-      ? rentals.getOpenRentalListings()
+    const sweptRentalTiles = options.sweepRentals
+      ? sweepRentalListings(oldTiles)
       : Promise.resolve(null)
 
     const [landsSettlement, rentalListingsSettlement, sweepSettlement] =
       await Promise.allSettled([
         fetchLandChanges(cursors, oldTiles),
         updatedRentalListings,
-        openRentalListings,
+        sweptRentalTiles,
       ])
 
     // without the land changes the pass can't be applied consistently, so it fails and the previous map stays
@@ -468,7 +557,8 @@ export async function createApiComponent(components: {
         }`
       )
     }
-    const { snapshot, parcels, estates, estateParcels } = landsSettlement.value
+    const { snapshot, parcels, estates, estateParcels, emptiedEstates } =
+      landsSettlement.value
     metrics.increment('dcl_map_update', { type: 'land', status: 'success' })
 
     // a rental listings failure keeps their previous state and cursor
@@ -493,7 +583,7 @@ export async function createApiComponent(components: {
     let sweptTiles: Tile[] = []
     let rentalsSwept = false
     if (sweepSettlement.status === 'fulfilled' && sweepSettlement.value) {
-      sweptTiles = reconcileRentalListings(oldTiles, sweepSettlement.value)
+      sweptTiles = sweepSettlement.value
       rentalsSwept = true
     } else if (sweepSettlement.status === 'rejected') {
       componentLogger.error(
@@ -517,7 +607,7 @@ export async function createApiComponent(components: {
     }
 
     const newCursors: Cursors = {
-      // everything up to the snapshot's block has been read
+      // the next fetch re-reads LAND_OVERLAP_SECONDS before it, covering the lag behind the head
       land: Math.max(cursors.land, snapshot.timestamp),
       rentals: rentalListings.reduce(
         (cursor, rentalListing) => Math.max(cursor, rentalListing.updatedAt),
@@ -623,7 +713,7 @@ export async function createApiComponent(components: {
     )
 
     // an estate left without parcels was dissolved, its stale entry is replaced
-    const dissolvedEstates = estates
+    const dissolvedEstates = [...estates, ...emptiedEstates]
       .filter((estate) => estate.estate.size === 0)
       .map((estate) =>
         buildDissolvedEstate(

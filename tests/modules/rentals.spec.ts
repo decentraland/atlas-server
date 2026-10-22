@@ -115,6 +115,45 @@ describe('when getting the open rental listings', () => {
   })
 })
 
+describe('when getting the open rental listings of some nfts', () => {
+  let result: RentalListing[]
+
+  beforeEach(async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: () =>
+        Promise.resolve({
+          ok: true,
+          data: {
+            results: [{ id: '1', nftId: 'estate-0x2-1' }],
+            total: 1,
+            page: 0,
+            pages: 1,
+          },
+        }),
+    })
+    result = await rentalsComponent.getOpenRentalListingsOfNfts([
+      'estate-0x2-1',
+      'parcel-0x1-5',
+    ])
+  })
+
+  afterEach(() => {
+    fetchMock.mockReset()
+  })
+
+  it('should ask for the open listings of those nfts only', () => {
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      `${rentalsURL}/v1/rentals-listings?status=open&limit=100&nftIds=estate-0x2-1&nftIds=parcel-0x1-5`,
+    ])
+  })
+
+  it('should return the listings found', () => {
+    expect(result).toEqual([{ id: '1', nftId: 'estate-0x2-1' }])
+  })
+})
+
 describe('when getting the updated rental listings', () => {
   const updatedAfter = 1673269193336
   let responses: SignaturesServerPaginatedResponse<RentalListing[]>[]

@@ -12,14 +12,14 @@ export type Batch = {
 }
 /** Where the next incremental fetch resumes, one cursor per source. */
 export type Cursors = {
-  /** Subgraph updatedAt (seconds) of the newest land change applied. */
+  /** Timestamp (seconds) of the subgraph head when the last land fetch started; the next one re-reads a window before it. */
   land: number
   /** Signatures server updatedAt (ms) of the newest rental listing change applied. */
   rentals: number
 }
 
 export type Result = Batch & {
-  /** UTC ms of the newest change in the result. */
+  /** UTC ms of the newest of both cursors, the land one converted to ms. */
   updatedAt: number
   cursors: Cursors
   /** True when the full sweep of open rental listings ran and was applied. */
