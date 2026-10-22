@@ -14,6 +14,7 @@ import {
 const HTTP_MAX_URL_LENGTH = 2048
 const MAX_CONCURRENT_REQUEST = 2
 const LIMIT_RENTAL_LISTINGS = 100
+const RENTALS_REQUEST_TIMEOUT = 30000
 
 export async function createRentalsComponent(components: {
   config: IConfigComponent
@@ -39,6 +40,7 @@ export async function createRentalsComponent(components: {
         headers: {
           'User-agent': 'Atlas server',
         },
+        timeout: RENTALS_REQUEST_TIMEOUT,
       }
     )
     if (!response.ok) {

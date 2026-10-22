@@ -27,6 +27,7 @@ import {
 } from './adapters/mini-map-renderer'
 import { createS3Component } from './modules/s3/component'
 import { allowAnyOriginMiddleware } from './logic/allow-any-origin-middleware'
+import { ApplicationName } from './modules/features/types'
 
 export async function initComponents(): Promise<AppComponents> {
   const config = await createDotEnvConfigComponent(
@@ -132,7 +133,9 @@ export async function initComponents(): Promise<AppComponents> {
     (await config.requireString('ATLAS_SERVER_URL')) ||
       `http://${await config.getString(
         'HTTP_SERVER_HOST'
-      )}:${await config.getString('HTTP_SERVER_PORT')}`
+      )}:${await config.getString('HTTP_SERVER_PORT')}`,
+    // registered apps are preloaded on start and served from a refreshed cache
+    { apps: [ApplicationName.DAPPS] }
   )
 
   return {
