@@ -12,8 +12,6 @@ export function createImageComponent(components: {
 
   function getColor(tile: Tile) {
     switch (tile.type) {
-      case TileType.DISTRICT:
-        return '#5054D4'
       case TileType.PLAZA:
         return '#70AC76'
       case TileType.ROAD:

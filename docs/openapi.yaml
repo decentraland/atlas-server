@@ -1083,7 +1083,6 @@ components:
             - unowned
             - plaza
             - road
-            - district
           description: The type of tile
           example: "owned"
         top:
