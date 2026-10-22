@@ -93,6 +93,11 @@ describe('when getting the open rental listings by NFT id', () => {
       expect(parsedUrl.searchParams.getAll('nftIds')).toEqual(rentalIds)
     })
 
+    it('should only ask for open rental listings', () => {
+      const parsedUrl = new URL(fetchMock.mock.calls[0][0])
+      expect(parsedUrl.searchParams.getAll('status')).toEqual(['open'])
+    })
+
     it('should return the rental listings', () => {
       expect(result).toEqual(expectedResult)
     })
