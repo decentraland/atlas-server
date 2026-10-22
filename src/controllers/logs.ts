@@ -4,9 +4,10 @@ import { MapEvents } from '../modules/map/types'
 import { AppComponents } from '../types'
 
 export const setupLogs = (
-  components: Pick<AppComponents, 'config' | 'map' | 'batchApi'>
+  components: Pick<AppComponents, 'config' | 'map' | 'batchApi' | 'logs'>
 ) => {
-  const { config, map, batchApi } = components
+  const { config, map, batchApi, logs } = components
+  const logger = logs.getLogger('map-updates')
 
   const bar = new SingleBar({ format: '[{bar}] {percentage}%' })
 
@@ -44,11 +45,7 @@ export const setupLogs = (
   })
 
   map.events.on(MapEvents.UPDATE, (result: Result) => {
-    console.log(
-      `Updating ${result.tiles.length} tiles: ${result.tiles
-        .map((tile) => `${tile.x},${tile.y}`)
-        .join(', ')}`
-    )
+    logger.debug('Updating tiles', { count: result.tiles.length })
     console.log(`Updating ${result.parcels.length} parcels`)
     console.log(`Updating ${result.estates.length} estates`)
     console.log(`Last timestamp:`, result.updatedAt)
