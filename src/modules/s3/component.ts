@@ -1,30 +1,16 @@
-import {
-  S3Client,
-  PutObjectCommand,
-  GetObjectCommand,
-  S3ClientConfig,
-} from '@aws-sdk/client-s3'
+import { S3Client, PutObjectCommand, S3ClientConfig } from '@aws-sdk/client-s3'
 import {
   IConfigComponent,
   ILoggerComponent,
 } from '@well-known-components/interfaces'
 import { Tile, LegacyTile } from '../map/types'
 
-export type TilesTimestamp = {
-  timestamp: number
-  /** Format version of the cached tiles, missing on files from older releases. */
-  version?: number
-}
-
 export interface IS3Component {
   uploadTilesJson(
     version: string,
     tiles: Record<string, Partial<Tile | LegacyTile>>
   ): Promise<string>
-  uploadTimestamp(timestamp: number, version: number): Promise<void>
-  getTilesJson(version: string): Promise<Record<string, Tile> | null>
-  getTimestamp(): Promise<TilesTimestamp | null>
-  getFileUrl(version: string): Promise<string>
+  uploadTimestamp(timestamp: number): Promise<void>
 }
 
 export async function createS3Component(components: {
@@ -115,10 +101,7 @@ export async function createS3Component(components: {
       }
     }
 
-    async function uploadTimestamp(
-      timestamp: number,
-      version: number
-    ): Promise<void> {
+    async function uploadTimestamp(timestamp: number): Promise<void> {
       const key = 'tiles/timestamp.json'
 
       try {
@@ -126,7 +109,7 @@ export async function createS3Component(components: {
           new PutObjectCommand({
             Bucket: bucketName,
             Key: key,
-            Body: JSON.stringify({ timestamp, version }),
+            Body: JSON.stringify({ timestamp }),
             ContentType: 'application/json',
             CacheControl: 'public, max-age=60',
             Metadata: {
@@ -143,70 +126,9 @@ export async function createS3Component(components: {
       }
     }
 
-    async function getTilesJson(
-      version: string
-    ): Promise<Record<string, Tile> | null> {
-      const key = `tiles/${version}/latest.json`
-
-      try {
-        const response = await s3Client.send(
-          new GetObjectCommand({
-            Bucket: bucketName,
-            Key: key,
-          })
-        )
-
-        const body = await response.Body?.transformToString()
-        if (!body) return null
-
-        const data = JSON.parse(body)
-        return data.ok ? data.data : null
-      } catch (error) {
-        componentLogger.warn(`Failed to get tiles from S3: ${error}`)
-        return null
-      }
-    }
-
-    async function getTimestamp(): Promise<TilesTimestamp | null> {
-      const key = 'tiles/timestamp.json'
-
-      try {
-        const response = await s3Client.send(
-          new GetObjectCommand({
-            Bucket: bucketName,
-            Key: key,
-          })
-        )
-
-        const body = await response.Body?.transformToString()
-        if (!body) return null
-
-        const data = JSON.parse(body)
-        return typeof data.timestamp === 'number'
-          ? { timestamp: data.timestamp, version: data.version }
-          : null
-      } catch (error) {
-        componentLogger.warn(`Failed to get timestamp from S3: ${error}`)
-        return null
-      }
-    }
-
-    async function getFileUrl(version: string): Promise<string> {
-      const key = `tiles/${version}/latest.json`
-      if (cdnUrl) {
-        return `${cdnUrl}/${key}`
-      }
-      return endpoint
-        ? `${endpoint}/${bucketName}/${key}`
-        : `https://${bucketName}.s3.amazonaws.com/${key}`
-    }
-
     return {
       uploadTilesJson,
       uploadTimestamp,
-      getTilesJson,
-      getTimestamp,
-      getFileUrl,
     }
   } catch (error) {
     componentLogger.warn(
@@ -226,18 +148,6 @@ function createStubS3Component(
     },
     uploadTimestamp: async () => {
       logger.debug('Stub S3 component - timestamp upload ignored')
-    },
-    getTilesJson: async () => {
-      logger.debug('Stub S3 component - get tiles operation ignored')
-      return null
-    },
-    getTimestamp: async () => {
-      logger.debug('Stub S3 component - get timestamp operation ignored')
-      return null
-    },
-    getFileUrl: async () => {
-      logger.debug('Stub S3 component - get file URL operation ignored')
-      return ''
     },
   }
 }

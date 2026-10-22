@@ -5,12 +5,7 @@ import {
 } from '../../adapters/rentals'
 import { isRentalListingOpen } from '../../logic/rental'
 import { Tile } from '../map/types'
-import {
-  EstateFragment,
-  ParcelFragment,
-  OrderFragment,
-  Proximity,
-} from './types'
+import { ParcelFragment, OrderFragment, Proximity } from './types'
 import proximities from './data/proximity.json'
 
 export function isExpired(order: OrderFragment) {
@@ -19,15 +14,6 @@ export function isExpired(order: OrderFragment) {
       ? parseInt(order.expiresAt, 10)
       : Math.round(parseInt(order.expiresAt, 10) / 1000)
   return expirationDate <= Math.round(Date.now() / 1000)
-}
-
-/** Gets the newest subgraph updatedAt (seconds) of a parcel fragment and its estate. */
-export function getFragmentUpdatedAt(fragment: ParcelFragment): number {
-  const { estate } = fragment.parcel
-  return Math.max(
-    parseInt(fragment.updatedAt, 10),
-    estate ? parseInt(estate.nft.updatedAt, 10) : 0
-  )
 }
 
 export const getProximity = (
@@ -68,32 +54,6 @@ export const getProximity = (
 
 export function capitalize(text: string) {
   return text[0].toUpperCase() + text.slice(1)
-}
-
-export function buildFromEstates<T extends { id: string }>(
-  estates: EstateFragment[],
-  list: T[],
-  build: (fragment: ParcelFragment) => T | null
-) {
-  // keep track of entries already added to the list
-  const alreadyAdded = new Set<string>(list.map((entry) => entry.id))
-  // fill list with new entries from EstateFragments
-  return estates.reduce<T[]>(
-    (entries, nft) =>
-      // grab parcels from each estate
-      nft.estate.parcels
-        // build each entry from each ParcelFragment
-        .map((parcel) => build(parcel.nft))
-        // add entries to the list, only if not null and not added already
-        .reduce((entries, entry) => {
-          if (entry && !alreadyAdded.has(entry.id)) {
-            entries.push(entry)
-            alreadyAdded.add(entry.id)
-          }
-          return entries
-        }, entries),
-    []
-  )
 }
 
 export function getParcelFragmentRentalListing(
