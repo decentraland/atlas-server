@@ -42,9 +42,12 @@ export function createImageComponent(components: {
     const layer: Layer = (x, y) => {
       const id = coordsToId(x, y)
       const tile = tiles[id]
-      const isOnSale = showOnSale && tile.price && !isOrderExpired(tile)
+      const isOnSale = showOnSale && tile && tile.price && !isOrderExpired(tile)
       const isListedForRent =
-        showOnRent && tile.rentalListing && !isRentalExpired(tile.rentalListing)
+        showOnRent &&
+        tile &&
+        tile.rentalListing &&
+        !isRentalExpired(tile.rentalListing)
       const result = tile
         ? {
             color: isOnSale || isListedForRent ? '#1FBCFF' : getColor(tile),

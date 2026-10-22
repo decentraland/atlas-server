@@ -81,7 +81,8 @@ export async function createEstatesRendererComponent(components: {
 
   async function getStream() {
     const data = await components.map.getTiles()
-    const array: string[] = []
+    // 1-based so 0 keeps meaning "no estate"
+    const estateIndexes = new Map<string, number>()
 
     for (var pos in data) {
       const { x, y, estateId } = data[pos]
@@ -91,10 +92,12 @@ export async function createEstatesRendererComponent(components: {
       let index = 0
 
       if (estateId) {
-        if (array.includes(estateId)) {
-          index = array.indexOf(estateId)
+        const existing = estateIndexes.get(estateId)
+        if (existing === undefined) {
+          index = estateIndexes.size + 1
+          estateIndexes.set(estateId, index)
         } else {
-          index = array.push(estateId)
+          index = existing
         }
       }
 
