@@ -21,6 +21,15 @@ export function isExpired(order: OrderFragment) {
   return expirationDate <= Math.round(Date.now() / 1000)
 }
 
+/** Gets the newest subgraph updatedAt (seconds) of a parcel fragment and its estate. */
+export function getFragmentUpdatedAt(fragment: ParcelFragment): number {
+  const { estate } = fragment.parcel
+  return Math.max(
+    parseInt(fragment.updatedAt, 10),
+    estate ? parseInt(estate.nft.updatedAt, 10) : 0
+  )
+}
+
 export const getProximity = (
   coords: { x: number | string; y: number | string }[]
 ) => {

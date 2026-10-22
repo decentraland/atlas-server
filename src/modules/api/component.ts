@@ -29,6 +29,7 @@ import { IRentalsComponent } from '../rentals/types'
 import {
   ApiEvents,
   Batch,
+  Cursors,
   ParcelFragment,
   IApiComponent,
   NFT,
@@ -42,6 +43,7 @@ import {
   getProximity,
   capitalize,
   buildFromEstates,
+  getFragmentUpdatedAt,
   getParcelFragmentRentalListing,
 } from './utils'
 
@@ -59,6 +61,7 @@ const parcelFields = `{
   activeOrder {
     price
     expiresAt
+    createdAt
   }
   parcel {
     data {
@@ -83,6 +86,7 @@ const parcelFields = `{
         activeOrder {
           price
           expiresAt
+          createdAt
         }
         updatedAt
       }
@@ -117,6 +121,8 @@ export async function createApiComponent(components: {
 
   // methods
   async function fetchData() {
+    // rental listings changing while the batches are fetched are picked up by the next update
+    const rentalsCursor = Date.now()
     const tiles: Tile[] = []
     const parcels: NFT[] = []
     const estates: NFT[] = []
@@ -127,6 +133,7 @@ export async function createApiComponent(components: {
     let total = 0
     let complete = false
     let lastTokenId = ''
+    let landCursor = 0
 
     while (!complete) {
       // fetch batch
@@ -141,6 +148,7 @@ export async function createApiComponent(components: {
         for (const estate of batch.estates) {
           estates.push(estate)
         }
+        landCursor = Math.max(landCursor, batch.landUpdatedAt)
 
         // notify progress
         total = total + batch.tiles.length
@@ -191,6 +199,7 @@ export async function createApiComponent(components: {
         (lastUpdatedAt, tile) => Math.max(lastUpdatedAt, tile.updatedAt),
         0
       ),
+      cursors: { land: landCursor, rentals: rentalsCursor },
     }
     return result
   }
@@ -222,7 +231,7 @@ export async function createApiComponent(components: {
             ])
           )
         : {}
-    return nfts.reduce<Batch>(
+    return nfts.reduce<Batch & { landUpdatedAt: number }>(
       (batch, nft) => {
         const tileRentalListing =
           tileRentalListings[nft.searchParcelEstateId ?? nft.id]
@@ -234,28 +243,31 @@ export async function createApiComponent(components: {
         if (estate) {
           batch.estates.push(estate)
         }
+        batch.landUpdatedAt = Math.max(
+          batch.landUpdatedAt,
+          getFragmentUpdatedAt(nft)
+        )
         return batch
       },
-      { tiles: [], parcels: [], estates: [] }
+      { tiles: [], parcels: [], estates: [], landUpdatedAt: 0 }
     )
   }
 
   async function fetchUpdatedData(
-    updatedAfterInMs: number,
+    cursors: Cursors,
     oldTiles: Record<string, Tile>
-  ) {
-    try {
-      const updatedLand = subgraph.query<{
-        parcels: ParcelFragment[]
-        estates: EstateFragment[]
-      }>(
-        `{
+  ): Promise<Result> {
+    const updatedLand = subgraph.query<{
+      parcels: ParcelFragment[]
+      estates: EstateFragment[]
+    }>(
+      `{
         parcels: nfts(
           first: ${batchSize},
           orderBy: updatedAt,
           orderDirection: asc,
           where: {
-            updatedAt_gt: "${fromMillisecondsToSeconds(updatedAfterInMs)}",
+            updatedAt_gt: "${cursors.land}",
             category: parcel
           }
         ) ${parcelFields}
@@ -264,143 +276,189 @@ export async function createApiComponent(components: {
           orderBy: updatedAt,
           orderDirection: asc,
           where: {
-            updatedAt_gt: "${fromMillisecondsToSeconds(updatedAfterInMs)}",
+            updatedAt_gt: "${cursors.land}",
             category: estate
           }
         ) {
+          tokenId
+          name
           updatedAt
           estate {
+            size
+            data {
+              description
+            }
             parcels {
               nft ${parcelFields}
             }
           }
         }
       }`
+    )
+    const updatedRentalListings =
+      // timestamp in signatures server has microsecond precision. Adding one to avoid returning
+      // the same rental listing previously saved
+      rentals.getUpdatedRentalListings(cursors.rentals + 1)
+
+    const [landsSettlement, rentalListingsSettlement] =
+      await Promise.allSettled([updatedLand, updatedRentalListings])
+
+    // without the land changes the pass can't be applied consistently, so it fails and the previous map stays
+    if (landsSettlement.status === 'rejected') {
+      componentLogger.error(
+        `Failed to retrieve updated information about the lands: ${landsSettlement.reason}`
       )
-      const updatedRentalListings =
-        // timestamp in signatures server has microsecond precision. Adding one to avoid returning
-        // the same rental listing previously saved
-        rentals.getUpdatedRentalListings(updatedAfterInMs + 1)
+      metrics.increment('dcl_map_update', { type: 'land', status: 'failure' })
+      throw new Error(
+        `Failed to fetch update data: ${
+          isErrorWithMessage(landsSettlement.reason)
+            ? landsSettlement.reason.message
+            : 'Unknown error'
+        }`
+      )
+    }
+    const { parcels, estates } = landsSettlement.value
+    metrics.increment('dcl_map_update', { type: 'land', status: 'success' })
 
-      let parcels: ParcelFragment[] = []
-      let estates: EstateFragment[] = []
-      let rentalListings: RentalListing[] = []
-      // Gets the latest parcels, estates and rental listings.
-      const [landsSettlement, rentalListingsSettlement] =
-        await Promise.allSettled([updatedLand, updatedRentalListings])
+    // a rental listings failure keeps their previous state and cursor
+    let rentalListings: RentalListing[] = []
+    if (rentalListingsSettlement.status === 'fulfilled') {
+      rentalListings = rentalListingsSettlement.value
+      metrics.increment('dcl_map_update', {
+        type: 'rental',
+        status: 'success',
+      })
+    } else {
+      componentLogger.error(
+        `Failed to retrieve updated information about the rental listings: ${rentalListingsSettlement.reason}`
+      )
+      metrics.increment('dcl_map_update', {
+        type: 'rental',
+        status: 'failure',
+      })
+    }
 
-      if (landsSettlement.status === 'fulfilled') {
-        parcels = landsSettlement.value.parcels
-        estates = landsSettlement.value.estates
-        metrics.increment('dcl_map_update', { type: 'land', status: 'success' })
-      } else {
-        componentLogger.error(
-          `Failed to retrieve updated information about the lands: ${landsSettlement.reason}`
-        )
-        metrics.increment('dcl_map_update', { type: 'land', status: 'failure' })
+    // Gets the rental listings by nft id to use them more efficiently later.
+    const rentalListingByNftId: Record<string, RentalListing> = {}
+    for (const rentalListing of rentalListings) {
+      const current = rentalListingByNftId[rentalListing.nftId]
+      if (!current || current.updatedAt <= rentalListing.updatedAt) {
+        rentalListingByNftId[rentalListing.nftId] = rentalListing
       }
+    }
 
-      if (rentalListingsSettlement.status === 'fulfilled') {
-        rentalListings = rentalListingsSettlement.value
-        metrics.increment('dcl_map_update', {
-          type: 'rental',
-          status: 'success',
-        })
-      } else {
-        componentLogger.error(
-          `Failed to retrieve updated information about the rental listings: ${rentalListingsSettlement.reason}`
-        )
-        metrics.increment('dcl_map_update', {
-          type: 'rental',
-          status: 'failure',
-        })
+    const newCursors: Cursors = {
+      land: [...parcels, ...estates].reduce(
+        (cursor, nft) => Math.max(cursor, parseInt(nft.updatedAt, 10)),
+        cursors.land
+      ),
+      rentals: rentalListings.reduce(
+        (cursor, rentalListing) => Math.max(cursor, rentalListing.updatedAt),
+        cursors.rentals
+      ),
+    }
+    const updatedAt = Math.max(
+      fromSecondsToMilliseconds(newCursors.land),
+      newCursors.rentals
+    )
+
+    if (!parcels.length && !estates.length && !rentalListings.length) {
+      return {
+        tiles: [],
+        parcels: [],
+        estates: [],
+        updatedAt,
+        cursors: newCursors,
       }
+    }
 
-      // Gets the rental listings by nft id to use them more efficiently later.
-      const rentalListingByNftId = rentalListings.reduce((acc, curr) => {
-        acc[curr.nftId] =
-          acc[curr.nftId] && acc[curr.nftId].updatedAt > curr.updatedAt
-            ? acc[curr.nftId]
-            : curr
-        return acc
-      }, {} as Record<string, RentalListing>)
-
-      if (!parcels.length && !estates.length && !rentalListings.length) {
-        return {
-          tiles: [],
-          parcels: [],
-          estates: [],
-          updatedAt: updatedAfterInMs,
-        }
+    // Gets the tiles by estate id and by nft id to use them more efficiently later.
+    const tilesByEstateId: Record<string, Tile[]> = {}
+    const tilesByNftId: Record<string, Tile> = {}
+    for (const tile of Object.values(oldTiles)) {
+      if (tile.estateId) {
+        ;(tilesByEstateId[tile.estateId] ??= []).push(tile)
       }
+      if (tile.nftId) {
+        tilesByNftId[tile.nftId] = tile
+      }
+    }
 
-      // Gets the tiles by estate id to use them more efficiently later.
-      const tilesByEstateId = Object.values(oldTiles).reduce((acc, curr) => {
-        if (curr.estateId && acc[curr.estateId]) {
-          acc[curr.estateId] = acc[curr.estateId].concat([curr])
-        } else if (curr.estateId && !acc[curr.estateId]) {
-          acc[curr.estateId] = [curr]
-        }
-        return acc
-      }, {} as Record<string, Tile[]>)
-
-      // Gets the tiles by token id to use them more efficiently later.
-      const tilesByNftId = Object.values(oldTiles).reduce((acc, curr) => {
-        if (curr.nftId) {
-          acc[curr.nftId] = curr
-        }
-        return acc
-      }, {} as Record<string, Tile>)
-
-      // Creates the tiles that are being updated because of a new / updated rental listings.
-      const updatedTilesByRentalListings: Tile[] = rentalListings
-        .flatMap((rentalListing) => {
-          if (!rentalListing.nftId) {
-            console.error(
-              `Rental listing has a wrong nft id: ${rentalListing.nftId}`
-            )
-            return null
-          }
-          const tokenId = getTokenIdFromNftId(rentalListing.nftId)
-          if (!tokenId) {
-            throw new Error(
-              `Could not retrieve token id from ${rentalListing.nftId}`
-            )
-          }
-
-          if (
-            isNftIdFromParcel(rentalListing.nftId) &&
-            tilesByNftId[rentalListing.nftId]
-          ) {
-            const currentTile = tilesByNftId[rentalListing.nftId]
-            return {
-              ...currentTile,
-              updatedAt: Math.max(
-                currentTile.updatedAt,
-                rentalListing.updatedAt
-              ),
-              rentalListing: isRentalListingOpen(rentalListing)
-                ? convertRentalListingToTileRentalListing(rentalListing)
-                : undefined,
-            }
-          } else if (
-            isNftIdFromEstate(rentalListing.nftId) &&
-            tilesByEstateId[tokenId] !== undefined
-          ) {
-            return tilesByEstateId[tokenId].map((tile) => ({
-              ...tile,
-              updatedAt: Math.max(tile.updatedAt, rentalListing.updatedAt),
-              rentalListing: isRentalListingOpen(rentalListing)
-                ? convertRentalListingToTileRentalListing(rentalListing)
-                : undefined,
-            }))
-          }
+    // Creates the tiles that are being updated because of a new / updated rental listings.
+    const updatedTilesByRentalListings: Tile[] = rentalListings
+      .flatMap((rentalListing) => {
+        if (!rentalListing.nftId) {
+          console.error(
+            `Rental listing has a wrong nft id: ${rentalListing.nftId}`
+          )
           return null
-        })
-        .filter((tile) => tile !== null) as Tile[]
+        }
+        const tokenId = getTokenIdFromNftId(rentalListing.nftId)
+        if (!tokenId) {
+          throw new Error(
+            `Could not retrieve token id from ${rentalListing.nftId}`
+          )
+        }
 
-      // Creates the tiles that are being updated given the updated parcels.
-      const updatedTilesByUpdatedParcels = parcels.map((parcel) =>
+        if (
+          isNftIdFromParcel(rentalListing.nftId) &&
+          tilesByNftId[rentalListing.nftId]
+        ) {
+          const currentTile = tilesByNftId[rentalListing.nftId]
+          return {
+            ...currentTile,
+            updatedAt: Math.max(currentTile.updatedAt, rentalListing.updatedAt),
+            rentalListing: isRentalListingOpen(rentalListing)
+              ? convertRentalListingToTileRentalListing(rentalListing)
+              : undefined,
+          }
+        } else if (
+          isNftIdFromEstate(rentalListing.nftId) &&
+          tilesByEstateId[tokenId] !== undefined
+        ) {
+          return tilesByEstateId[tokenId].map((tile) => ({
+            ...tile,
+            updatedAt: Math.max(tile.updatedAt, rentalListing.updatedAt),
+            rentalListing: isRentalListingOpen(rentalListing)
+              ? convertRentalListingToTileRentalListing(rentalListing)
+              : undefined,
+          }))
+        }
+        return null
+      })
+      .filter((tile) => tile !== null) as Tile[]
+
+    // Creates the tiles that are being updated given the updated parcels.
+    const updatedTilesByUpdatedParcels = parcels.map((parcel) =>
+      buildTile(
+        parcel,
+        getParcelFragmentRentalListing(
+          parcel,
+          rentalListingByNftId,
+          tilesByNftId
+        )
+      )
+    )
+
+    // Merges the updates tiles whose change was originated from the rental listings with the ones that came from the graph.
+    const updatedTiles = leftMerge(
+      updatedTilesByRentalListings,
+      updatedTilesByUpdatedParcels
+    )
+
+    // Build the updated parcels from the updates parcels that came from the graph.
+    const updatedParcels = parcels.map((parcel) => buildParcel(parcel))
+
+    // Build the estates from the updates estates that came from the graph.
+    const updatedEstates = parcels
+      .map((parcel) => buildEstate(parcel))
+      .filter((estate) => estate !== null) as NFT[]
+
+    // The following piece adds tiles from updated Estates. This is necessary only for an Estate that get listed or delisted on sale, since that doesn't change the lastUpdatedAt property of a Parcel.
+    const updatedTilesFromEstates = buildFromEstates(
+      estates,
+      updatedTiles,
+      (parcel) =>
         buildTile(
           parcel,
           getParcelFragmentRentalListing(
@@ -409,118 +467,43 @@ export async function createApiComponent(components: {
             tilesByNftId
           )
         )
-      )
-
-      // Merges the updates tiles whose change was originated from the rental listings with the ones that came from the graph.
-      const updatedTiles = leftMerge(
-        updatedTilesByRentalListings,
-        updatedTilesByUpdatedParcels
-      )
-
-      // Build the updated parcels from the updates parcels that came from the graph.
-      const updatedParcels = parcels.map((parcel) => buildParcel(parcel))
-
-      // Build the estates from the updates estates that came from the graph.
-      const updatedEstates = parcels
-        .map((parcel) => buildEstate(parcel))
-        .filter((estate) => estate !== null) as NFT[]
-
-      // The following piece adds tiles from updated Estates. This is necessary only for an Estate that get listed or delisted on sale, since that doesn't change the lastUpdatedAt property of a Parcel.
-      const updatedTilesFromEstates = buildFromEstates(
-        estates,
-        updatedTiles,
-        (parcel) =>
-          buildTile(
-            parcel,
-            getParcelFragmentRentalListing(
-              parcel,
-              rentalListingByNftId,
-              tilesByNftId
-            )
-          )
-      )
-      const updatedParcelsFromEstates = buildFromEstates(
-        estates,
-        updatedParcels,
-        buildParcel
-      )
-      const updatedEstatesFromEstates = buildFromEstates(
-        estates,
-        updatedEstates,
-        buildEstate
-      )
-
-      const batch: Batch = {
-        tiles: [...updatedTiles, ...updatedTilesFromEstates],
-        parcels: [...updatedParcels, ...updatedParcelsFromEstates],
-        estates: [...updatedEstates, ...updatedEstatesFromEstates],
-      }
-
-      // tiles already have the updateAt value in ms
-      const tilesLastUpdatedAt = fromSecondsToMilliseconds(
-        parcels.reduce<number>(
-          (updatedAt, parcel) =>
-            Math.max(updatedAt, parseInt(parcel.updatedAt, 10)),
-          0
+    )
+    const updatedParcelsFromEstates = buildFromEstates(
+      estates,
+      updatedParcels,
+      buildParcel
+    )
+    const updatedEstatesFromEstates = buildFromEstates(
+      estates,
+      updatedEstates,
+      buildEstate
+    )
+    // an estate left without parcels was dissolved, its stale entry is replaced
+    const dissolvedEstates = estates
+      .filter((estate) => estate.estate.size === 0)
+      .map((estate) =>
+        buildDissolvedEstate(
+          estate.tokenId,
+          estate.name ?? '',
+          estate.estate.data?.description ?? ''
         )
       )
 
-      // using estes from graph so we need to convert the updatedAt in ms as they come in seconds
-      const estatesLastUpdatedAt = fromSecondsToMilliseconds(
-        estates.reduce<number>(
-          (updatedAt, estate) =>
-            Math.max(updatedAt, parseInt(estate.updatedAt, 10)),
-          0
-        )
-      )
-
-      const rentalListingsUpdatedAt = Object.values(
-        rentalListingByNftId
-      ).reduce<number>(
-        (updatedAt, rentalListing) =>
-          Math.max(updatedAt, rentalListing.updatedAt),
-        0
-      )
-
-      // As both values are obtained simultaneously we can get the max from both of them and no data loss
-      // will ocurr
-      const lastUpdatedParcelOrEstate = Math.max(
-        tilesLastUpdatedAt,
-        estatesLastUpdatedAt
-      )
-
-      // Gets the minimum last updated time or the original updatedAfter time.
-      // Getting the minimum is required due to the rental listings being fetched multiple times, making
-      // it possible to have an estate or parcel update in the meantime.
-      const updatedAt = Math.max(
-        Math.min(
-          lastUpdatedParcelOrEstate === 0
-            ? Number.MAX_VALUE
-            : lastUpdatedParcelOrEstate,
-          rentalListingsUpdatedAt === 0
-            ? Number.MAX_VALUE
-            : rentalListingsUpdatedAt
-        ),
-        updatedAfterInMs
-      )
-
-      componentLogger.info(
-        `Last updates | tiles: ${tilesLastUpdatedAt} - estates: ${estatesLastUpdatedAt} - rentals: ${rentalListingsUpdatedAt} - saved: ${updatedAt}`
-      )
-
-      const result: Result = {
-        ...batch,
-        updatedAt,
-      }
-
-      return result
-    } catch (e) {
-      throw new Error(
-        `Failed to fetch update data: ${
-          isErrorWithMessage(e) ? e.message : 'Unknown error'
-        }`
-      )
+    const batch: Batch = {
+      tiles: [...updatedTiles, ...updatedTilesFromEstates],
+      parcels: [...updatedParcels, ...updatedParcelsFromEstates],
+      estates: [
+        ...updatedEstates,
+        ...updatedEstatesFromEstates,
+        ...dissolvedEstates,
+      ],
     }
+
+    componentLogger.info(
+      `Last updates | land: ${newCursors.land} - rentals: ${newCursors.rentals}`
+    )
+
+    return { ...batch, updatedAt, cursors: newCursors }
   }
 
   function buildTile(
@@ -591,6 +574,11 @@ export async function createApiComponent(components: {
         activeOrder.expiresAt.length === 10
           ? parseInt(activeOrder.expiresAt, 10)
           : Math.round(parseInt(activeOrder.expiresAt, 10) / 1000)
+      if (activeOrder.createdAt) {
+        tile.orderCreatedAt = fromSecondsToMilliseconds(
+          parseInt(activeOrder.createdAt, 10)
+        )
+      }
     }
 
     if (tokenId) {
@@ -711,23 +699,35 @@ export async function createApiComponent(components: {
     )
     if (nfts.length === 1) {
       const nft = nfts[0]
-      return {
-        id: estateId,
-        name: nft.name,
-        description: nft.estate.data?.description || '',
-        image: `${imageBaseUrl}/estates/${estateId}/map.png?size=24&width=1024&height=1024`,
-        external_url: `${externalBaseUrl}/contracts/${estateContractAddress}/tokens/${estateId}`,
-        attributes: [
-          {
-            trait_type: 'Size',
-            value: 0,
-            display_type: 'number',
-          },
-        ],
-        background_color: '000000',
-      }
+      return buildDissolvedEstate(
+        estateId,
+        nft.name,
+        nft.estate.data?.description || ''
+      )
     } else {
       return null
+    }
+  }
+
+  function buildDissolvedEstate(
+    estateId: string,
+    name: string,
+    description: string
+  ): NFT {
+    return {
+      id: estateId,
+      name,
+      description,
+      image: `${imageBaseUrl}/estates/${estateId}/map.png?size=24&width=1024&height=1024`,
+      external_url: `${externalBaseUrl}/contracts/${estateContractAddress}/tokens/${estateId}`,
+      attributes: [
+        {
+          trait_type: 'Size',
+          value: 0,
+          display_type: 'number',
+        },
+      ],
+      background_color: '000000',
     }
   }
 

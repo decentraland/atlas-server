@@ -27,13 +27,13 @@ export function leftMerge<T extends { id: string }>(
   leftItems: T[],
   rightItems: T[]
 ): T[] {
-  const result: Record<string, T> = leftItems.reduce(
-    (prev, current) => ({ ...prev, [current.id]: current }),
-    {}
-  )
-  rightItems.forEach((item) => {
-    result[item.id] = item
-  })
+  const result = new Map<string, T>()
+  for (const item of leftItems) {
+    result.set(item.id, item)
+  }
+  for (const item of rightItems) {
+    result.set(item.id, item)
+  }
 
-  return Object.values(result)
+  return Array.from(result.values())
 }
