@@ -166,6 +166,45 @@ describe('when getting the open rental listings by NFT id', () => {
     })
   })
 
+  describe('and the response body stalls', () => {
+    let request: Promise<Record<string, RentalListing>>
+
+    beforeEach(async () => {
+      jest.useFakeTimers()
+      rentalIds = ['parcel-0']
+      fetchMock.mockImplementationOnce(
+        async (
+          _url: string,
+          options: { abortController: AbortController }
+        ) => ({
+          ok: true,
+          status: 200,
+          json: () =>
+            new Promise((_resolve, reject) => {
+              const { signal } = options.abortController
+              if (signal.aborted) {
+                reject(new Error('The operation was aborted'))
+              }
+              signal.addEventListener('abort', () =>
+                reject(new Error('The operation was aborted'))
+              )
+            }),
+        })
+      )
+      request = rentalsComponent.getRentalsListingsOfNFTs(rentalIds)
+      request.catch(() => undefined)
+      await jest.advanceTimersByTimeAsync(30000)
+    })
+
+    afterEach(() => {
+      jest.useRealTimers()
+    })
+
+    it('should abort the request once the deadline passes', () => {
+      return expect(request).rejects.toThrow('The operation was aborted')
+    })
+  })
+
   describe('and fetching the list of rental fails', () => {
     beforeEach(() => {
       rentalIds = Array.from({ length: 1 }, (_, i) => `parcel-${i}`)

@@ -34,41 +34,52 @@ export async function createRentalsComponent(components: {
   async function fetchRentalListings(
     path: string
   ): Promise<SignaturesServerPaginatedResponse<RentalListing[]>> {
-    const response = await fetchComponent.fetch(
-      `${signaturesServerURL}${path}`,
-      {
-        headers: {
-          'User-agent': 'Atlas server',
-        },
-        timeout: RENTALS_REQUEST_TIMEOUT,
-      }
+    // the fetch timeout stops at the headers; the deadline also bounds reading the body
+    const abortController = new AbortController()
+    const deadline = setTimeout(
+      () => abortController.abort(),
+      RENTALS_REQUEST_TIMEOUT
     )
-    if (!response.ok) {
-      let parsedErrorResult: SignaturesServerErrorResponse<any> | undefined
-      try {
-        parsedErrorResult = await response.json()
-      } catch (_) {
-        // Ignore the JSON parse result error error.
-        // The body was not consumed by json(), so cancel it to avoid
-        // leaking the undrained response stream before throwing below.
-        await response.body?.cancel().catch(() => undefined)
-      }
-
-      if (parsedErrorResult) {
-        throw new Error(parsedErrorResult.message)
-      }
-
-      throw new Error(
-        `Error fetching rentals, the server responded with: ${response.status}`
+    try {
+      const response = await fetchComponent.fetch(
+        `${signaturesServerURL}${path}`,
+        {
+          headers: {
+            'User-agent': 'Atlas server',
+          },
+          timeout: RENTALS_REQUEST_TIMEOUT,
+          abortController,
+        }
       )
-    }
+      if (!response.ok) {
+        let parsedErrorResult: SignaturesServerErrorResponse<any> | undefined
+        try {
+          parsedErrorResult = await response.json()
+        } catch (_) {
+          // Ignore the JSON parse result error error.
+          // The body was not consumed by json(), so cancel it to avoid
+          // leaking the undrained response stream before throwing below.
+          await response.body?.cancel().catch(() => undefined)
+        }
 
-    const parsedResult = await response.json()
-    if (!parsedResult.ok) {
-      throw new Error(parsedResult.message)
-    }
+        if (parsedErrorResult) {
+          throw new Error(parsedErrorResult.message)
+        }
 
-    return parsedResult
+        throw new Error(
+          `Error fetching rentals, the server responded with: ${response.status}`
+        )
+      }
+
+      const parsedResult = await response.json()
+      if (!parsedResult.ok) {
+        throw new Error(parsedResult.message)
+      }
+
+      return parsedResult
+    } finally {
+      clearTimeout(deadline)
+    }
   }
 
   /** Gets the open rental listings of the NFTs identified by the given NFT ids.
