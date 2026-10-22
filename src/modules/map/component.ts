@@ -18,9 +18,6 @@ import { toLegacyTiles } from '../../adapters/legacy-tiles'
 import { Trade } from '../trades/component'
 import { AppComponents } from '../../types'
 
-// written next to the S3 tiles so readers can tell incompatible versions apart
-const TILES_CACHE_VERSION = 2
-
 export async function createMapComponent(
   components: Pick<
     AppComponents,
@@ -143,8 +140,9 @@ export async function createMapComponent(
     return oldTokens
   }
 
+  // returns the same record when nothing expired, saving a copy of the map
   function expireOrders(tiles: Record<string, Tile>) {
-    const newTiles: Record<string, Tile> = {}
+    let newTiles: Record<string, Tile> | null = null
 
     for (const id in tiles) {
       const tile = tiles[id]
@@ -162,13 +160,12 @@ export async function createMapComponent(
         if (rentalExpired) {
           delete expiredTile.rentalListing
         }
+        newTiles ??= { ...tiles }
         newTiles[id] = expiredTile
-      } else {
-        newTiles[id] = tile
       }
     }
 
-    return newTiles
+    return newTiles ?? tiles
   }
 
   async function uploadTilesToS3(tilesData: Record<string, Tile>) {
@@ -187,7 +184,7 @@ export async function createMapComponent(
       componentLogger.info(`Uploaded v2 tiles to ${lastUploadedTilesUrl.v2}`)
 
       // Upload timestamp separately
-      await s3.uploadTimestamp(lastUpdatedAt, TILES_CACHE_VERSION)
+      await s3.uploadTimestamp(lastUpdatedAt)
       componentLogger.info(`Uploaded timestamp to S3`)
     } catch (error) {
       componentLogger.warn(
@@ -443,26 +440,35 @@ export async function createMapComponent(
 
           const sweepRentals =
             Date.now() - lastRentalsSweepAt >= rentalsSweepInterval
-          const result = await api.fetchUpdatedData(cursors, baseTiles, {
-            sweepRentals,
-          })
-          if (result.rentalsSwept) {
+          let result: Result | null = null
+          try {
+            result = await api.fetchUpdatedData(cursors, baseTiles, {
+              sweepRentals,
+            })
+          } catch (error) {
+            // the land changes are retried next pass; expirations and trades still apply meanwhile
+            events.emit(MapEvents.ERROR, error)
+          }
+          if (result?.rentalsSwept) {
             lastRentalsSweepAt = Date.now()
           }
           const hasUpdates =
-            result.tiles.length > 0 ||
-            result.parcels.length > 0 ||
-            result.estates.length > 0
+            !!result &&
+            (result.tiles.length > 0 ||
+              result.parcels.length > 0 ||
+              result.estates.length > 0)
           // trades and order expirations are re-applied even without subgraph changes
           const nextBaseTiles = expireOrders(
-            hasUpdates ? addTiles(result.tiles, baseTiles) : baseTiles
+            result && hasUpdates ? addTiles(result.tiles, baseTiles) : baseTiles
           )
           const tilesWithTrades = applyTrades(
             nextBaseTiles,
             await fetchActiveTrades()
           )
           baseTiles = nextBaseTiles
-          cursors = result.cursors
+          if (result) {
+            cursors = result.cursors
+          }
           tiles = future()
           tiles.resolve(tilesWithTrades)
 
@@ -473,7 +479,7 @@ export async function createMapComponent(
             return
           }
 
-          if (hasUpdates) {
+          if (result && hasUpdates) {
             // update parcels
             const newParcels = addParcels(result.parcels, oldParcels)
             parcels = future()
@@ -499,7 +505,7 @@ export async function createMapComponent(
 
           // a trade-only change must still move Last-Modified forward by at least a second
           dataUpdatedAt = Math.max(
-            hasUpdates ? result.updatedAt : Date.now(),
+            result && hasUpdates ? result.updatedAt : Date.now(),
             dataUpdatedAt + 1000
           )
 

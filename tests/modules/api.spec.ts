@@ -17,6 +17,7 @@ import {
   EstateFragment,
   IApiComponent,
   NFT,
+  OrderFragment,
   ParcelFragment,
   Result,
 } from '../../src/modules/api/types'
@@ -29,6 +30,10 @@ const LAND_CONTRACT_ADDRESS = '0x1'
 const ESTATE_CONTRACT_ADDRESS = '0x2'
 const date = Date.now()
 const SNAPSHOT_BLOCK = 10
+const HEAD_TIMESTAMP = 1234
+const headResponse = {
+  _meta: { block: { number: SNAPSHOT_BLOCK, timestamp: HEAD_TIMESTAMP } },
+}
 const SNAPSHOT_TIMESTAMP = fromMillisecondsToSeconds(date) + 10
 
 type SubgraphWorld = {
@@ -400,6 +405,42 @@ describe('when fetching data', () => {
     })
   })
 
+  describe('and the subgraph does not report the timestamp of its head block', () => {
+    beforeEach(() => {
+      subgraphComponentMock.query = jest.fn().mockResolvedValueOnce({
+        _meta: { block: { number: 10, timestamp: null } },
+      })
+    })
+
+    it('should fail with an error naming the block', () => {
+      return expect(apiComponent.fetchData()).rejects.toThrowError(
+        'The subgraph did not report the timestamp of block 10'
+      )
+    })
+  })
+
+  describe('and the nfts changed after the head block read before fetching them', () => {
+    beforeEach(() => {
+      subgraphComponentMock.query = jest
+        .fn()
+        .mockResolvedValueOnce(headResponse)
+        .mockResolvedValueOnce({
+          nfts: [
+            { ...defaultParcel, updatedAt: (HEAD_TIMESTAMP + 90).toString() },
+          ],
+        })
+        .mockResolvedValueOnce({ nfts: [] })
+      rentalsComponentMock.getOpenRentalListings = jest
+        .fn()
+        .mockResolvedValue([])
+    })
+
+    it("should resume the land updates from the head block's timestamp", async () => {
+      const result = await apiComponent.fetchData()
+      expect(result.cursors.land).toBe(HEAD_TIMESTAMP)
+    })
+  })
+
   describe("and there's a single batch of nfts", () => {
     let nftFragments: ParcelFragment[]
 
@@ -411,9 +452,7 @@ describe('when fetching data', () => {
       ]
       subgraphComponentMock.query = jest
         .fn()
-        .mockResolvedValueOnce({
-          _meta: { block: { number: SNAPSHOT_BLOCK, timestamp: 1234 } },
-        })
+        .mockResolvedValueOnce(headResponse)
         .mockResolvedValueOnce({ nfts: nftFragments })
         .mockResolvedValueOnce({ nfts: [] })
       rentalsComponentMock.getOpenRentalListings = jest
@@ -442,7 +481,7 @@ describe('when fetching data', () => {
         ],
         estates: [fstEstateNFT],
         updatedAt: fromSecondsToMilliseconds(Number(defaultParcel.updatedAt)),
-        cursors: { land: 1234, rentals: expect.any(Number) },
+        cursors: { land: HEAD_TIMESTAMP, rentals: expect.any(Number) },
       })
     })
   })
@@ -548,11 +587,7 @@ describe('when fetching data', () => {
 
       subgraphComponentMock.query = jest
         .fn()
-        .mockResolvedValueOnce({
-          _meta: {
-            block: { number: SNAPSHOT_BLOCK, timestamp: maxDateInSeconds },
-          },
-        })
+        .mockResolvedValueOnce(headResponse)
         .mockResolvedValueOnce({ nfts: nftFragments.splice(0, 3) })
         .mockResolvedValueOnce({ nfts: nftFragments.splice(0, 6) })
         .mockResolvedValueOnce({ nfts: [] })
@@ -848,7 +883,7 @@ describe('when fetching data', () => {
           },
         ],
         updatedAt: fromSecondsToMilliseconds(maxDateInSeconds),
-        cursors: { land: maxDateInSeconds, rentals: expect.any(Number) },
+        cursors: { land: HEAD_TIMESTAMP, rentals: expect.any(Number) },
       })
     })
   })
@@ -1510,6 +1545,53 @@ describe('when fetching update data', () => {
         updatedAt: expect.any(Number),
         cursors: expect.any(Object),
       })
+    })
+  })
+
+  describe('and an estate got a new order and a rental listing in the same pass', () => {
+    let result: Result
+    let estateWithOrder: EstateFragment
+    let newOrder: OrderFragment
+
+    beforeEach(async () => {
+      newOrder = {
+        price: '7000000000000000000',
+        expiresAt: `${date + 100000000}`,
+      }
+      const withNewOrder = (parcel: ParcelFragment): ParcelFragment => ({
+        ...parcel,
+        parcel: {
+          ...parcel.parcel,
+          estate: {
+            ...parcel.parcel.estate!,
+            nft: { ...parcel.parcel.estate!.nft, activeOrder: newOrder },
+          },
+        },
+      })
+      estateWithOrder = { ...fstEstate, updatedAt: `${maxDateInSeconds + 5}` }
+      subgraphComponentMock.query = mockLandUpdates({
+        estates: [estateWithOrder],
+        estateParcels: [
+          withNewOrder(defaultFstParcelEstate),
+          withNewOrder(defaultSndParcelEstate),
+        ],
+      })
+      rentalsComponentMock.getUpdatedRentalListings = jest
+        .fn()
+        .mockResolvedValueOnce([fstEstateRentalListing])
+      result = await apiComponent.fetchUpdatedData(cursors, {
+        [defaultFstParcelEstateTile.id]: defaultFstParcelEstateTile,
+        [defaultSndParcelEstateTile.id]: defaultSndParcelEstateTile,
+      })
+    })
+
+    it('should show both the new order and the rental listing on its tiles', () => {
+      expect(
+        result.tiles.map((tile) => [tile.price, tile.rentalListing])
+      ).toEqual([
+        [7, convertRentalListingToTileRentalListing(fstEstateRentalListing)],
+        [7, convertRentalListingToTileRentalListing(fstEstateRentalListing)],
+      ])
     })
   })
 

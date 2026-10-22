@@ -142,7 +142,9 @@ export async function createApiComponent(components: {
     }>(`{ _meta { block { number timestamp } } }`)
     const { number, timestamp } = _meta.block
     if (!timestamp) {
-      throw new Error(`The subgraph did not report the timestamp of ${number}`)
+      throw new Error(
+        `The subgraph did not report the timestamp of block ${number}`
+      )
     }
     return { block: number, timestamp }
   }

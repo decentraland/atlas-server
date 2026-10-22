@@ -29,7 +29,6 @@ jest.mock('../../src/modules/map/data/specialTiles.json', () => ({
 
 const LAND_CONTRACT_ADDRESS = '0xland'
 const ESTATE_CONTRACT_ADDRESS = '0xestate'
-const CACHE_VERSION = 2
 const futureExpiration = Math.round(Date.now() / 1000) + 3600
 const pastExpiration = Math.round(Date.now() / 1000) - 3600
 
@@ -137,7 +136,6 @@ describe('map component', () => {
       getTilesJson,
       getTimestamp,
       uploadTilesJson,
-      getFileUrl: jest.fn().mockResolvedValue('https://cdn.example.com'),
       uploadTimestamp: jest.fn().mockResolvedValue(undefined),
     } as unknown as IS3Component
     const trades = { getActiveTrades } as unknown as ITradesComponent
@@ -207,20 +205,20 @@ describe('map component', () => {
       })
     })
 
-    describe('and S3 has tiles cached by a previous run', () => {
+    describe('and S3 has tiles uploaded by a previous run', () => {
       beforeEach(async () => {
-        getTilesJson.mockResolvedValueOnce(
-          toRecord([
-            buildTile('1,1', { name: 'Cached', owner: '0xstale' }),
-            buildTile('0,0', { type: TileType.PLAZA }),
-          ])
+        getTilesJson.mockResolvedValue(
+          toRecord([buildTile('1,1', { name: 'Cached', owner: '0xstale' })])
         )
-        getTimestamp.mockResolvedValueOnce({
-          timestamp: 3000,
-          version: CACHE_VERSION,
-        })
+        getTimestamp.mockResolvedValue({ timestamp: 3000, version: 2 })
         fetchData.mockResolvedValueOnce(freshResult)
         await startAndWaitUntilReady()
+      })
+
+      it('should not read them', () => {
+        expect(
+          getTilesJson.mock.calls.length + getTimestamp.mock.calls.length
+        ).toBe(0)
       })
 
       it('should serve the freshly fetched tiles', async () => {
@@ -644,6 +642,47 @@ describe('map component', () => {
       it('should ask for the rentals sweep', () => {
         expect(fetchUpdatedData.mock.calls[0][2]).toEqual({
           sweepRentals: true,
+        })
+      })
+    })
+
+    describe('and fetching the land updates keeps failing', () => {
+      beforeEach(() => {
+        fetchUpdatedData.mockRejectedValue(new Error('Subgraph 502'))
+      })
+
+      describe('and a trade opens', () => {
+        beforeEach(async () => {
+          fetchData.mockResolvedValueOnce(freshResult)
+          getActiveTrades
+            .mockResolvedValueOnce([])
+            .mockResolvedValue([buildTrade()])
+          await startAndWaitUntilReady()
+          await waitUntil(() => getActiveTrades.mock.calls.length >= 3)
+        })
+
+        it('should still show the trade price', async () => {
+          expect((await map.getTiles())['1,1'].price).toBe(3)
+        })
+      })
+
+      describe('and a rental listing expires', () => {
+        let expiration: number
+
+        beforeEach(async () => {
+          expiration = Date.now() + 100
+          freshResult.tiles = [
+            buildTile('1,1', {
+              rentalListing: { expiration, periods: [], updatedAt: 1000 },
+            }),
+          ]
+          fetchData.mockResolvedValueOnce(freshResult)
+          await startAndWaitUntilReady()
+          await waitUntil(() => Date.now() > expiration + 50)
+        })
+
+        it('should still remove the rental listing', async () => {
+          expect((await map.getTiles())['1,1'].rentalListing).toBeUndefined()
         })
       })
     })
