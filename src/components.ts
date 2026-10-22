@@ -67,7 +67,7 @@ export async function initComponents(): Promise<AppComponents> {
     { cors }
   )
   if (!cors.origin || cors.origin === '*') {
-    server.use(allowAnyOriginMiddleware())
+    server.use(allowAnyOriginMiddleware({ logs }))
   }
   createHttpTracerComponent({ server, tracer })
   instrumentHttpServerWithRequestLogger({ server, logger: logs })

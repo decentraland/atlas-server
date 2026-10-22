@@ -8,6 +8,7 @@ describe('when handling a request with the allow any origin middleware', () => {
   let next: jest.Mock
   let middleware: IHttpServerComponent.IRequestHandler<Context<string>>
   let result: IHttpServerComponent.IResponse
+  let loggerError: jest.Mock
 
   beforeEach(() => {
     context = {
@@ -16,7 +17,18 @@ describe('when handling a request with the allow any origin middleware', () => {
       params: {},
       url: new URL('http://localhost'),
     }
-    middleware = allowAnyOriginMiddleware()
+    loggerError = jest.fn()
+    middleware = allowAnyOriginMiddleware({
+      logs: {
+        getLogger: () => ({
+          info: jest.fn(),
+          warn: jest.fn(),
+          error: loggerError,
+          debug: jest.fn(),
+          log: jest.fn(),
+        }),
+      },
+    })
   })
 
   describe('and the response has no Access-Control-Allow-Origin header', () => {
@@ -85,6 +97,59 @@ describe('when handling a request with the allow any origin middleware', () => {
         chunks.push(Buffer.from(chunk))
       }
       expect(Buffer.concat(chunks).toString()).toBe('created')
+    })
+  })
+
+  describe('and the handler throws an unexpected error', () => {
+    let error: Error
+
+    beforeEach(async () => {
+      error = new Error('Unexpected failure')
+      next = jest.fn().mockRejectedValueOnce(error)
+      result = await middleware(context, next)
+    })
+
+    it('should respond with a 500 that allows any origin and is not cached', () => {
+      const headers = new Headers(result.headers)
+      expect({
+        status: result.status,
+        allowOrigin: headers.get('Access-Control-Allow-Origin'),
+        cacheControl: headers.get('Cache-Control'),
+      }).toEqual({ status: 500, allowOrigin: '*', cacheControl: 'no-store' })
+    })
+
+    it('should log the error', () => {
+      expect(loggerError).toHaveBeenCalledWith(error)
+    })
+  })
+
+  describe('and the handler throws an error with an HTTP status', () => {
+    beforeEach(async () => {
+      next = jest
+        .fn()
+        .mockRejectedValueOnce(
+          Object.assign(new Error('Not found'), { status: 404 })
+        )
+      result = await middleware(context, next)
+    })
+
+    it('should respond with that status and message, allowing any origin without caching', () => {
+      const headers = new Headers(result.headers)
+      expect({
+        status: result.status,
+        body: result.body,
+        allowOrigin: headers.get('Access-Control-Allow-Origin'),
+        cacheControl: headers.get('Cache-Control'),
+      }).toEqual({
+        status: 404,
+        body: 'Not found',
+        allowOrigin: '*',
+        cacheControl: 'no-store',
+      })
+    })
+
+    it('should not log it as an unexpected error', () => {
+      expect(loggerError).not.toHaveBeenCalled()
     })
   })
 })
