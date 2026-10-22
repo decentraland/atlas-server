@@ -292,6 +292,28 @@ describe('map component', () => {
         })
       })
 
+      describe('and a cached tile was priced by a trade that is still active', () => {
+        beforeEach(async () => {
+          getTilesJson.mockResolvedValueOnce(
+            toRecord([buildTile('1,1', { price: 3, updatedAt: 2000 })])
+          )
+          freshResult.tiles = [
+            buildTile('1,1', {
+              price: 20,
+              expiresAt: futureExpiration,
+              updatedAt: 1000,
+            }),
+          ]
+          fetchData.mockResolvedValueOnce(freshResult)
+          getActiveTrades.mockResolvedValueOnce([buildTrade()])
+          await startAndWaitUntilReady()
+        })
+
+        it('should show the trade price over the older order', async () => {
+          expect((await map.getTiles())['1,1'].price).toBe(3)
+        })
+      })
+
       describe('and the fresh data has an order price for a cached tile', () => {
         beforeEach(async () => {
           getTilesJson.mockResolvedValueOnce(toRecord([buildTile('1,1')]))
@@ -321,6 +343,39 @@ describe('map component', () => {
 
       it('should set the trade price on the parcel tile', async () => {
         expect((await map.getTiles())['1,1'].price).toBe(3)
+      })
+    })
+
+    describe('and two active trades sell the same parcel', () => {
+      beforeEach(async () => {
+        getActiveTrades.mockResolvedValueOnce([
+          buildTrade({
+            id: 'trade-2',
+            created_at: new Date(4000).toISOString(),
+            amount_received: '5000000000000000000',
+          }),
+          buildTrade(),
+        ])
+        fetchData.mockResolvedValueOnce(freshResult)
+        await startAndWaitUntilReady()
+      })
+
+      it('should show the price of the newest trade', async () => {
+        expect((await map.getTiles())['1,1'].price).toBe(5)
+      })
+    })
+
+    describe('and an active trade sells a token from another contract with the same id as a parcel', () => {
+      beforeEach(async () => {
+        getActiveTrades.mockResolvedValueOnce([
+          buildTrade({ contract_address_sent: '0xother' }),
+        ])
+        fetchData.mockResolvedValueOnce(freshResult)
+        await startAndWaitUntilReady()
+      })
+
+      it('should not price the parcel tile', async () => {
+        expect((await map.getTiles())['1,1'].price).toBeUndefined()
       })
     })
 

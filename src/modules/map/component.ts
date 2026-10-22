@@ -174,18 +174,45 @@ export async function createMapComponent(
     })
   }
 
-  function isTradeForTile(trade: Trade, tile: Tile) {
-    if (!tile.nftId || !tile.tokenId || !trade.sent_token_id) {
-      return false
+  function addToIndex<T>(index: Map<string, T[]>, key: string, value: T) {
+    const values = index.get(key)
+    if (values) {
+      values.push(value)
+    } else {
+      index.set(key, [value])
     }
-    const contract = trade.contract_address_sent?.toLowerCase()
-    if (!contract) {
-      return false
+  }
+
+  // indexes tradeable tiles once per pass so matching a trade doesn't scan the whole map
+  function createTradeMatcher(tiles: Record<string, Tile>) {
+    const parcelsByTokenId = new Map<string, { id: string; nftId: string }[]>()
+    const tileIdsByEstateId = new Map<string, string[]>()
+    for (const id in tiles) {
+      const tile = tiles[id]
+      if (!tile.nftId || !tile.tokenId) {
+        continue
+      }
+      if (tile.estateId) {
+        addToIndex(tileIdsByEstateId, tile.estateId, id)
+      } else {
+        addToIndex(parcelsByTokenId, tile.tokenId, { id, nftId: tile.nftId })
+      }
     }
-    return tile.estateId
-      ? contract === estateContractAddress.toLowerCase() &&
-          tile.estateId === trade.sent_token_id
-      : tile.nftId.includes(contract) && tile.tokenId === trade.sent_token_id
+
+    return (trade: Trade): string[] => {
+      const contract = trade.contract_address_sent?.toLowerCase()
+      if (!contract || !trade.sent_token_id) {
+        return []
+      }
+      const estateTileIds =
+        contract === estateContractAddress.toLowerCase()
+          ? tileIdsByEstateId.get(trade.sent_token_id) ?? []
+          : []
+      const parcelIds = (parcelsByTokenId.get(trade.sent_token_id) ?? [])
+        .filter((parcel) => parcel.nftId.includes(contract))
+        .map((parcel) => parcel.id)
+      return [...estateTileIds, ...parcelIds]
+    }
   }
 
   // puts back the order price (or no price) on tiles that still show last pass' trade price
@@ -217,13 +244,12 @@ export async function createMapComponent(
       const activeTrades = await trades.getActiveTrades()
       const newTiles = restoreTradePrices(tiles)
       const newTradePrices = new Map<string, TradePrice>()
+      const findTileIds = createTradeMatcher(newTiles)
 
       for (const trade of activeTrades) {
-        const matchingTiles = Object.values(newTiles).filter((tile) =>
-          isTradeForTile(trade, tile)
-        )
-
-        for (const tile of matchingTiles) {
+        for (const id of findTileIds(trade)) {
+          // read through newTiles so an earlier trade's price this pass is seen
+          const tile = newTiles[id]
           const tradeCreatedAt = new Date(trade.created_at).getTime()
           const tradePrice = Math.round(parseInt(trade.amount_received) / 1e18)
 
@@ -262,15 +288,20 @@ export async function createMapComponent(
     }
   }
 
-  // cached prices may come from trades that are gone, so take them from the fresh fetch
+  // cached prices and updatedAt may come from trades that are gone, so take them from the fresh fetch
   function withFreshPrices(cachedTiles: Tile[], freshTiles: Tile[]): Tile[] {
     const freshById = new Map(freshTiles.map((tile) => [tile.id, tile]))
     return cachedTiles.map((cachedTile) => {
       const { price, expiresAt, ...tile } = cachedTile
       const freshTile = freshById.get(tile.id)
-      return freshTile && freshTile.price !== undefined
-        ? { ...tile, price: freshTile.price, expiresAt: freshTile.expiresAt }
-        : tile
+      if (!freshTile) {
+        return tile
+      }
+      const freshOrder =
+        freshTile.price !== undefined
+          ? { price: freshTile.price, expiresAt: freshTile.expiresAt }
+          : {}
+      return { ...tile, ...freshOrder, updatedAt: freshTile.updatedAt }
     })
   }
 
