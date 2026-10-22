@@ -37,7 +37,12 @@ export async function initComponents(): Promise<AppComponents> {
   const corsMethods = await config.getString('CORS_METHOD')
   const cors = {
     origin: await config.getString('CORS_ORIGIN'),
-    methods: corsMethods ? corsMethods.split(',') : undefined,
+    methods: corsMethods
+      ? corsMethods
+          .split(',')
+          .map((method) => method.trim())
+          .filter(Boolean)
+      : undefined,
   }
   const subgraphURL = await config.requireString('SUBGRAPH_URL')
 

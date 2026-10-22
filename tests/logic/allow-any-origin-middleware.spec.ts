@@ -61,4 +61,30 @@ describe('when handling a request with the allow any origin middleware', () => {
       ).toBe('https://example.com')
     })
   })
+
+  describe('and the handler returns a native Response', () => {
+    beforeEach(async () => {
+      next = jest
+        .fn()
+        .mockResolvedValueOnce(new Response('created', { status: 201 }))
+      result = await middleware(context, next)
+    })
+
+    it('should keep the status and allow any origin', () => {
+      expect({
+        status: result.status,
+        allowOrigin: new Headers(result.headers).get(
+          'Access-Control-Allow-Origin'
+        ),
+      }).toEqual({ status: 201, allowOrigin: '*' })
+    })
+
+    it('should keep the body', async () => {
+      const chunks: Buffer[] = []
+      for await (const chunk of result.body as AsyncIterable<Buffer>) {
+        chunks.push(Buffer.from(chunk))
+      }
+      expect(Buffer.concat(chunks).toString()).toBe('created')
+    })
+  })
 })

@@ -1,4 +1,5 @@
 import { IHttpServerComponent } from '@dcl/core-commons'
+import { fromNativeResponse } from '@dcl/http-server'
 
 /**
  * Sets `Access-Control-Allow-Origin: *` on every response. The @dcl/http-server
@@ -10,7 +11,10 @@ export function allowAnyOriginMiddleware<
   Context extends object
 >(): IHttpServerComponent.IRequestHandler<Context> {
   return async (_context, next): Promise<IHttpServerComponent.IResponse> => {
-    const response = await next()
+    const result = await next()
+    // a native Response keeps status/body in getters that a spread would drop
+    const response =
+      result instanceof Response ? fromNativeResponse(result) : result
     const headers = new Headers(response.headers)
     if (!headers.has('Access-Control-Allow-Origin')) {
       headers.set('Access-Control-Allow-Origin', '*')
