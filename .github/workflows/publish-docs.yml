@@ -11,10 +11,6 @@ on:
 jobs:
   build-and-publish:
     runs-on: ubuntu-latest
-    env:
-      GITBOOK_TOKEN: ${{ secrets.GITBOOK_TOKEN }}
-      GITBOOK_ORGANIZATION_ID: ${{ secrets.GITBOOK_ORGANIZATION_ID }}
-    
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -29,15 +25,18 @@ jobs:
         run: npm ci
 
       - name: Validate OpenAPI specification
-        run: npx @redocly/cli@latest lint docs/openapi.yaml
+        run: npx @redocly/cli@2.58.2 lint docs/openapi.yaml
 
       - name: Bundle OpenAPI specification
-        run: npx @redocly/cli@latest bundle docs/openapi.yaml --output docs/openapi-bundled.yaml --ext yaml --dereferenced
+        run: npx @redocly/cli@2.58.2 bundle docs/openapi.yaml --output docs/openapi-bundled.yaml --ext yaml --dereferenced
 
       - name: Publish to GitBook
         if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+        env:
+          GITBOOK_TOKEN: ${{ secrets.GITBOOK_TOKEN }}
+          GITBOOK_ORGANIZATION_ID: ${{ secrets.GITBOOK_ORGANIZATION_ID }}
         run: |
-          npm install -g @gitbook/cli
+          npm install -g @gitbook/cli@0.32.8
           gitbook openapi publish \
             --spec "atlas-service" \
             --organization "$GITBOOK_ORGANIZATION_ID" \
