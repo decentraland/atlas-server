@@ -18,10 +18,7 @@ import {
   TileRentalListing,
 } from '../../adapters/rentals'
 import { isRentalListingOpen } from '../../logic/rental'
-import {
-  fromMillisecondsToSeconds,
-  fromSecondsToMilliseconds,
-} from '../../adapters/time'
+import { fromSecondsToMilliseconds } from '../../adapters/time'
 import { Metrics } from '../../metrics'
 import { Tile, TileType } from '../map/types'
 import { coordsToId, specialTiles } from '../map/utils'
@@ -42,8 +39,6 @@ import {
   isExpired,
   getProximity,
   capitalize,
-  buildFromEstates,
-  getFragmentUpdatedAt,
   getParcelFragmentRentalListing,
 } from './utils'
 
@@ -120,9 +115,23 @@ export async function createApiComponent(components: {
   const events = new EventEmitter()
 
   // methods
+  // the timestamp (seconds) of the newest block the subgraph has indexed
+  async function getHeadTimestamp(): Promise<number> {
+    const { _meta } = await subgraph.query<{
+      _meta: { block: { number: number; timestamp: number | null } }
+    }>(`{ _meta { block { number timestamp } } }`)
+    if (!_meta.block.timestamp) {
+      throw new Error(
+        `The subgraph did not report the timestamp of block ${_meta.block.number}`
+      )
+    }
+    return _meta.block.timestamp
+  }
+
   async function fetchData() {
-    // rental listings changing while the batches are fetched are picked up by the next update
+    // land and rental changes made while the batches are fetched are picked up (again) by the next update
     const rentalsCursor = Date.now()
+    const landCursor = await getHeadTimestamp()
     const tiles: Tile[] = []
     const parcels: NFT[] = []
     const estates: NFT[] = []
@@ -133,7 +142,6 @@ export async function createApiComponent(components: {
     let total = 0
     let complete = false
     let lastTokenId = ''
-    let landCursor = 0
 
     while (!complete) {
       // fetch batch
@@ -148,7 +156,6 @@ export async function createApiComponent(components: {
         for (const estate of batch.estates) {
           estates.push(estate)
         }
-        landCursor = Math.max(landCursor, batch.landUpdatedAt)
 
         // notify progress
         total = total + batch.tiles.length
@@ -231,7 +238,7 @@ export async function createApiComponent(components: {
             ])
           )
         : {}
-    return nfts.reduce<Batch & { landUpdatedAt: number }>(
+    return nfts.reduce<Batch>(
       (batch, nft) => {
         const tileRentalListing =
           tileRentalListings[nft.searchParcelEstateId ?? nft.id]
@@ -243,13 +250,9 @@ export async function createApiComponent(components: {
         if (estate) {
           batch.estates.push(estate)
         }
-        batch.landUpdatedAt = Math.max(
-          batch.landUpdatedAt,
-          getFragmentUpdatedAt(nft)
-        )
         return batch
       },
-      { tiles: [], parcels: [], estates: [], landUpdatedAt: 0 }
+      { tiles: [], parcels: [], estates: [] }
     )
   }
 
@@ -428,37 +431,24 @@ export async function createApiComponent(components: {
       })
       .filter((tile) => tile !== null) as Tile[]
 
-    // Creates the tiles that are being updated given the updated parcels.
-    const updatedTilesByUpdatedParcels = parcels.map((parcel) =>
-      buildTile(
-        parcel,
-        getParcelFragmentRentalListing(
-          parcel,
-          rentalListingByNftId,
-          tilesByNftId
-        )
-      )
-    )
+    // parcels updated themselves plus every parcel of an updated estate, whose name, owner or order may have changed
+    const updatedFragments = new Map<string, ParcelFragment>()
+    for (const parcel of parcels) {
+      updatedFragments.set(parcel.id, parcel)
+    }
+    for (const estate of estates) {
+      for (const { nft } of estate.estate.parcels) {
+        if (!updatedFragments.has(nft.id)) {
+          updatedFragments.set(nft.id, nft)
+        }
+      }
+    }
+    const fragments = Array.from(updatedFragments.values())
 
-    // Merges the updates tiles whose change was originated from the rental listings with the ones that came from the graph.
+    // tiles built from the subgraph win over rental-only copies; they take the newest listing themselves
     const updatedTiles = leftMerge(
       updatedTilesByRentalListings,
-      updatedTilesByUpdatedParcels
-    )
-
-    // Build the updated parcels from the updates parcels that came from the graph.
-    const updatedParcels = parcels.map((parcel) => buildParcel(parcel))
-
-    // Build the estates from the updates estates that came from the graph.
-    const updatedEstates = parcels
-      .map((parcel) => buildEstate(parcel))
-      .filter((estate) => estate !== null) as NFT[]
-
-    // The following piece adds tiles from updated Estates. This is necessary only for an Estate that get listed or delisted on sale, since that doesn't change the lastUpdatedAt property of a Parcel.
-    const updatedTilesFromEstates = buildFromEstates(
-      estates,
-      updatedTiles,
-      (parcel) =>
+      fragments.map((parcel) =>
         buildTile(
           parcel,
           getParcelFragmentRentalListing(
@@ -467,17 +457,17 @@ export async function createApiComponent(components: {
             tilesByNftId
           )
         )
+      )
     )
-    const updatedParcelsFromEstates = buildFromEstates(
-      estates,
-      updatedParcels,
-      buildParcel
-    )
-    const updatedEstatesFromEstates = buildFromEstates(
-      estates,
-      updatedEstates,
-      buildEstate
-    )
+
+    const updatedEstates = new Map<string, NFT>()
+    for (const fragment of fragments) {
+      const estate = buildEstate(fragment)
+      if (estate && !updatedEstates.has(estate.id)) {
+        updatedEstates.set(estate.id, estate)
+      }
+    }
+
     // an estate left without parcels was dissolved, its stale entry is replaced
     const dissolvedEstates = estates
       .filter((estate) => estate.estate.size === 0)
@@ -490,13 +480,9 @@ export async function createApiComponent(components: {
       )
 
     const batch: Batch = {
-      tiles: [...updatedTiles, ...updatedTilesFromEstates],
-      parcels: [...updatedParcels, ...updatedParcelsFromEstates],
-      estates: [
-        ...updatedEstates,
-        ...updatedEstatesFromEstates,
-        ...dissolvedEstates,
-      ],
+      tiles: updatedTiles,
+      parcels: fragments.map((parcel) => buildParcel(parcel)),
+      estates: [...updatedEstates.values(), ...dissolvedEstates],
     }
 
     componentLogger.info(
