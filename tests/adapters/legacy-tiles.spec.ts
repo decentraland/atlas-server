@@ -1,4 +1,4 @@
-import { toLegacyTiles } from '../../src/adapters/legacy-tiles'
+import { getLegacyTile, toLegacyTiles } from '../../src/adapters/legacy-tiles'
 import { Tile, TileType } from '../../src/modules/map/types'
 
 describe('when converting tiles into a legacy tiles', () => {
@@ -45,5 +45,121 @@ describe('when converting tiles into a legacy tiles', () => {
         }),
       })
     })
+  })
+})
+
+describe('when getting the legacy type code of a tile', () => {
+  let tile: Partial<Tile>
+
+  describe.each([
+    [TileType.DISTRICT, 5],
+    [TileType.ROAD, 7],
+    [TileType.PLAZA, 8],
+    [TileType.OWNED, 9],
+    [TileType.UNOWNED, 11],
+  ])('and the tile is of type %s', (type, code) => {
+    beforeEach(() => {
+      tile = { type }
+    })
+
+    it(`should return ${code}`, () => {
+      expect(getLegacyTile(tile)).toBe(code)
+    })
+  })
+
+  describe('and the tile is on sale', () => {
+    beforeEach(() => {
+      tile = { type: TileType.OWNED, price: 1500 }
+    })
+
+    it('should return the on sale code 10 regardless of its type', () => {
+      expect(getLegacyTile(tile)).toBe(10)
+    })
+  })
+
+  describe('and the tile has an unknown type', () => {
+    beforeEach(() => {
+      tile = { type: 'unknown' as TileType }
+    })
+
+    it('should return -1', () => {
+      expect(getLegacyTile(tile)).toBe(-1)
+    })
+  })
+})
+
+describe('when converting a full tile into the legacy format', () => {
+  let tile: Tile
+
+  beforeEach(() => {
+    tile = {
+      id: '-3,4',
+      x: -3,
+      y: 4,
+      type: TileType.OWNED,
+      top: true,
+      left: true,
+      topLeft: true,
+      updatedAt: 1000,
+      name: 'An estate',
+      owner: '0xowner',
+      estateId: '12',
+      tokenId: '1234',
+      nftId: 'parcel-1234',
+      price: 1500,
+      expiresAt: 2000,
+    }
+  })
+
+  it('should keep the coordinates, owner and name, rename the estate id, use numeric flags and the on sale code', () => {
+    expect(toLegacyTiles({ [tile.id]: tile })).toEqual({
+      [tile.id]: {
+        type: 10,
+        x: -3,
+        y: 4,
+        top: 1,
+        left: 1,
+        topLeft: 1,
+        name: 'An estate',
+        owner: '0xowner',
+        estate_id: '12',
+        price: 1500,
+      },
+    })
+  })
+})
+
+describe('when converting a disconnected unowned tile into the legacy format', () => {
+  let tile: Tile
+
+  beforeEach(() => {
+    tile = {
+      id: '0,0',
+      x: 0,
+      y: 0,
+      type: TileType.UNOWNED,
+      top: false,
+      left: false,
+      topLeft: false,
+      updatedAt: 1000,
+    }
+  })
+
+  it('should keep the zero coordinates and omit the false flags', () => {
+    expect(toLegacyTiles({ [tile.id]: tile })).toEqual({
+      [tile.id]: { type: 11, x: 0, y: 0 },
+    })
+  })
+})
+
+describe('when converting tiles reduced to some fields into the legacy format', () => {
+  let tiles: Record<string, Partial<Tile>>
+
+  beforeEach(() => {
+    tiles = { '1,1': { x: 1, y: 1 } }
+  })
+
+  it('should only output the fields present in the tile', () => {
+    expect(toLegacyTiles(tiles)).toEqual({ '1,1': { x: 1, y: 1 } })
   })
 })

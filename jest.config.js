@@ -12,6 +12,10 @@ module.exports = {
   coverageDirectory: 'coverage',
   // Indicates which provider should be used to instrument code for coverage
   coverageProvider: 'v8',
+  // a few points under the current suite, so unrelated changes don't trip it
+  coverageThreshold: {
+    global: { statements: 80, branches: 75, functions: 80, lines: 80 },
+  },
   // A preset that is used as a base for Jest's configuration
   preset: 'ts-jest',
   testMatch: ['<rootDir>/tests/**/?(*.)+(spec|test).[jt]s?(x)'],
