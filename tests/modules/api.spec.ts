@@ -13,10 +13,13 @@ import {
 import { Metrics } from '../../src/metrics'
 import { createApiComponent } from '../../src/modules/api/component'
 import {
+  Cursors,
   EstateFragment,
   IApiComponent,
   NFT,
+  OrderFragment,
   ParcelFragment,
+  Result,
 } from '../../src/modules/api/types'
 import { Tile, TileType } from '../../src/modules/map/types'
 import { IRentalsComponent } from '../../src/modules/rentals'
@@ -26,6 +29,10 @@ const EXTERNAL_BASE_URL = 'http://external-base-url.com'
 const LAND_CONTRACT_ADDRESS = '0x1'
 const ESTATE_CONTRACT_ADDRESS = '0x2'
 const date = Date.now()
+const HEAD_TIMESTAMP = 1234
+const headResponse = {
+  _meta: { block: { number: 10, timestamp: HEAD_TIMESTAMP } },
+}
 
 let apiComponent: IApiComponent
 let configComponentMock: IConfigComponent
@@ -348,6 +355,7 @@ describe('when fetching data', () => {
     beforeEach(() => {
       subgraphComponentMock.query = jest
         .fn()
+        .mockResolvedValueOnce(headResponse)
         .mockResolvedValueOnce({ nfts: [{ id: 'aNFTId' }] })
       rentalsComponentMock.getRentalsListingsOfNFTs = jest
         .fn()
@@ -358,6 +366,42 @@ describe('when fetching data', () => {
       return expect(apiComponent.fetchData()).rejects.toThrowError(
         'An error ocurred'
       )
+    })
+  })
+
+  describe('and the subgraph does not report the timestamp of its head block', () => {
+    beforeEach(() => {
+      subgraphComponentMock.query = jest.fn().mockResolvedValueOnce({
+        _meta: { block: { number: 10, timestamp: null } },
+      })
+    })
+
+    it('should fail with an error naming the block', () => {
+      return expect(apiComponent.fetchData()).rejects.toThrowError(
+        'The subgraph did not report the timestamp of block 10'
+      )
+    })
+  })
+
+  describe('and the nfts changed after the head block read before fetching them', () => {
+    beforeEach(() => {
+      subgraphComponentMock.query = jest
+        .fn()
+        .mockResolvedValueOnce(headResponse)
+        .mockResolvedValueOnce({
+          nfts: [
+            { ...defaultParcel, updatedAt: (HEAD_TIMESTAMP + 90).toString() },
+          ],
+        })
+        .mockResolvedValueOnce({ nfts: [] })
+      rentalsComponentMock.getRentalsListingsOfNFTs = jest
+        .fn()
+        .mockResolvedValue({})
+    })
+
+    it("should resume the land updates from the head block's timestamp", async () => {
+      const result = await apiComponent.fetchData()
+      expect(result.cursors.land).toBe(HEAD_TIMESTAMP)
     })
   })
 
@@ -372,6 +416,7 @@ describe('when fetching data', () => {
       ]
       subgraphComponentMock.query = jest
         .fn()
+        .mockResolvedValueOnce(headResponse)
         .mockResolvedValueOnce({ nfts: nftFragments })
         .mockResolvedValueOnce({ nfts: [] })
       rentalsComponentMock.getRentalsListingsOfNFTs = jest
@@ -393,6 +438,7 @@ describe('when fetching data', () => {
         ],
         estates: [fstEstateNFT],
         updatedAt: fromSecondsToMilliseconds(Number(defaultParcel.updatedAt)),
+        cursors: { land: HEAD_TIMESTAMP, rentals: expect.any(Number) },
       })
     })
   })
@@ -501,6 +547,7 @@ describe('when fetching data', () => {
 
       subgraphComponentMock.query = jest
         .fn()
+        .mockResolvedValueOnce(headResponse)
         .mockResolvedValueOnce({ nfts: nftFragments.splice(0, 3) })
         .mockResolvedValueOnce({ nfts: nftFragments.splice(0, 6) })
         .mockResolvedValueOnce({ nfts: [] })
@@ -798,12 +845,14 @@ describe('when fetching data', () => {
           },
         ],
         updatedAt: fromSecondsToMilliseconds(maxDateInSeconds),
+        cursors: { land: HEAD_TIMESTAMP, rentals: expect.any(Number) },
       })
     })
   })
 })
 
 describe('when fetching update data', () => {
+  let cursors: Cursors
   let fstEstate: EstateFragment
   let fstParcel: ParcelFragment
   let fstParcelTile: Tile
@@ -812,14 +861,19 @@ describe('when fetching update data', () => {
   let maxDateInSeconds: number
 
   beforeEach(() => {
+    cursors = { land: 100, rentals: 100000 }
     maxDateInSeconds = fromMillisecondsToSeconds(date)
     fstParcel = {
       ...defaultParcel,
       updatedAt: (maxDateInSeconds - 1).toString(),
     }
     fstEstate = {
+      tokenId: '1',
+      name: 'Estate 0',
       updatedAt: maxDateInSeconds.toString(),
       estate: {
+        size: 2,
+        data: { description: '' },
         parcels: [
           { nft: defaultFstParcelEstate },
           { nft: defaultSndParcelEstate },
@@ -857,61 +911,86 @@ describe('when fetching update data', () => {
         .mockRejectedValueOnce(new Error('An error ocurred'))
       rentalsComponentMock.getUpdatedRentalListings = jest
         .fn()
-        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([defaultParcelRentalListing])
     })
 
-    it('should continue with the update and log the error', async () => {
-      await expect(apiComponent.fetchUpdatedData(0, {})).resolves.toEqual({
-        tiles: [],
-        parcels: [],
-        estates: [],
-        updatedAt: 0,
-      })
+    it('should fail the update so no partial data is applied', () => {
+      return expect(
+        apiComponent.fetchUpdatedData(cursors, {
+          [defaultParcelTile.id]: defaultParcelTile,
+        })
+      ).rejects.toThrowError('Failed to fetch update data: An error ocurred')
+    })
 
-      expect(loggerErrorMock).toHaveBeenCalledWith(
-        `Failed to retrieve updated information about the lands: Error: An error ocurred`
-      )
-
-      expect(metricsIncrementMock).toBeCalledWith('dcl_map_update', {
-        type: 'land',
-        status: 'failure',
-      })
-      expect(metricsIncrementMock).toBeCalledWith('dcl_map_update', {
-        type: 'rental',
-        status: 'success',
+    it('should log the error and count the land failure', async () => {
+      await apiComponent.fetchUpdatedData(cursors, {}).catch(() => undefined)
+      expect({
+        logged: loggerErrorMock.mock.calls,
+        counted: metricsIncrementMock.mock.calls,
+      }).toEqual({
+        logged: [
+          [
+            'Failed to retrieve updated information about the lands: Error: An error ocurred',
+          ],
+        ],
+        counted: [['dcl_map_update', { type: 'land', status: 'failure' }]],
       })
     })
   })
 
   describe("and fetching the rental listings fails but the graph fetch doesn't", () => {
+    let updatedParcel: ParcelFragment
+
     beforeEach(() => {
+      updatedParcel = {
+        ...defaultParcel,
+        updatedAt: (cursors.land + 5).toString(),
+      }
       subgraphComponentMock.query = jest
         .fn()
-        .mockResolvedValueOnce({ parcels: [], estates: [] })
+        .mockResolvedValueOnce({ parcels: [updatedParcel], estates: [] })
       rentalsComponentMock.getUpdatedRentalListings = jest
         .fn()
         .mockRejectedValueOnce(new Error('An error ocurred'))
     })
 
-    it('should continue with the update and log the error', async () => {
-      await expect(apiComponent.fetchUpdatedData(0, {})).resolves.toEqual({
-        tiles: [],
-        parcels: [],
-        estates: [],
-        updatedAt: 0,
+    it('should advance the land cursor and keep the rentals cursor', async () => {
+      const result = await apiComponent.fetchUpdatedData(cursors, {})
+      expect(result.cursors).toEqual({
+        land: cursors.land + 5,
+        rentals: cursors.rentals,
       })
+    })
 
-      expect(loggerErrorMock).toHaveBeenCalledWith(
-        `Failed to retrieve updated information about the rental listings: Error: An error ocurred`
+    it('should keep the rental listing the tile already had', async () => {
+      const result = await apiComponent.fetchUpdatedData(cursors, {
+        [defaultParcelTile.id]: {
+          ...defaultParcelTile,
+          rentalListing: convertRentalListingToTileRentalListing(
+            defaultParcelRentalListing
+          ),
+        },
+      })
+      expect(result.tiles[0].rentalListing).toEqual(
+        convertRentalListingToTileRentalListing(defaultParcelRentalListing)
       )
+    })
 
-      expect(metricsIncrementMock).toBeCalledWith('dcl_map_update', {
-        type: 'rental',
-        status: 'failure',
-      })
-      expect(metricsIncrementMock).toBeCalledWith('dcl_map_update', {
-        type: 'land',
-        status: 'success',
+    it('should log the error and count the rentals failure', async () => {
+      await apiComponent.fetchUpdatedData(cursors, {})
+      expect({
+        logged: loggerErrorMock.mock.calls,
+        counted: metricsIncrementMock.mock.calls,
+      }).toEqual({
+        logged: [
+          [
+            'Failed to retrieve updated information about the rental listings: Error: An error ocurred',
+          ],
+        ],
+        counted: [
+          ['dcl_map_update', { type: 'land', status: 'success' }],
+          ['dcl_map_update', { type: 'rental', status: 'failure' }],
+        ],
       })
     })
   })
@@ -926,28 +1005,10 @@ describe('when fetching update data', () => {
         .mockRejectedValueOnce(new Error('An error ocurred'))
     })
 
-    it('should end the update and log the errors', async () => {
-      await expect(apiComponent.fetchUpdatedData(0, {})).resolves.toEqual({
-        tiles: [],
-        parcels: [],
-        estates: [],
-        updatedAt: 0,
-      })
-
-      expect(loggerErrorMock).toHaveBeenCalledWith(
-        `Failed to retrieve updated information about the rental listings: Error: An error ocurred`
-      )
-      expect(loggerErrorMock).toHaveBeenCalledWith(
-        `Failed to retrieve updated information about the lands: Error: An error ocurred`
-      )
-      expect(metricsIncrementMock).toBeCalledWith('dcl_map_update', {
-        type: 'land',
-        status: 'failure',
-      })
-      expect(metricsIncrementMock).toBeCalledWith('dcl_map_update', {
-        type: 'rental',
-        status: 'failure',
-      })
+    it('should fail the update', () => {
+      return expect(
+        apiComponent.fetchUpdatedData(cursors, {})
+      ).rejects.toThrowError('Failed to fetch update data: An error ocurred')
     })
   })
 
@@ -961,15 +1022,16 @@ describe('when fetching update data', () => {
         .mockResolvedValueOnce([])
     })
 
-    it('should return a batched list of empty assets to update', () => {
-      return expect(apiComponent.fetchUpdatedData(100000, {})).resolves.toEqual(
-        {
-          tiles: [],
-          parcels: [],
-          estates: [],
-          updatedAt: 100000,
-        }
-      )
+    it('should return no assets and keep the cursors', () => {
+      return expect(
+        apiComponent.fetchUpdatedData(cursors, {})
+      ).resolves.toEqual({
+        tiles: [],
+        parcels: [],
+        estates: [],
+        updatedAt: cursors.rentals,
+        cursors,
+      })
     })
   })
 
@@ -984,14 +1046,18 @@ describe('when fetching update data', () => {
     })
 
     it('should return a batched list of tiles and parcels to update', () => {
-      return expect(apiComponent.fetchUpdatedData(100000, {})).resolves.toEqual(
-        {
-          tiles: [defaultParcelTile],
-          parcels: [defaultParcelNFT],
-          estates: [],
-          updatedAt: defaultParcelTile.updatedAt,
-        }
-      )
+      return expect(
+        apiComponent.fetchUpdatedData(cursors, {})
+      ).resolves.toEqual({
+        tiles: [defaultParcelTile],
+        parcels: [defaultParcelNFT],
+        estates: [],
+        updatedAt: defaultParcelTile.updatedAt,
+        cursors: {
+          land: Number(defaultParcel.updatedAt),
+          rentals: cursors.rentals,
+        },
+      })
     })
   })
 
@@ -1006,14 +1072,57 @@ describe('when fetching update data', () => {
     })
 
     it('should return a batched list of tiles and estates to update', () => {
-      return expect(apiComponent.fetchUpdatedData(100000, {})).resolves.toEqual(
+      return expect(
+        apiComponent.fetchUpdatedData(cursors, {})
+      ).resolves.toEqual({
+        tiles: [defaultFstParcelEstateTile, defaultSndParcelEstateTile],
+        parcels: [defaultFstParcelEstateNFT, defaultSndParcelEstateNFT],
+        estates: [fstEstateNFT],
+        updatedAt: fromSecondsToMilliseconds(Number(fstEstate.updatedAt)),
+        cursors: {
+          land: Number(fstEstate.updatedAt),
+          rentals: cursors.rentals,
+        },
+      })
+    })
+  })
+
+  describe('and an updated estate was dissolved', () => {
+    beforeEach(() => {
+      subgraphComponentMock.query = jest.fn().mockResolvedValueOnce({
+        parcels: [],
+        estates: [
+          {
+            ...fstEstate,
+            name: 'Old estate',
+            estate: {
+              size: 0,
+              data: { description: 'Gone' },
+              parcels: [],
+            },
+          },
+        ],
+      })
+      rentalsComponentMock.getUpdatedRentalListings = jest
+        .fn()
+        .mockResolvedValueOnce([])
+    })
+
+    it('should return the estate with its dissolved representation', async () => {
+      const result = await apiComponent.fetchUpdatedData(cursors, {})
+      expect(result.estates).toEqual([
         {
-          tiles: [defaultFstParcelEstateTile, defaultSndParcelEstateTile],
-          parcels: [defaultFstParcelEstateNFT, defaultSndParcelEstateNFT],
-          estates: [fstEstateNFT],
-          updatedAt: fromSecondsToMilliseconds(Number(fstEstate.updatedAt)),
-        }
-      )
+          id: '1',
+          name: 'Old estate',
+          description: 'Gone',
+          image: `${IMAGE_BASE_URL}/estates/1/map.png?size=24&width=1024&height=1024`,
+          external_url: `${EXTERNAL_BASE_URL}/contracts/${ESTATE_CONTRACT_ADDRESS}/tokens/1`,
+          attributes: [
+            { display_type: 'number', trait_type: 'Size', value: 0 },
+          ],
+          background_color: '000000',
+        },
+      ])
     })
   })
 
@@ -1029,22 +1138,23 @@ describe('when fetching update data', () => {
     })
 
     it('should return a batched list of tiles, parcels and estates to update', () => {
-      return expect(apiComponent.fetchUpdatedData(100000, {})).resolves.toEqual(
-        {
-          tiles: [
-            fstParcelTile,
-            defaultFstParcelEstateTile,
-            defaultSndParcelEstateTile,
-          ],
-          parcels: [
-            defaultParcelNFT,
-            defaultFstParcelEstateNFT,
-            defaultSndParcelEstateNFT,
-          ],
-          estates: [fstEstateNFT],
-          updatedAt: fromSecondsToMilliseconds(maxDateInSeconds),
-        }
-      )
+      return expect(
+        apiComponent.fetchUpdatedData(cursors, {})
+      ).resolves.toEqual({
+        tiles: [
+          fstParcelTile,
+          defaultFstParcelEstateTile,
+          defaultSndParcelEstateTile,
+        ],
+        parcels: [
+          defaultParcelNFT,
+          defaultFstParcelEstateNFT,
+          defaultSndParcelEstateNFT,
+        ],
+        estates: [fstEstateNFT],
+        updatedAt: fromSecondsToMilliseconds(maxDateInSeconds),
+        cursors: { land: maxDateInSeconds, rentals: cursors.rentals },
+      })
     })
   })
 
@@ -1061,7 +1171,7 @@ describe('when fetching update data', () => {
 
     it('should return a batched list of tiles to update with their rental listings updated', () => {
       return expect(
-        apiComponent.fetchUpdatedData(100000, {
+        apiComponent.fetchUpdatedData(cursors, {
           [defaultParcelTile.id]: defaultParcelTile,
         })
       ).resolves.toEqual({
@@ -1076,7 +1186,8 @@ describe('when fetching update data', () => {
         ],
         parcels: [],
         estates: [],
-        updatedAt: date,
+        updatedAt: expect.any(Number),
+        cursors: expect.any(Object),
       })
     })
   })
@@ -1094,7 +1205,7 @@ describe('when fetching update data', () => {
 
     it('should return a batched list of tiles to update with their rental listings updated', () => {
       return expect(
-        apiComponent.fetchUpdatedData(100000, {
+        apiComponent.fetchUpdatedData(cursors, {
           [defaultFstParcelEstate.id]: defaultFstParcelEstateTile,
           [defaultSndParcelEstate.id]: defaultSndParcelEstateTile,
         })
@@ -1117,7 +1228,8 @@ describe('when fetching update data', () => {
         ],
         parcels: [],
         estates: [],
-        updatedAt: date,
+        updatedAt: expect.any(Number),
+        cursors: expect.any(Object),
       })
     })
   })
@@ -1138,7 +1250,7 @@ describe('when fetching update data', () => {
 
     it('should return a batched list of tiles to update with their rental listings updated', () => {
       return expect(
-        apiComponent.fetchUpdatedData(100000, {
+        apiComponent.fetchUpdatedData(cursors, {
           [defaultParcelTile.id]: defaultParcelTile,
           [defaultFstParcelEstate.id]: defaultFstParcelEstateTile,
           [defaultSndParcelEstate.id]: defaultSndParcelEstateTile,
@@ -1169,7 +1281,8 @@ describe('when fetching update data', () => {
         ],
         parcels: [],
         estates: [],
-        updatedAt: date,
+        updatedAt: expect.any(Number),
+        cursors: expect.any(Object),
       })
     })
   })
@@ -1189,7 +1302,7 @@ describe('when fetching update data', () => {
 
     it("should return a batched list of tiles to update with their rental listings removed when the rental listing wasn't open", () => {
       return expect(
-        apiComponent.fetchUpdatedData(100000, {
+        apiComponent.fetchUpdatedData(cursors, {
           [defaultParcelTile.id]: {
             ...defaultParcelTile,
             rentalListing: defaultParcelRentalListing,
@@ -1205,7 +1318,8 @@ describe('when fetching update data', () => {
         ],
         parcels: [],
         estates: [],
-        updatedAt: date,
+        updatedAt: expect.any(Number),
+        cursors: expect.any(Object),
       })
     })
   })
@@ -1225,7 +1339,7 @@ describe('when fetching update data', () => {
 
     it("should return a batched list of tiles to update with their rental listings removed when the rental listing wasn't open", () => {
       return expect(
-        apiComponent.fetchUpdatedData(100000, {
+        apiComponent.fetchUpdatedData(cursors, {
           [defaultFstParcelEstateTile.id]: {
             ...defaultFstParcelEstateTile,
             rentalListing: fstEstateRentalListing,
@@ -1248,7 +1362,8 @@ describe('when fetching update data', () => {
         ],
         parcels: [],
         estates: [],
-        updatedAt: date,
+        updatedAt: expect.any(Number),
+        cursors: expect.any(Object),
       })
     })
   })
@@ -1293,7 +1408,7 @@ describe('when fetching update data', () => {
 
     it('should return a batched list of tiles to update with their rental listings updated', () => {
       return expect(
-        apiComponent.fetchUpdatedData(100000, {
+        apiComponent.fetchUpdatedData(cursors, {
           [defaultParcelTile.id]: defaultParcelTile,
         })
       ).resolves.toEqual({
@@ -1305,7 +1420,8 @@ describe('when fetching update data', () => {
         ],
         parcels: [updatedDefaultParcelNFT],
         estates: [],
-        updatedAt: defaultParcelTile.updatedAt,
+        updatedAt: expect.any(Number),
+        cursors: expect.any(Object),
       })
     })
   })
@@ -1360,7 +1476,7 @@ describe('when fetching update data', () => {
 
     it('should return a batched list of tiles, parcels and estates to update with their rental listings updated', () => {
       return expect(
-        apiComponent.fetchUpdatedData(100000, {
+        apiComponent.fetchUpdatedData(cursors, {
           [defaultParcel.id]: defaultParcelTile,
           [defaultFstParcelEstate.id]: defaultFstParcelEstateTile,
           [defaultSndParcelEstate.id]: defaultSndParcelEstateTile,
@@ -1396,12 +1512,128 @@ describe('when fetching update data', () => {
           defaultSndParcelEstateNFT,
         ],
         estates: [fstEstateNFT],
-        updatedAt: Math.min(fstEstateRentalListing.updatedAt, fromSecondsToMilliseconds(parseInt(fstEstate.updatedAt, 10))),
+        updatedAt: expect.any(Number),
+        cursors: expect.any(Object),
       })
     })
   })
 
-  describe('and calculating the updated date', () => {
+  describe('and an estate got a new order and a rental listing in the same pass', () => {
+    let result: Result
+    let estateWithOrder: EstateFragment
+    let newOrder: OrderFragment
+
+    beforeEach(async () => {
+      newOrder = {
+        price: '7000000000000000000',
+        expiresAt: `${date + 100000000}`,
+      }
+      const withNewOrder = (parcel: ParcelFragment): ParcelFragment => ({
+        ...parcel,
+        parcel: {
+          ...parcel.parcel,
+          estate: {
+            ...parcel.parcel.estate!,
+            nft: { ...parcel.parcel.estate!.nft, activeOrder: newOrder },
+          },
+        },
+      })
+      estateWithOrder = {
+        ...fstEstate,
+        estate: {
+          ...fstEstate.estate,
+          parcels: [
+            { nft: withNewOrder(defaultFstParcelEstate) },
+            { nft: withNewOrder(defaultSndParcelEstate) },
+          ],
+        },
+      }
+      subgraphComponentMock.query = jest.fn().mockResolvedValueOnce({
+        parcels: [],
+        estates: [estateWithOrder],
+      })
+      rentalsComponentMock.getUpdatedRentalListings = jest
+        .fn()
+        .mockResolvedValueOnce([fstEstateRentalListing])
+      result = await apiComponent.fetchUpdatedData(cursors, {
+        [defaultFstParcelEstateTile.id]: defaultFstParcelEstateTile,
+        [defaultSndParcelEstateTile.id]: defaultSndParcelEstateTile,
+      })
+    })
+
+    it('should show both the new order and the rental listing on its tiles', () => {
+      expect(
+        result.tiles.map((tile) => [tile.price, tile.rentalListing])
+      ).toEqual([
+        [7, convertRentalListingToTileRentalListing(fstEstateRentalListing)],
+        [7, convertRentalListingToTileRentalListing(fstEstateRentalListing)],
+      ])
+    })
+  })
+
+  describe('and a rental listing belongs to an estate with thousands of tiles', () => {
+    let oldTiles: Record<string, Tile>
+    let startedAt: number
+    let elapsed: number
+    let tilesCount: number
+
+    beforeEach(async () => {
+      oldTiles = {}
+      for (let i = 0; i < 20000; i++) {
+        const tile = {
+          ...defaultFstParcelEstateTile,
+          id: `${i % 150},${Math.floor(i / 150)}`,
+          nftId: `parcel-0x0-${i}`,
+        }
+        oldTiles[tile.id] = tile
+      }
+      subgraphComponentMock.query = jest.fn().mockResolvedValueOnce({
+        parcels: [],
+        estates: [],
+      })
+      rentalsComponentMock.getUpdatedRentalListings = jest
+        .fn()
+        .mockResolvedValueOnce([fstEstateRentalListing])
+      startedAt = Date.now()
+      tilesCount = (await apiComponent.fetchUpdatedData(cursors, oldTiles))
+        .tiles.length
+      elapsed = Date.now() - startedAt
+    })
+
+    it('should update all its tiles in linear time', () => {
+      expect({ tilesCount, fast: elapsed < 1000 }).toEqual({
+        tilesCount: 20000,
+        fast: true,
+      })
+    })
+  })
+
+  describe('and an updated parcel has an order with its creation time', () => {
+    beforeEach(() => {
+      subgraphComponentMock.query = jest.fn().mockResolvedValueOnce({
+        parcels: [
+          {
+            ...defaultParcel,
+            activeOrder: {
+              ...defaultParcel.activeOrder!,
+              createdAt: '1700000000',
+            },
+          },
+        ],
+        estates: [],
+      })
+      rentalsComponentMock.getUpdatedRentalListings = jest
+        .fn()
+        .mockResolvedValueOnce([])
+    })
+
+    it('should keep the order creation time in milliseconds on the tile', async () => {
+      const result = await apiComponent.fetchUpdatedData(cursors, {})
+      expect(result.tiles[0].orderCreatedAt).toBe(1700000000000)
+    })
+  })
+
+  describe('and calculating the cursors', () => {
     let maxDateInSeconds: number
     let maxDateInMilliseconds: number
 
@@ -1416,10 +1648,9 @@ describe('when fetching update data', () => {
           .mockResolvedValueOnce([])
       })
 
-      it('should return the current lastUpdatedDate value', () => {
-        return expect(
-          apiComponent.fetchUpdatedData(100000, {})
-        ).resolves.toEqual(expect.objectContaining({ updatedAt: 100000 }))
+      it('should keep both cursors', async () => {
+        const result = await apiComponent.fetchUpdatedData(cursors, {})
+        expect(result.cursors).toEqual(cursors)
       })
     })
 
@@ -1453,14 +1684,12 @@ describe('when fetching update data', () => {
           .mockResolvedValueOnce([])
       })
 
-      it('should return the highest updatedAt value from parcels', () => {
-        return expect(
-          apiComponent.fetchUpdatedData(100000, {})
-        ).resolves.toEqual(
-          expect.objectContaining({
-            updatedAt: fromSecondsToMilliseconds(maxDateInSeconds),
-          })
-        )
+      it('should move the land cursor to the newest parcel and keep the rentals cursor', async () => {
+        const result = await apiComponent.fetchUpdatedData(cursors, {})
+        expect(result.cursors).toEqual({
+          land: maxDateInSeconds,
+          rentals: cursors.rentals,
+        })
       })
     })
 
@@ -1516,14 +1745,9 @@ describe('when fetching update data', () => {
           .mockResolvedValueOnce([])
       })
 
-      it('should return the max value between estates and parcels updates', () => {
-        return expect(
-          apiComponent.fetchUpdatedData(100000, {})
-        ).resolves.toEqual(
-          expect.objectContaining({
-            updatedAt: fromSecondsToMilliseconds(maxDateInSeconds),
-          })
-        )
+      it('should move the land cursor to the newest estate', async () => {
+        const result = await apiComponent.fetchUpdatedData(cursors, {})
+        expect(result.cursors.land).toBe(maxDateInSeconds)
       })
     })
 
@@ -1548,14 +1772,12 @@ describe('when fetching update data', () => {
           .mockResolvedValueOnce([rentalListing1, rentalListing2])
       })
 
-      it('should return highest updateAt value from all listings', () => {
-        return expect(
-          apiComponent.fetchUpdatedData(100000, {})
-        ).resolves.toEqual(
-          expect.objectContaining({
-            updatedAt: maxDateInMilliseconds,
-          })
-        )
+      it('should move the rentals cursor to the newest listing and keep the land cursor', async () => {
+        const result = await apiComponent.fetchUpdatedData(cursors, {})
+        expect(result.cursors).toEqual({
+          land: cursors.land,
+          rentals: maxDateInMilliseconds,
+        })
       })
     })
 
@@ -1617,16 +1839,12 @@ describe('when fetching update data', () => {
           .mockResolvedValueOnce([rentalListing1])
       })
 
-      it('should return lowest updateAt between the highest listing and highest parcel or estate', () => {
-        return expect(
-          apiComponent.fetchUpdatedData(100000, {})
-        ).resolves.toEqual(
-          expect.objectContaining({
-            updatedAt: fromSecondsToMilliseconds(
-              fromMillisecondsToSeconds(maxDateInMilliseconds) - 1
-            ),
-          })
-        )
+      it('should move each cursor to the newest change of its own source', async () => {
+        const result = await apiComponent.fetchUpdatedData(cursors, {})
+        expect(result.cursors).toEqual({
+          land: fromMillisecondsToSeconds(maxDateInMilliseconds) - 1,
+          rentals: maxDateInMilliseconds,
+        })
       })
     })
   })

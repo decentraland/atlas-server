@@ -24,7 +24,13 @@ describe('when the map emits an update', () => {
       topLeft: false,
       updatedAt: 1,
     }
-    result = { tiles: [tile, tile], parcels: [], estates: [], updatedAt: 1 }
+    result = {
+      tiles: [tile, tile],
+      parcels: [],
+      estates: [],
+      updatedAt: 1,
+      cursors: { land: 1, rentals: 1 },
+    }
     setupLogs({
       config: {} as AppComponents['config'],
       map: { events: mapEvents } as unknown as AppComponents['map'],

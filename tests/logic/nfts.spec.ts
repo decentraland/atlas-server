@@ -107,3 +107,26 @@ describe('when merging left an array of objects by id', () => {
     expect(mergeResult.length).toBe(3)
   })
 })
+
+describe('when merging left arrays with tens of thousands of objects', () => {
+  let leftArray: { id: string }[]
+  let rightArray: { id: string }[]
+  let startedAt: number
+  let mergeResult: { id: string }[]
+
+  beforeEach(() => {
+    leftArray = Array.from({ length: 30000 }, (_, i) => ({ id: `${i}` }))
+    rightArray = Array.from({ length: 30000 }, (_, i) => ({
+      id: `${i + 15000}`,
+    }))
+    startedAt = Date.now()
+    mergeResult = leftMerge(leftArray, rightArray)
+  })
+
+  it('should merge them in linear time', () => {
+    expect({
+      length: mergeResult.length,
+      fast: Date.now() - startedAt < 1000,
+    }).toEqual({ length: 45000, fast: true })
+  })
+})

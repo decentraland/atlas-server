@@ -88,9 +88,6 @@ export function createExternalStubs(): ExternalStubs {
     s3: {
       uploadTilesJson: jest.fn().mockResolvedValue(''),
       uploadTimestamp: jest.fn().mockResolvedValue(undefined),
-      getTilesJson: jest.fn().mockResolvedValue(null),
-      getTimestamp: jest.fn().mockResolvedValue(null),
-      getFileUrl: jest.fn().mockResolvedValue(''),
     },
     fetch: {
       fetch: jest

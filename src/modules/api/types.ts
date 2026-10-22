@@ -10,7 +10,19 @@ export type Batch = {
   parcels: NFT[]
   estates: NFT[]
 }
-export type Result = Batch & { updatedAt: number }
+/** Where the next incremental fetch resumes, one cursor per source. */
+export type Cursors = {
+  /** Subgraph updatedAt (seconds) of the newest land change applied. */
+  land: number
+  /** Signatures server updatedAt (ms) of the newest rental listing change applied. */
+  rentals: number
+}
+
+export type Result = Batch & {
+  /** UTC ms of the newest change in the result. */
+  updatedAt: number
+  cursors: Cursors
+}
 
 export type NFT = {
   id: string
@@ -31,8 +43,12 @@ export type Attribute = {
 export interface IApiComponent {
   events: EventEmitter
   fetchData: () => Promise<Result>
+  /**
+   * Fetches the land and rental listing changes after the given cursors.
+   * @throws When the land changes can't be fetched; a rental listings failure keeps their cursor.
+   */
   fetchUpdatedData: (
-    updatedAfter: number,
+    cursors: Cursors,
     oldTiles: Record<string, Tile>
   ) => Promise<Result>
   getDissolvedEstate: (estateId: string) => Promise<NFT | null>
@@ -42,11 +58,19 @@ export type OrderFragment = {
   price: string
   /** The time in milliseconds when the order expires */
   expiresAt: string
+  /** The time in seconds when the order was created */
+  createdAt?: string
 }
 
 export type EstateFragment = {
+  tokenId: string
+  name: string | null
   updatedAt: string
   estate: {
+    size: number | null
+    data: {
+      description: string | null
+    } | null
     parcels: {
       nft: ParcelFragment
     }[]

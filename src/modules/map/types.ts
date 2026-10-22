@@ -68,6 +68,8 @@ export type Tile = {
   expiresAt?: number
   /** The rental listing associated with the parcel ir represents or estate that the tile is in. */
   rentalListing?: TileRentalListing
+  /** Internal: UTC ms when the active order was created, used to rank it against trades. Never served. */
+  orderCreatedAt?: number
 }
 
 export const tileFields = [
