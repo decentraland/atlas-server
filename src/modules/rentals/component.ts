@@ -76,7 +76,7 @@ export async function createRentalsComponent(components: {
   async function getRentalsListingsOfNFTs(
     nftIds: string[]
   ): Promise<Record<string, RentalListing>> {
-    const baseUrl = `/v1/rentals-listings?rentalStatus=${RentalStatus.OPEN}`
+    const baseUrl = `/v1/rentals-listings?status=${RentalStatus.OPEN}`
     const limit = pLimit(MAX_CONCURRENT_REQUEST)
     componentLogger.info(`Getting rental listings for ${nftIds.length} NFTs`)
     // Build URLs to get all the queried NFTs
