@@ -8,7 +8,7 @@ import {
   parseCoordinate,
 } from '../logic/filter-params'
 import { InvalidRequestError, isErrorWithMessage } from '../logic/error'
-import { getTilesFilter } from '../logic/tiles-request'
+import { getMapBounds, getTilesFilter, MapBounds } from '../logic/tiles-request'
 import { Tile } from '../modules/map/types'
 import { RenderBusyError } from '../modules/render-limiter/errors'
 import { AppComponents, Context } from '../types'
@@ -41,12 +41,24 @@ function createTilesHandler(
     { getKey: (url) => url.search }
   )
 
+  let bounds: { updatedAt: number; value: MapBounds | null } | undefined
+  async function getBounds(): Promise<MapBounds | null> {
+    const updatedAt = map.getLastUpdatedAt()
+    if (bounds?.updatedAt !== updatedAt) {
+      bounds = {
+        updatedAt,
+        value: getMapBounds(Object.values(await map.getTiles())),
+      }
+    }
+    return bounds.value
+  }
+
   return async (context: { url: URL }): Promise<TilesResponse> => {
     if (!map.isReady()) {
       return { status: 503, body: 'Not ready' }
     }
 
-    const filter = getTilesFilter(context.url)
+    const filter = getTilesFilter(context.url, await getBounds())
     // the uploaded files hold every tile, so filtered requests are served from memory
     if (
       !filter.isFiltered &&

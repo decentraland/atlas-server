@@ -89,6 +89,7 @@ describe('when requesting the tiles', () => {
       ['include without valid fields', '?include=junk'],
       ['exclude without valid fields', '?exclude=junk,other'],
       ['unrelated params', '?foo=bar'],
+      ['coordinates that cover the whole map', '?x1=-10&y1=-10&x2=10&y2=10'],
     ])('and the request has %s', (_name, search) => {
       beforeEach(async () => {
         response = await handler({
@@ -232,8 +233,9 @@ describe('when requesting the tiles', () => {
           })
         })
 
+        // one read builds the unfiltered response, the other the map bounds
         it('should serve them from the cached unfiltered response', () => {
-          expect(getTiles).toHaveBeenCalledTimes(1)
+          expect(getTiles).toHaveBeenCalledTimes(2)
         })
       })
 
@@ -247,8 +249,9 @@ describe('when requesting the tiles', () => {
           })
         })
 
+        // the unfiltered response, the map bounds and one filtered response
         it('should serve them from the same cached response', () => {
-          expect(getTiles).toHaveBeenCalledTimes(2)
+          expect(getTiles).toHaveBeenCalledTimes(3)
         })
       })
     })
