@@ -6,3 +6,10 @@ export function isErrorWithMessage(error: unknown): error is Error {
     'message' in error!
   )
 }
+
+export class InvalidRequestError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'InvalidRequestError'
+  }
+}
