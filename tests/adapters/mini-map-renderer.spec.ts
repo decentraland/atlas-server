@@ -45,7 +45,7 @@ describe('when rendering the estates minimap', () => {
       } as unknown as IMapComponent,
     })
     const pixelAt = await decodePng(
-      await renderPool.pool.render(renderer.getRenderJob)
+      await renderPool.pool.render('estatemap', renderer.getRenderJob)
     )
     estateIndexAt = (x, y) => {
       const [r, g, b] = pixelAt(x + 256, 512 - (y + 256))

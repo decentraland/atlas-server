@@ -5,6 +5,13 @@ export class RenderBusyError extends Error {
   }
 }
 
+export class RenderFailedError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'RenderFailedError'
+  }
+}
+
 export class RenderAbortedError extends Error {
   constructor(message: string) {
     super(message)

@@ -19,6 +19,7 @@ export type StartedRenderPool = {
   startTimer: jest.Mock
   endWaitTimer: jest.Mock
   observe: jest.Mock
+  logError: jest.Mock
   stop: () => Promise<void>
 }
 
@@ -29,11 +30,21 @@ export async function startRenderPool(
   const endWaitTimer = jest.fn()
   const startTimer = jest.fn(() => ({ end: endWaitTimer }))
   const observe = jest.fn()
+  const logError = jest.fn()
   const pool = createRenderPool(
     {
       metrics: { startTimer, observe } as unknown as IMetricsComponent<
         keyof Metrics
       >,
+      logs: {
+        getLogger: () => ({
+          error: logError,
+          warn: jest.fn(),
+          info: jest.fn(),
+          debug: jest.fn(),
+          log: jest.fn(),
+        }),
+      },
     },
     {
       maxThreads: 1,
@@ -49,6 +60,7 @@ export async function startRenderPool(
     startTimer,
     endWaitTimer,
     observe,
+    logError,
     stop: () => pool[STOP_COMPONENT]!(),
   }
 }

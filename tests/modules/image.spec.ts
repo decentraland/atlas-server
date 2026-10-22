@@ -33,7 +33,7 @@ describe('when rendering a map image', () => {
       } as unknown as IMapComponent,
     })
     render = () =>
-      renderPool.pool.render(() =>
+      renderPool.pool.render('map', () =>
         image.getRenderJob(
           200,
           200,

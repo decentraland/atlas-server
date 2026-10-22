@@ -14,6 +14,7 @@ const COMPILED_RENDER_WORKER = path.join(
   OUT_DIR,
   'adapters/render-pool/worker.js'
 )
+const COMPILED_RENDER_POOL = path.join(OUT_DIR, 'adapters/render-pool/index.js')
 
 function listSources(dir) {
   return fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
@@ -56,3 +57,4 @@ module.exports = async function compileRenderWorker() {
   }
 }
 module.exports.COMPILED_RENDER_WORKER = COMPILED_RENDER_WORKER
+module.exports.COMPILED_RENDER_POOL = COMPILED_RENDER_POOL

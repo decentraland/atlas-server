@@ -13,6 +13,7 @@ import {
   RenderAbortedError,
   RenderBusyError,
   RenderJob,
+  RenderKind,
 } from '../adapters/render-pool'
 import { AppComponents } from '../types'
 import { ApplicationName, Feature } from '../modules/features/types'
@@ -101,9 +102,10 @@ type PngRequest = { request: { signal: AbortSignal } }
 async function renderPng(
   components: Pick<AppComponents, 'renderPool'>,
   request: PngRequest['request'],
+  kind: RenderKind,
   getJob: () => Promise<RenderJob>
 ): Promise<IHttpServerComponent.IResponse> {
-  const png = await components.renderPool.render(getJob, {
+  const png = await components.renderPool.render(kind, getJob, {
     signal: request.signal,
   })
   return {
@@ -160,7 +162,12 @@ export async function miniMapHandler(
 ) {
   const { components, request } = context
   return handlePngRequest(components, () =>
-    renderPng(components, request, components.renderMiniMap.getRenderJob)
+    renderPng(
+      components,
+      request,
+      'minimap',
+      components.renderMiniMap.getRenderJob
+    )
   )
 }
 
@@ -171,7 +178,12 @@ export async function estateMapHandler(
 ) {
   const { components, request } = context
   return handlePngRequest(components, () =>
-    renderPng(components, request, components.renderEstateMiniMap.getRenderJob)
+    renderPng(
+      components,
+      request,
+      'estatemap',
+      components.renderEstateMiniMap.getRenderJob
+    )
   )
 }
 
@@ -193,7 +205,7 @@ export const mapPngRequestHandler = async (
       showListedForRent,
       selected,
     } = extractParams(context.url)
-    return renderPng(components, request, () =>
+    return renderPng(components, request, 'map', () =>
       image.getRenderJob(
         width,
         height,
@@ -227,7 +239,7 @@ export const parcelMapPngRequestHandler = async (
     const { width, height, size, showOnSale, showListedForRent } =
       extractParams(context.url)
     const selected = [center]
-    return renderPng(components, request, () =>
+    return renderPng(components, request, 'map', () =>
       image.getRenderJob(
         width,
         height,
@@ -272,7 +284,7 @@ export const estateMapPngRequestHandler = async (
     const x = xs[(xs.length / 2) | 0] || 0
     const y = ys[(ys.length / 2) | 0] || 0
     const center = { x, y }
-    return renderPng(components, request, () =>
+    return renderPng(components, request, 'map', () =>
       image.getRenderJob(
         width,
         height,

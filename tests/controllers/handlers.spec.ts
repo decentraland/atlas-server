@@ -74,10 +74,12 @@ describe('when handling the map image requests', () => {
     getTiles = jest.fn().mockResolvedValue({})
     getRenderJob = jest.fn().mockResolvedValue(job)
     // builds the job like the pool does once a thread is free
-    render = jest.fn(async (getJob: () => Promise<RenderJob>) => {
-      await getJob()
-      return png
-    })
+    render = jest.fn(
+      async (_kind: string, getJob: () => Promise<RenderJob>) => {
+        await getJob()
+        return png
+      }
+    )
     components = {
       map: { isReady, getTiles } as unknown as AppComponents['map'],
       image: { getRenderJob },
@@ -118,7 +120,7 @@ describe('when handling the map image requests', () => {
       })
 
       it("should render it in the pool, cancelled by the request's signal", () => {
-        expect(render).toHaveBeenCalledWith(expect.any(Function), {
+        expect(render).toHaveBeenCalledWith('map', expect.any(Function), {
           signal: request.signal,
         })
       })
@@ -230,8 +232,8 @@ describe('when handling the map image requests', () => {
 
   describe.each([
     ['minimap', miniMapHandler],
-    ['estates minimap', estateMapHandler],
-  ])('and the %s is requested', (_, handler) => {
+    ['estatemap', estateMapHandler],
+  ])('and the %s is requested', (kind, handler) => {
     let context: Parameters<typeof miniMapHandler>[0] &
       Parameters<typeof estateMapHandler>[0]
     let getMiniMapJob: jest.Mock
@@ -264,6 +266,10 @@ describe('when handling the map image requests', () => {
 
       it("should render the minimap's job", () => {
         expect(getMiniMapJob).toHaveBeenCalledTimes(1)
+      })
+
+      it('should label the render with the image it is for', () => {
+        expect(render.mock.calls[0][0]).toBe(kind)
       })
     })
 

@@ -1,3 +1,4 @@
+import { spawn } from 'child_process'
 import os from 'os'
 import { performance } from 'perf_hooks'
 import { createCanvas } from 'canvas'
@@ -31,6 +32,12 @@ import {
 } from '../../src/modules/render'
 import { decodePng } from '../helpers/png'
 import { startRenderPool, StartedRenderPool } from '../helpers/render-pool'
+
+// transpiled by the jest globalSetup
+const {
+  COMPILED_RENDER_POOL,
+  COMPILED_RENDER_WORKER,
+} = require('../harness/compile-render-worker')
 
 function buildMapArgs(
   width: number,
@@ -94,7 +101,7 @@ describe('when rendering in the render pool', () => {
       renderMap({ ...buildMapArgs(120, 80, 10), ctx: canvas.getContext('2d') })
       expected = canvas.toBuffer('image/png')
       job = buildMapJob(120, 80, 10)
-      png = await renderPool.pool.render(() => job)
+      png = await renderPool.pool.render('map', () => job)
     })
 
     it('should encode the same PNG as drawing the layers on the main thread', () => {
@@ -109,6 +116,14 @@ describe('when rendering in the render pool', () => {
       expect(renderPool.observe).toHaveBeenCalledWith(
         'dcl_map_render_time',
         { status: 200 },
+        expect.any(Number)
+      )
+    })
+
+    it('should record the time spent building the job on the main thread', () => {
+      expect(renderPool.observe).toHaveBeenCalledWith(
+        'dcl_map_render_prepare_seconds',
+        { kind: 'map' },
         expect.any(Number)
       )
     })
@@ -130,7 +145,9 @@ describe('when rendering in the render pool', () => {
         [0, 0, 0, 0],
         [255, 128, 7, 255],
       ])
-      pixelAt = await decodePng(await renderPool.pool.render(() => job))
+      pixelAt = await decodePng(
+        await renderPool.pool.render('minimap', () => job)
+      )
     })
 
     it('should encode every pixel exactly', () => {
@@ -156,12 +173,12 @@ describe('when rendering in the render pool', () => {
 
     beforeEach(async () => {
       // fewer bytes than width * height pixels
-      failedRender = renderPool.pool.render(() => ({
+      failedRender = renderPool.pool.render('minimap', () => ({
         ...buildPixelsJob([[0, 0, 0, 255]]),
         width: 2,
       }))
       await failedRender.catch(() => undefined)
-      nextRender = renderPool.pool.render(() =>
+      nextRender = renderPool.pool.render('minimap', () =>
         buildPixelsJob([[0, 0, 0, 255]])
       )
     })
@@ -185,16 +202,113 @@ describe('when rendering in the render pool', () => {
     })
   })
 
+  describe('and the job cannot be sent to the worker', () => {
+    let failedRender: Promise<Buffer>
+    let nextRender: Promise<Buffer>
+
+    beforeEach(async () => {
+      failedRender = renderPool.pool.render(
+        'minimap',
+        () =>
+          ({
+            ...buildPixelsJob([[0, 0, 0, 255]]),
+            notCloneable: () => undefined,
+          } as RenderJob)
+      )
+      await failedRender.catch(() => undefined)
+      nextRender = renderPool.pool.render('minimap', () =>
+        buildPixelsJob([[0, 0, 0, 255]])
+      )
+      await nextRender
+    })
+
+    it('should reject with the transport error', async () => {
+      await expect(failedRender).rejects.toThrow('could not be cloned')
+    })
+
+    it('should log the failure', () => {
+      expect(renderPool.logError).toHaveBeenCalledWith(
+        'The render pool failed to run a render',
+        {
+          kind: 'minimap',
+          error: expect.stringContaining('could not be cloned'),
+        }
+      )
+    })
+
+    it('should not record it as a render time', () => {
+      expect(renderPool.observe).not.toHaveBeenCalledWith(
+        'dcl_mini_map_render_time',
+        { status: 500 },
+        expect.any(Number)
+      )
+    })
+  })
+
+  describe('and the request is aborted while its job is built', () => {
+    let failedRender: Promise<Buffer>
+    let nextRender: Promise<Buffer>
+
+    beforeEach(async () => {
+      const controller = new AbortController()
+      failedRender = renderPool.pool.render(
+        'minimap',
+        () => {
+          controller.abort()
+          return buildPixelsJob([[0, 0, 0, 255]])
+        },
+        { signal: controller.signal }
+      )
+      await failedRender.catch(() => undefined)
+      nextRender = renderPool.pool.render('minimap', () =>
+        buildPixelsJob([[0, 0, 0, 255]])
+      )
+      await nextRender.catch(() => undefined)
+    })
+
+    it('should reject with an aborted error', async () => {
+      await expect(failedRender).rejects.toThrow(RenderAbortedError)
+    })
+
+    it('should not send the job to a worker', () => {
+      // only the next render reaches one
+      expect(
+        renderPool.observe.mock.calls.filter(
+          ([name]) => name === 'dcl_mini_map_render_time'
+        )
+      ).toHaveLength(1)
+    })
+
+    it('should free the thread for the next render', async () => {
+      await expect(nextRender).resolves.toBeInstanceOf(Buffer)
+    })
+  })
+
+  describe('and the pool is stopped right after a render is admitted', () => {
+    let render: Promise<Buffer>
+
+    beforeEach(async () => {
+      render = renderPool.pool.render('minimap', () =>
+        buildPixelsJob([[0, 0, 0, 255]])
+      )
+      await renderPool.stop()
+    })
+
+    it('should let the render finish', async () => {
+      await expect(render).resolves.toBeInstanceOf(Buffer)
+    })
+  })
+
   describe('and building the job fails', () => {
     let failedRender: Promise<Buffer>
     let nextRender: Promise<Buffer>
 
     beforeEach(async () => {
-      failedRender = renderPool.pool.render(() =>
+      failedRender = renderPool.pool.render('minimap', () =>
         Promise.reject(new Error('No tiles'))
       )
       await failedRender.catch(() => undefined)
-      nextRender = renderPool.pool.render(() =>
+      nextRender = renderPool.pool.render('minimap', () =>
         buildPixelsJob([[0, 0, 0, 255]])
       )
     })
@@ -218,10 +332,10 @@ describe('when rendering in the render pool', () => {
     beforeEach(() => {
       // the running render holds the only thread until its job is built
       runningJob = future<RenderJob>()
-      runningRender = renderPool.pool.render(() => runningJob)
+      runningRender = renderPool.pool.render('minimap', () => runningJob)
       queuedGetJob = jest.fn(() => buildPixelsJob([[0, 0, 0, 255]]))
       controller = new AbortController()
-      queuedRender = renderPool.pool.render(queuedGetJob, {
+      queuedRender = renderPool.pool.render('minimap', queuedGetJob, {
         signal: controller.signal,
       })
     })
@@ -250,7 +364,7 @@ describe('when rendering in the render pool', () => {
       let rejectedRender: Promise<Buffer>
 
       beforeEach(async () => {
-        rejectedRender = renderPool.pool.render(queuedGetJob)
+        rejectedRender = renderPool.pool.render('minimap', queuedGetJob)
         await rejectedRender.catch(() => undefined)
       })
 
@@ -285,7 +399,7 @@ describe('when rendering in the render pool', () => {
         let nextRender: Promise<Buffer>
 
         beforeEach(async () => {
-          nextRender = renderPool.pool.render(() =>
+          nextRender = renderPool.pool.render('minimap', () =>
             buildPixelsJob([[0, 0, 0, 255]])
           )
           runningJob.resolve(buildPixelsJob([[0, 0, 0, 255]]))
@@ -326,7 +440,9 @@ describe('when rendering in the render pool', () => {
       getJob = jest.fn()
       const controller = new AbortController()
       controller.abort()
-      render = renderPool.pool.render(getJob, { signal: controller.signal })
+      render = renderPool.pool.render('minimap', getJob, {
+        signal: controller.signal,
+      })
       await render.catch(() => undefined)
     })
 
@@ -350,9 +466,9 @@ describe('when no thread frees up within the maximum wait', () => {
       maxWaitMs: 50,
     })
     runningJob = future<RenderJob>()
-    runningRender = renderPool.pool.render(() => runningJob)
+    runningRender = renderPool.pool.render('minimap', () => runningJob)
     queuedGetJob = jest.fn()
-    queuedRender = renderPool.pool.render(queuedGetJob)
+    queuedRender = renderPool.pool.render('minimap', queuedGetJob)
     await queuedRender.catch(() => undefined)
   })
 
@@ -381,9 +497,13 @@ describe('when the render pool is stopped', () => {
   beforeEach(async () => {
     close = jest.spyOn(Piscina.prototype, 'close')
     renderPool = await startRenderPool()
-    await renderPool.pool.render(() => buildPixelsJob([[0, 0, 0, 255]]))
+    await renderPool.pool.render('minimap', () =>
+      buildPixelsJob([[0, 0, 0, 255]])
+    )
     await renderPool.stop()
-    render = renderPool.pool.render(() => buildPixelsJob([[0, 0, 0, 255]]))
+    render = renderPool.pool.render('minimap', () =>
+      buildPixelsJob([[0, 0, 0, 255]])
+    )
     await render.catch(() => undefined)
   })
 
@@ -399,6 +519,65 @@ describe('when the render pool is stopped', () => {
     await expect(render).rejects.toThrow(
       new RenderBusyError('Map renders are not running')
     )
+  })
+})
+
+describe('when the render pool is stopped shortly after it starts', () => {
+  let exit: { code: number | null; signal: NodeJS.Signals | null }
+
+  beforeEach(async () => {
+    // a fresh process that has not loaded canvas, like the service: terminating a thread
+    // while it loads canvas there aborts the whole process
+    const script = `
+      const { createRenderPool } = require(${JSON.stringify(
+        COMPILED_RENDER_POOL
+      )})
+      const { START_COMPONENT, STOP_COMPONENT } = require('@well-known-components/interfaces')
+      const noop = () => undefined
+      const logs = { getLogger: () => ({ error: noop, warn: noop, info: noop, debug: noop, log: noop }) }
+      const metrics = { startTimer: () => ({ end: noop }), observe: noop }
+      ;(async () => {
+        for (let delayMs = 0; delayMs <= 40; delayMs += 2) {
+          const pool = createRenderPool({ metrics, logs }, { maxThreads: 1, maxQueued: 1, maxWaitMs: 1000 })
+          await pool[START_COMPONENT]()
+          await new Promise((resolve) => setTimeout(resolve, delayMs))
+          await pool[STOP_COMPONENT]()
+        }
+      })()
+    `
+    exit = await new Promise((resolve) =>
+      spawn(process.execPath, ['-e', script], {
+        cwd: process.cwd(),
+        stdio: 'ignore',
+      }).on('exit', (code, signal) => resolve({ code, signal }))
+    )
+  })
+
+  it('should close the threads cleanly every time', () => {
+    expect(exit).toEqual({ code: 0, signal: null })
+  })
+})
+
+describe('when the render pool starts', () => {
+  let renderPool: StartedRenderPool
+  let firstRenderMs: number
+
+  beforeEach(async () => {
+    renderPool = await startRenderPool()
+    const startedAt = performance.now()
+    await renderPool.pool.render('minimap', () =>
+      buildPixelsJob([[0, 0, 0, 255]])
+    )
+    firstRenderMs = performance.now() - startedAt
+  })
+
+  afterEach(async () => {
+    await renderPool.stop()
+  })
+
+  it('should have a thread with canvas loaded before the first render', () => {
+    // loading canvas in a new thread takes ~100 ms; a warm thread answers in a few
+    expect(firstRenderMs).toBeLessThan(50)
   })
 })
 
@@ -418,7 +597,7 @@ describe('when a large map renders in the render pool', () => {
     const interval = setInterval(tick, 1)
     const startedAt = performance.now()
     try {
-      await renderPool.pool.render(() => job)
+      await renderPool.pool.render('map', () => job)
     } finally {
       clearInterval(interval)
     }
@@ -430,7 +609,7 @@ describe('when a large map renders in the render pool', () => {
   beforeEach(async () => {
     renderPool = await startRenderPool({ maxThreads: 1 })
     // the first render waits for the worker to boot
-    await renderPool.pool.render(() => buildMapJob(100, 100, 10))
+    await renderPool.pool.render('map', () => buildMapJob(100, 100, 10))
     const jobs = [1, 2, 3].map(() => buildMapJob(1024, 1024, 5))
     blockedShares = []
     for (const job of jobs) {
@@ -474,25 +653,30 @@ describe('when creating the render pool from config', () => {
   let pool: IRenderPoolComponent
 
   // without a worker override: worker.ts runs through ts-node, as in development
-  function createFromConfig() {
-    return createRenderPoolComponent({
-      config: {
-        getString: jest.fn(async (name: string) => values[name]),
-      } as unknown as IConfigComponent,
-      logs: {
-        getLogger: () => ({
-          warn,
-          info: jest.fn(),
-          error: jest.fn(),
-          debug: jest.fn(),
-          log: jest.fn(),
-        }),
+  function createFromConfig(
+    overrides: Parameters<typeof createRenderPoolComponent>[1] = {}
+  ) {
+    return createRenderPoolComponent(
+      {
+        config: {
+          getString: jest.fn(async (name: string) => values[name]),
+        } as unknown as IConfigComponent,
+        logs: {
+          getLogger: () => ({
+            warn,
+            info: jest.fn(),
+            error: jest.fn(),
+            debug: jest.fn(),
+            log: jest.fn(),
+          }),
+        },
+        metrics: {
+          startTimer: jest.fn(() => ({ end: jest.fn() })),
+          observe: jest.fn(),
+        } as unknown as IMetricsComponent<keyof Metrics>,
       },
-      metrics: {
-        startTimer: jest.fn(() => ({ end: jest.fn() })),
-        observe: jest.fn(),
-      } as unknown as IMetricsComponent<keyof Metrics>,
-    })
+      overrides
+    )
   }
 
   beforeEach(() => {
@@ -519,36 +703,39 @@ describe('when creating the render pool from config', () => {
 
     it('should still render with the defaults', async () => {
       await expect(
-        pool.render(() => buildPixelsJob([[0, 0, 0, 255]]))
+        pool.render('minimap', () => buildPixelsJob([[0, 0, 0, 255]]))
       ).resolves.toBeInstanceOf(Buffer)
     })
   })
 
-  describe('and the concurrency is not set', () => {
+  describe.each([
+    [1, 1],
+    [8, 2],
+  ])('and the concurrency is not set on %i CPUs', (cpus, threads) => {
     let jobs: IFuture<RenderJob>
     let getJob: jest.Mock
     let renders: Promise<Buffer>[]
 
     beforeEach(async () => {
       values = {}
-      jest.spyOn(os, 'availableParallelism').mockReturnValue(3)
-      pool = await createFromConfig()
+      jest.spyOn(os, 'availableParallelism').mockReturnValue(cpus)
+      pool = await createFromConfig({ workerFilename: COMPILED_RENDER_WORKER })
       await pool[START_COMPONENT]!({} as IBaseComponent.ComponentStartOptions)
       jobs = future<RenderJob>()
       getJob = jest.fn(() => jobs)
-      renders = [1, 2, 3, 4].map(() => pool.render(getJob))
+      renders = [1, 2, 3, 4].map(() => pool.render('minimap', getJob))
       await new Promise((resolve) => setImmediate(resolve))
     })
 
     afterEach(async () => {
-      // nothing reaches a thread, so no worker boots
+      // nothing reaches a thread
       jobs.reject(new Error('Not needed'))
       await Promise.allSettled(renders)
       jest.restoreAllMocks()
     })
 
-    it('should run one render per CPU at the same time', () => {
-      expect(getJob).toHaveBeenCalledTimes(3)
+    it(`should run ${threads} render(s) at the same time`, () => {
+      expect(getJob).toHaveBeenCalledTimes(threads)
     })
   })
 })

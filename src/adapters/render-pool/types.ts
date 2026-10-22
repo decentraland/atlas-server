@@ -20,8 +20,14 @@ export type PixelsRenderJob = {
 
 export type RenderJob = MapRenderJob | PixelsRenderJob
 
-export type RenderResult = {
-  png: Uint8Array
+/** The image a render is for; it labels the metrics. */
+export type RenderKind = 'map' | 'minimap' | 'estatemap'
+
+/** What the worker sends back: the PNG, or the error that stopped it, and the time it spent. */
+export type RenderResult = (
+  | { png: Uint8Array }
+  | { error: { name: string; message: string } }
+) & {
   /** time spent drawing and encoding */
   renderSeconds: number
 }
@@ -38,20 +44,23 @@ export type RenderPoolOptions = {
 }
 
 export type RenderOptions = {
-  /** aborts the render while it waits for a thread, e.g. when the client disconnects */
+  /** aborts the render until it reaches a thread, e.g. when the client disconnects */
   signal?: AbortSignal
 }
 
 export interface IRenderPoolComponent extends IBaseComponent {
   /**
    * Draws and encodes a PNG on a worker thread once one is free.
+   * @param kind - the image, for the metrics.
    * @param getJob - builds the render once a thread is free; its buffers are transferred to the worker.
-   * @param options - an optional signal that cancels the wait for a thread.
+   * @param options - an optional signal that cancels the render until it reaches a thread.
    * @returns the encoded PNG.
    * @throws RenderBusyError when the queue is full, no thread frees up within maxWaitMs or the pool is not running.
-   * @throws RenderAbortedError when the signal aborts before the render starts.
+   * @throws RenderAbortedError when the signal aborts before the job reaches a thread.
+   * @throws RenderFailedError when the worker fails to draw or encode the image.
    */
   render(
+    kind: RenderKind,
     getJob: () => RenderJob | Promise<RenderJob>,
     options?: RenderOptions
   ): Promise<Buffer>

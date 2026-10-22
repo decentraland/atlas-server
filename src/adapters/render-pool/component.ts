@@ -8,10 +8,15 @@ import {
 } from '@well-known-components/interfaces'
 import { getSceneTransferList } from '../../modules/render'
 import { AppComponents } from '../../types'
-import { RenderAbortedError, RenderBusyError } from './errors'
+import {
+  RenderAbortedError,
+  RenderBusyError,
+  RenderFailedError,
+} from './errors'
 import {
   IRenderPoolComponent,
   RenderJob,
+  RenderKind,
   RenderOptions,
   RenderPoolOptions,
   RenderResult,
@@ -24,8 +29,12 @@ const WORKER_EXEC_ARGV =
   WORKER_EXTENSION === '.ts'
     ? ['--require', 'ts-node/register/transpile-only']
     : undefined
-// threads start on the first render and exit after this long idle
+// one thread stays up so canvas is loaded before the first render; the others exit after this long idle
 const IDLE_TIMEOUT_MS = 60_000
+// the V8 heap of a thread; the canvas pixels are native memory and not counted here
+const WORKER_MAX_OLD_GENERATION_MB = 256
+// each thread holds up to a 2048x2048 canvas and its PNG, so more CPUs don't mean more threads
+const DEFAULT_MAX_THREADS = 2
 
 const DEFAULT_MAX_QUEUED = 8
 const DEFAULT_MAX_WAIT_MS = 5000
@@ -48,15 +57,16 @@ function getTransferList(job: RenderJob): ArrayBufferLike[] {
  * event loop. Every thread renders one image at a time; excess renders wait in a short
  * queue and are rejected when the queue is full or the wait is too long. The queue lives
  * here rather than in piscina so the wait can be timed and bounded.
- * @param components - metrics, for the wait and render time histograms.
+ * @param components - metrics, for the prepare, wait and render time histograms, and logs.
  * @param options - threads, queue size and maximum wait.
  * @returns the pool component; it accepts renders once started.
  */
 export function createRenderPool(
-  components: Pick<AppComponents, 'metrics'>,
+  components: Pick<AppComponents, 'metrics' | 'logs'>,
   options: RenderPoolOptions
 ): IRenderPoolComponent {
-  const { metrics } = components
+  const { metrics, logs } = components
+  const logger = logs.getLogger('render-pool')
   const { maxThreads, maxQueued, maxWaitMs, workerFilename } = options
   const queue: Waiter[] = []
   const rendering = new Set<Promise<Buffer>>()
@@ -123,64 +133,106 @@ export function createRenderPool(
     next.resolve()
   }
 
-  async function run(job: RenderJob): Promise<Buffer> {
+  async function run(kind: RenderKind, job: RenderJob): Promise<Buffer> {
     if (!pool) {
       throw new RenderBusyError('Map renders are not running')
     }
-    const metric =
-      job.kind === 'map' ? 'dcl_map_render_time' : 'dcl_mini_map_render_time'
-    const startedAt = performance.now()
+    let result: RenderResult
     try {
-      const { png, renderSeconds } = await pool.run(job, {
-        transferList: getTransferList(job),
-      })
-      metrics.observe(metric, { status: 200 }, renderSeconds)
-      return Buffer.from(png.buffer, png.byteOffset, png.byteLength)
+      result = await pool.run(job, { transferList: getTransferList(job) })
     } catch (error) {
-      metrics.observe(
-        metric,
-        { status: 500 },
-        (performance.now() - startedAt) / 1000
-      )
+      // the job never ran (e.g. the thread failed to start), so there is no render time
+      logger.error('The render pool failed to run a render', {
+        kind,
+        error: error instanceof Error ? error.message : String(error),
+      })
       throw error
     }
+    // both from the worker's clock: the time it spent drawing and encoding
+    const metric =
+      kind === 'map' ? 'dcl_map_render_time' : 'dcl_mini_map_render_time'
+    if (!('png' in result)) {
+      metrics.observe(metric, { status: 500 }, result.renderSeconds)
+      throw new RenderFailedError(result.error.message)
+    }
+    metrics.observe(metric, { status: 200 }, result.renderSeconds)
+    const { png } = result
+    return Buffer.from(png.buffer, png.byteOffset, png.byteLength)
   }
 
-  async function render(
+  async function prepareAndRun(
+    kind: RenderKind,
     getJob: () => RenderJob | Promise<RenderJob>,
-    options: RenderOptions = {}
+    signal: AbortSignal | undefined
   ): Promise<Buffer> {
     const waitTimer = metrics.startTimer('dcl_map_render_wait_seconds')
     try {
-      await acquire(options.signal)
+      await acquire(signal)
     } catch (error) {
       waitTimer.end({ result: 'rejected' })
       throw error
     }
     waitTimer.end({ result: 'acquired' })
-    const png = (async () => {
-      try {
-        return await run(await getJob())
-      } finally {
-        release()
-      }
-    })()
-    rendering.add(png)
     try {
-      return await png
+      const preparedAt = performance.now()
+      const job = await getJob()
+      metrics.observe(
+        'dcl_map_render_prepare_seconds',
+        { kind },
+        (performance.now() - preparedAt) / 1000
+      )
+      // the client left while the job was being built
+      if (signal?.aborted) {
+        throw new RenderAbortedError('The request was aborted')
+      }
+      return await run(kind, job)
     } finally {
-      rendering.delete(png)
+      release()
     }
+  }
+
+  function render(
+    kind: RenderKind,
+    getJob: () => RenderJob | Promise<RenderJob>,
+    options: RenderOptions = {}
+  ): Promise<Buffer> {
+    // tracked before anything awaits, so a stop() right after admission still waits for it
+    const png = prepareAndRun(kind, getJob, options.signal)
+    rendering.add(png)
+    png.then(
+      () => rendering.delete(png),
+      () => rendering.delete(png)
+    )
+    return png
   }
 
   async function start(): Promise<void> {
     accepting = true
-    pool ??= new Piscina<RenderJob, RenderResult>({
+    if (pool) {
+      return
+    }
+    pool = new Piscina<RenderJob, RenderResult>({
       filename: workerFilename ?? WORKER_FILENAME,
       execArgv: workerFilename ? undefined : WORKER_EXEC_ARGV,
-      minThreads: 0,
+      minThreads: 1,
       maxThreads,
       idleTimeout: IDLE_TIMEOUT_MS,
+      resourceLimits: { maxOldGenerationSizeMb: WORKER_MAX_OLD_GENERATION_MB },
+    })
+    // a thread failing outside a render (e.g. on boot) is emitted here, and would throw unheard
+    pool.on('error', (error: unknown) =>
+      logger.error('A render thread failed', {
+        error: error instanceof Error ? error.message : String(error),
+      })
+    )
+    // loads canvas now, so the first render doesn't pay for it and stop() never
+    // terminates a thread halfway through loading it, which aborts the process
+    await pool.run({
+      kind: 'pixels',
+      width: 1,
+      height: 1,
+      data: new Uint8ClampedArray(4),
+      compressionLevel: 5,
     })
   }
 
@@ -190,7 +242,7 @@ export function createRenderPool(
       waiter.dispose()
       waiter.reject(new RenderBusyError('Server is stopping'))
     }
-    // lets the renders that got a thread finish, then terminates the threads
+    // lets the admitted renders finish, then terminates the threads
     await Promise.allSettled(rendering)
     const stopping = pool
     pool = undefined
@@ -202,7 +254,7 @@ export function createRenderPool(
 
 /**
  * Builds the render pool from config, falling back to the defaults for missing or
- * invalid values: one thread per CPU, 8 queued renders and a 5s wait.
+ * invalid values: one thread per CPU up to 2, 8 queued renders and a 5s wait.
  * @param components - config, logs and metrics.
  * @param overrides - e.g. a precompiled worker script.
  * @returns the render pool component.
@@ -234,11 +286,11 @@ export async function createRenderPoolComponent(
   }
 
   return createRenderPool(
-    { metrics },
+    { metrics, logs },
     {
       maxThreads: await readPositiveInteger(
         'RENDER_MAX_CONCURRENCY',
-        availableParallelism()
+        Math.min(availableParallelism(), DEFAULT_MAX_THREADS)
       ),
       maxQueued: await readPositiveInteger(
         'RENDER_MAX_QUEUED',

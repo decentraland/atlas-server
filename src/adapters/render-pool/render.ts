@@ -48,11 +48,23 @@ function draw(job: RenderJob): Buffer {
 /**
  * Draws and encodes a render job. Runs on the worker threads.
  * @param job - the render.
- * @returns the PNG in a buffer of its own, so it can be transferred back, and the time it took.
+ * @returns the PNG in a buffer of its own, so it can be transferred back, or the error, and the time it took.
  */
 export function renderJob(job: RenderJob): RenderResult {
   const startedAt = performance.now()
-  const buffer = draw(job)
+  let buffer: Buffer
+  try {
+    buffer = draw(job)
+  } catch (error) {
+    // returned rather than thrown, so a failure is timed like a success
+    return {
+      error:
+        error instanceof Error
+          ? { name: error.name, message: error.message }
+          : { name: 'Error', message: String(error) },
+      renderSeconds: (performance.now() - startedAt) / 1000,
+    }
+  }
   const renderSeconds = (performance.now() - startedAt) / 1000
   // a view over a shared allocation must be copied before its buffer is transferred
   const png =
