@@ -1,5 +1,30 @@
 import { TileType, Tile, LegacyTile } from '../modules/map/types'
-import { BigNumber } from 'ethers'
+
+export class InvalidRentalPriceError extends Error {
+  constructor(value: unknown) {
+    super(`Invalid rental price per day: ${String(value)}`)
+    this.name = 'InvalidRentalPriceError'
+  }
+}
+
+// accepts the same inputs as ethers v5 BigNumber.from: decimal or 0x hex strings, optionally negative, or safe integers
+function parseBigInt(value: string | number): bigint {
+  if (typeof value === 'number') {
+    if (!Number.isSafeInteger(value)) {
+      throw new InvalidRentalPriceError(value)
+    }
+    return BigInt(value)
+  }
+  const match =
+    typeof value === 'string'
+      ? value.match(/^(-?)(0x[0-9a-fA-F]+|[0-9]+)$/)
+      : null
+  if (!match) {
+    throw new InvalidRentalPriceError(value)
+  }
+  const magnitude = BigInt(match[2])
+  return match[1] ? -magnitude : magnitude
+}
 
 export function getLegacyTile(tile: Partial<Tile>): number {
   if (tile.price != null) {
@@ -45,7 +70,9 @@ function toLegacyTile(tile: Partial<Tile>): Partial<LegacyTile> {
   if (tile.rentalListing)
     legacyTile.rentalPricePerDay = tile.rentalListing.periods.reduce(
       (acc, curr) =>
-        BigNumber.from(curr.pricePerDay).gt(acc) ? curr.pricePerDay : acc,
+        parseBigInt(curr.pricePerDay) > parseBigInt(acc)
+          ? curr.pricePerDay
+          : acc,
       '0'
     )
 
