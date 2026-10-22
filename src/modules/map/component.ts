@@ -156,10 +156,10 @@ export async function createMapComponent(
     oldTokens: Record<string, NFT>
   ) {
     for (const parcel of newParcels) {
-      oldTokens[landContractAddress + '-' + parcel.id] = parcel
+      oldTokens[landContractAddress.toLowerCase() + '-' + parcel.id] = parcel
     }
     for (const estate of newEstates) {
-      oldTokens[estateContractAddress + '-' + estate.id] = estate
+      oldTokens[estateContractAddress.toLowerCase() + '-' + estate.id] = estate
     }
 
     return oldTokens
@@ -626,7 +626,7 @@ export async function createMapComponent(
     contractAddress: string,
     tokenId: string
   ): Promise<NFT | null> {
-    const id = contractAddress + '-' + tokenId
+    const id = contractAddress.toLowerCase() + '-' + tokenId
     const result = (await tokens)[id]
     return result || null
   }

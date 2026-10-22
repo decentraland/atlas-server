@@ -3,6 +3,18 @@ import { Context } from '../types'
 
 const THREE_MINUTES = 180
 const TWO_MINUTES = 120
+const SHORT_CACHE_CONTROL = 'max-age=60, s-maxage=60, public'
+
+function toHeaderRecord(headers: HeadersInit = {}): Record<string, string> {
+  if (headers instanceof Headers || Array.isArray(headers)) {
+    return Object.fromEntries(new Headers(headers).entries())
+  }
+  return { ...headers }
+}
+
+function hasHeader(headers: Record<string, string>, name: string): boolean {
+  return Object.keys(headers).some((key) => key.toLowerCase() === name)
+}
 
 export function lastModifiedMiddleware(
   getLastModifiedTime: () => number,
@@ -36,10 +48,28 @@ export function lastModifiedMiddleware(
     }
 
     const response = await next()
+    const status = response.status ?? 200
+    const headers = toHeaderRecord(response.headers)
+    // redirects and 404s get a short public cache so the CDN absorbs repeats
+    if ((status >= 300 && status < 400) || status === 404) {
+      response.headers = hasHeader(headers, 'cache-control')
+        ? headers
+        : { ...headers, 'Cache-Control': SHORT_CACHE_CONTROL }
+      return response
+    }
+    // other errors are never cached with the map's date
+    if (status < 200 || status >= 300) {
+      return response
+    }
+
     response.headers = {
-      ...response.headers,
-      'Last-Modified': lastModifiedHeader,
-      'Cache-Control': cacheControlHeader,
+      ...headers,
+      ...(hasHeader(headers, 'last-modified')
+        ? {}
+        : { 'Last-Modified': lastModifiedHeader }),
+      ...(hasHeader(headers, 'cache-control')
+        ? {}
+        : { 'Cache-Control': cacheControlHeader }),
     }
 
     return response

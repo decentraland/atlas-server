@@ -1,7 +1,14 @@
 import { toLegacyTiles } from '../adapters/legacy-tiles'
 import { cacheWrapper } from '../logic/cache-wrapper'
-import { extractParams, getFilterFromUrl } from '../logic/filter-params'
-import { isErrorWithMessage } from '../logic/error'
+import { Readable } from 'stream'
+import { IHttpServerComponent } from '@dcl/core-commons'
+import {
+  extractParams,
+  getFilterFromUrl,
+  parseCoordinate,
+} from '../logic/filter-params'
+import { InvalidRequestError, isErrorWithMessage } from '../logic/error'
+import { RenderBusyError } from '../modules/render-limiter/errors'
 import { AppComponents, Context } from '../types'
 import { ApplicationName, Feature } from '../modules/features/types'
 
@@ -89,72 +96,119 @@ export const createLegacyTilesRequestHandler = (
   )
 }
 
-export async function miniMapHandler(context: Context) {
-  const { renderMiniMap, map, metrics } = context.components
-  const timer = metrics.startTimer('dcl_mini_map_render_time')
+type RenderMetric = 'dcl_map_render_time' | 'dcl_mini_map_render_time'
+
+const RENDER_RETRY_AFTER_SECONDS = '5'
+const TOKEN_ID_PATTERN = /^(0|[1-9]\d*)$/
+
+async function bufferStream(stream: Readable): Promise<Buffer> {
+  const chunks: Buffer[] = []
+  for await (const chunk of stream) {
+    chunks.push(chunk)
+  }
+  return Buffer.concat(chunks)
+}
+
+// draws and encodes inside the limiter so the PNG is complete before the slot frees
+async function renderPng(
+  components: Pick<AppComponents, 'metrics' | 'renderLimiter'>,
+  metric: RenderMetric,
+  getStream: () => Promise<Readable>
+): Promise<IHttpServerComponent.IResponse> {
+  const { metrics, renderLimiter } = components
+  const waitTimer = metrics.startTimer('dcl_map_render_wait_seconds')
+  let acquired = false
+  let png: Buffer
   try {
-    if (!map.isReady()) {
-      return { status: 503, body: 'Not ready' }
-    }
-    const stream = await renderMiniMap.getStream()
-    timer.end({ status: 200 })
-    return {
-      status: 200,
-      headers: {
-        'content-type': 'image/png',
-      },
-      body: stream,
-    }
+    png = await renderLimiter.run(async () => {
+      acquired = true
+      waitTimer.end({ result: 'acquired' })
+      const renderTimer = metrics.startTimer(metric)
+      try {
+        const buffer = await bufferStream(await getStream())
+        renderTimer.end({ status: 200 })
+        return buffer
+      } catch (error) {
+        renderTimer.end({ status: 500 })
+        throw error
+      }
+    })
   } catch (error) {
-    timer.end({ status: 500 })
+    if (!acquired) {
+      waitTimer.end({ result: 'rejected' })
+    }
+    throw error
+  }
+  return {
+    status: 200,
+    headers: {
+      'content-type': 'image/png',
+    },
+    body: png,
+  }
+}
+
+function toPngErrorResponse(error: unknown): IHttpServerComponent.IResponse {
+  if (error instanceof InvalidRequestError) {
+    return { status: 400, body: { ok: false, error: error.message } }
+  }
+  if (error instanceof RenderBusyError) {
     return {
-      status: 500,
-      body: {
-        ok: false,
-        error: isErrorWithMessage(error) ? error.message : 'Unknown error',
+      status: 503,
+      headers: {
+        'retry-after': RENDER_RETRY_AFTER_SECONDS,
+        'cache-control': 'no-store',
       },
+      body: { ok: false, error: error.message },
     }
   }
+  return {
+    status: 500,
+    body: {
+      ok: false,
+      error: isErrorWithMessage(error) ? error.message : 'Unknown error',
+    },
+  }
+}
+
+async function handlePngRequest(
+  components: Pick<AppComponents, 'map'>,
+  handle: () => Promise<IHttpServerComponent.IResponse>
+): Promise<IHttpServerComponent.IResponse> {
+  if (!components.map.isReady()) {
+    return { status: 503, body: 'Not ready' }
+  }
+  try {
+    return await handle()
+  } catch (error) {
+    return toPngErrorResponse(error)
+  }
+}
+
+export async function miniMapHandler(context: Context) {
+  const { components } = context
+  return handlePngRequest(components, () =>
+    renderPng(components, 'dcl_mini_map_render_time', () =>
+      components.renderMiniMap.getStream()
+    )
+  )
 }
 
 export async function estateMapHandler(context: Context) {
-  const { renderEstateMiniMap, map, metrics } = context.components
-  const timer = metrics.startTimer('dcl_mini_map_render_time')
-  try {
-    if (!map.isReady()) {
-      return { status: 503, body: 'Not ready' }
-    }
-    const stream = await renderEstateMiniMap.getStream()
-    timer.end({ status: 200 })
-    return {
-      status: 200,
-      headers: {
-        'content-type': 'image/png',
-      },
-      body: stream,
-    }
-  } catch (error) {
-    timer.end({ status: 500 })
-    return {
-      status: 500,
-      body: {
-        ok: false,
-        error: isErrorWithMessage(error) ? error.message : 'Unknown error',
-      },
-    }
-  }
+  const { components } = context
+  return handlePngRequest(components, () =>
+    renderPng(components, 'dcl_mini_map_render_time', () =>
+      components.renderEstateMiniMap.getStream()
+    )
+  )
 }
 
 export const mapPngRequestHandler = async (context: {
-  components: Pick<AppComponents, 'image' | 'map' | 'metrics'>
+  components: Pick<AppComponents, 'image' | 'map' | 'metrics' | 'renderLimiter'>
   url: URL
 }) => {
-  const { image, map, metrics } = context.components
-  const timer = metrics.startTimer('dcl_map_render_time')
-  try {
-    if (!map.isReady()) {
-      return { status: 503, body: 'Not ready' }
-    }
+  const { image } = context.components
+  return handlePngRequest(context.components, () => {
     const {
       width,
       height,
@@ -164,37 +218,22 @@ export const mapPngRequestHandler = async (context: {
       showListedForRent,
       selected,
     } = extractParams(context.url)
-    const stream = await image.getStream(
-      width,
-      height,
-      size,
-      center,
-      selected,
-      showOnSale,
-      showListedForRent
+    return renderPng(context.components, 'dcl_map_render_time', () =>
+      image.getStream(
+        width,
+        height,
+        size,
+        center,
+        selected,
+        showOnSale,
+        showListedForRent
+      )
     )
-    timer.end({ status: 200 })
-    return {
-      status: 200,
-      headers: {
-        'content-type': 'image/png',
-      },
-      body: stream,
-    }
-  } catch (error) {
-    timer.end({ status: 500 })
-    return {
-      status: 500,
-      body: {
-        ok: false,
-        error: isErrorWithMessage(error) ? error.message : 'Unknown error',
-      },
-    }
-  }
+  })
 }
 
 export const parcelMapPngRequestHandler = async (context: {
-  components: Pick<AppComponents, 'image' | 'map'>
+  components: Pick<AppComponents, 'image' | 'map' | 'metrics' | 'renderLimiter'>
   params: {
     x: string
     y: string
@@ -202,55 +241,36 @@ export const parcelMapPngRequestHandler = async (context: {
   url: URL
 }) => {
   const { components, params } = context
-  const { image, map } = components
-  try {
-    if (!map.isReady()) {
-      return { status: 503, body: 'Not ready' }
+  const { image } = components
+  return handlePngRequest(components, async () => {
+    const center = {
+      x: parseCoordinate(params.x, 'x'),
+      y: parseCoordinate(params.y, 'y'),
     }
     const { width, height, size, showOnSale, showListedForRent } =
       extractParams(context.url)
-    const center = {
-      x: parseInt(params.x) || 0,
-      y: parseInt(params.y) || 0,
-    }
     const selected = [center]
-    const stream = await image.getStream(
-      width,
-      height,
-      size,
-      center,
-      selected,
-      showOnSale,
-      showListedForRent
+    return renderPng(context.components, 'dcl_map_render_time', () =>
+      image.getStream(
+        width,
+        height,
+        size,
+        center,
+        selected,
+        showOnSale,
+        showListedForRent
+      )
     )
-    return {
-      status: 200,
-      headers: {
-        'content-type': 'image/png',
-      },
-      body: stream,
-    }
-  } catch (error) {
-    return {
-      status: 500,
-      body: {
-        ok: false,
-        error: isErrorWithMessage(error) ? error.message : 'Unknown error',
-      },
-    }
-  }
+  })
 }
 
 export const estateMapPngRequestHandler = async (context: {
-  components: Pick<AppComponents, 'image' | 'map'>
+  components: Pick<AppComponents, 'image' | 'map' | 'metrics' | 'renderLimiter'>
   params: { estateId: string }
   url: URL
 }) => {
   const { image, map } = context.components
-  try {
-    if (!map.isReady()) {
-      return { status: 503, body: 'Not ready' }
-    }
+  return handlePngRequest(context.components, async () => {
     const { width, height, size, showOnSale, showListedForRent } =
       extractParams(context.url)
     const { estateId } = context.params
@@ -267,36 +287,23 @@ export const estateMapPngRequestHandler = async (context: {
         headers,
       }
     }
-    const xs = selected.map((coords) => coords.x).sort()
-    const ys = selected.map((coords) => coords.y).sort()
+    const xs = selected.map((coords) => coords.x).sort((a, b) => a - b)
+    const ys = selected.map((coords) => coords.y).sort((a, b) => a - b)
     const x = xs[(xs.length / 2) | 0] || 0
     const y = ys[(ys.length / 2) | 0] || 0
     const center = { x, y }
-    const stream = await image.getStream(
-      width,
-      height,
-      size,
-      center,
-      selected,
-      showOnSale,
-      showListedForRent
+    return renderPng(context.components, 'dcl_map_render_time', () =>
+      image.getStream(
+        width,
+        height,
+        size,
+        center,
+        selected,
+        showOnSale,
+        showListedForRent
+      )
     )
-    return {
-      status: 200,
-      headers: {
-        'content-type': 'image/png',
-      },
-      body: stream,
-    }
-  } catch (error) {
-    return {
-      status: 500,
-      body: {
-        ok: false,
-        error: isErrorWithMessage(error) ? error.message : 'Unknown error',
-      },
-    }
-  }
+  })
 }
 
 export const parcelRequestHandler = async (context: {
@@ -310,12 +317,16 @@ export const parcelRequestHandler = async (context: {
     return { status: 503, body: 'Not ready' }
   }
 
-  const parsedCoords = [parseInt(x), parseInt(y)]
-  if (isNaN(parsedCoords[0]) || isNaN(parsedCoords[1])) {
-    return { status: 403, body: 'Invalid x or y' }
+  let parsedX: number
+  let parsedY: number
+  try {
+    parsedX = parseCoordinate(x, 'x')
+    parsedY = parseCoordinate(y, 'y')
+  } catch {
+    return { status: 400, body: 'Invalid x or y' }
   }
 
-  const parcel = await map.getParcel(x, y)
+  const parcel = await map.getParcel(parsedX, parsedY)
 
   if (parcel) {
     return { status: 200, body: parcel }
@@ -335,9 +346,8 @@ export const estateRequestHandler = async (context: {
     return { status: 503, body: 'Not ready' }
   }
 
-  const parsedId = parseInt(id)
-  if (isNaN(parsedId)) {
-    return { status: 403, body: 'Invalid id' }
+  if (!TOKEN_ID_PATTERN.test(id)) {
+    return { status: 400, body: 'Invalid id' }
   }
 
   const estate = await map.getEstate(id)
@@ -359,10 +369,16 @@ export const tokenRequestHandler = async (context: {
   params: { address: string; id: string }
 }) => {
   const { map, config } = context.components
-  const { address, id } = context.params
+  const { id } = context.params
+  const address = context.params.address.toLowerCase()
 
   if (!map.isReady()) {
     return { status: 503, body: 'Not ready' }
+  }
+
+  // a non-canonical id is never a token, and would fail the subgraph query
+  if (!TOKEN_ID_PATTERN.test(id)) {
+    return { status: 404, body: { ok: false, error: 'Not Found' } }
   }
 
   const token = await map.getToken(address, id)
@@ -373,7 +389,7 @@ export const tokenRequestHandler = async (context: {
       'LAND_CONTRACT_ADDRESS'
     )
 
-    if (address === landContractAddress) {
+    if (address === landContractAddress.toLowerCase()) {
       headers['cache-control'] = 'public, max-age=3600,s-maxage=3600, immutable'
     }
 
@@ -383,7 +399,7 @@ export const tokenRequestHandler = async (context: {
       'ESTATE_CONTRACT_ADDRESS'
     )
 
-    if (address === estateContractAddress) {
+    if (address === estateContractAddress.toLowerCase()) {
       const dissolvedEstate = await map.getDissolvedEstate(id)
       if (dissolvedEstate) {
         return { status: 200, body: dissolvedEstate }
