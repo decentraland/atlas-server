@@ -60,6 +60,21 @@ export function addSpecialTiles(tiles: Record<string, Tile>) {
   return tiles
 }
 
+const specialTileTypes = new Set<TileType>([
+  TileType.PLAZA,
+  TileType.ROAD,
+  TileType.DISTRICT,
+])
+
+// true when a tile's special type disagrees with the current specialTiles data
+export function hasStaleSpecialTiles(tiles: Tile[]): boolean {
+  return tiles.some((tile) =>
+    tile.id in specialTiles
+      ? tile.type !== specialTiles[tile.id].type
+      : specialTileTypes.has(tile.type)
+  )
+}
+
 export function isExpired(tile: Tile) {
   return tile && tile.expiresAt && tile.expiresAt <= (Date.now() / 1000)
 }
