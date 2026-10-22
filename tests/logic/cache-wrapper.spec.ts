@@ -107,6 +107,32 @@ describe('when calling a handler wrapped by the cache', () => {
     })
   })
 
+  describe('and the dependencies change while a request is in flight', () => {
+    let response: Response
+
+    beforeEach(async () => {
+      let resolveFirst: (response: Response) => void = () => undefined
+      handler
+        .mockReturnValueOnce(
+          new Promise<Response>((resolve) => {
+            resolveFirst = resolve
+          })
+        )
+        .mockResolvedValueOnce(secondResponse)
+      wrapped = cacheWrapper(handler, [() => depValue])
+      const inFlight = wrapped({ url: new URL('http://a.example/v2/tiles') })
+      depValue = 2
+      await wrapped({ url: new URL('http://a.example/v2/tiles') })
+      resolveFirst(firstResponse)
+      await inFlight
+      response = await wrapped({ url: new URL('http://a.example/v2/tiles') })
+    })
+
+    it('should keep the response computed for the new dependencies cached', () => {
+      expect(response).toBe(secondResponse)
+    })
+  })
+
   describe('and the handler rejects', () => {
     let response: Response
 

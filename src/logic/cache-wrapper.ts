@@ -12,7 +12,7 @@ export type CacheWrapperOptions = {
 
 type CacheableResponse = { status: number; body?: unknown }
 
-const DEFAULT_MAX_ENTRIES = 32
+const DEFAULT_MAX_ENTRIES = 128
 const DEFAULT_MAX_BODY_LENGTH = 64 * 1024 * 1024
 
 /**

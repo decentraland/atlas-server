@@ -2,99 +2,72 @@ import { toLegacyTiles } from '../adapters/legacy-tiles'
 import { cacheWrapper } from '../logic/cache-wrapper'
 import { extractParams, getFilterFromUrl } from '../logic/filter-params'
 import { isErrorWithMessage } from '../logic/error'
-import { getTilesCacheKey, hasTilesFilterParams } from '../logic/tiles-request'
+import { getTilesFilter } from '../logic/tiles-request'
+import { Tile } from '../modules/map/types'
 import { AppComponents, Context } from '../types'
 import { ApplicationName, Feature } from '../modules/features/types'
 
-export const createTilesRequestHandler = (
-  components: Pick<AppComponents, 'map' | 'features'>
-) => {
+type TilesResponse = {
+  status: number
+  headers?: Record<string, string>
+  body?: string
+}
+
+function createTilesHandler(
+  components: Pick<AppComponents, 'map' | 'features'>,
+  version: 'v1' | 'v2',
+  toData: (tiles: Record<string, Partial<Tile>>) => unknown
+) {
   const { map, features } = components
-  return cacheWrapper(
-    async (context: { url: URL }) => {
-      if (!map.isReady()) {
-        return { status: 503, body: 'Not ready' }
-      }
-
-      // the uploaded files hold every tile, so filtered requests are served from memory
-      if (
-        !hasTilesFilterParams(context.url) &&
-        (await features.getIsFeatureEnabled(
-          ApplicationName.DAPPS,
-          Feature.ATLAS_REDIRECT_TO_S3
-        ))
-      ) {
-        const lastUploadedUrls = map.getLastUploadedTilesUrl()
-        if (lastUploadedUrls.v2) {
-          return {
-            status: 301,
-            headers: {
-              location: lastUploadedUrls.v2,
-              'cache-control': 'public, max-age=60',
-            } as Record<string, string>,
-          }
-        }
-      }
-
+  // only 200s from memory are cached; the redirect is decided on every request
+  const serveFromMemory = cacheWrapper(
+    async (context: { url: URL }): Promise<TilesResponse> => {
       const tiles = await map.getTiles()
-      const data = getFilterFromUrl(context.url, tiles)
+      const data = toData(getFilterFromUrl(context.url, tiles))
       return {
         status: 200,
-        headers: {
-          'content-type': 'application/json',
-        } as Record<string, string>,
+        headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ ok: true, data }),
       }
     },
     [map.getLastUpdatedAt],
-    { getKey: getTilesCacheKey }
+    { getKey: (url) => url.search }
   )
+
+  return async (context: { url: URL }): Promise<TilesResponse> => {
+    if (!map.isReady()) {
+      return { status: 503, body: 'Not ready' }
+    }
+
+    const filter = getTilesFilter(context.url)
+    // the uploaded files hold every tile, so filtered requests are served from memory
+    if (
+      !filter.isFiltered &&
+      (await features.getIsFeatureEnabled(
+        ApplicationName.DAPPS,
+        Feature.ATLAS_REDIRECT_TO_S3
+      ))
+    ) {
+      const location = map.getLastUploadedTilesUrl()[version]
+      if (location) {
+        return {
+          status: 302,
+          headers: { location, 'cache-control': 'public, max-age=60' },
+        }
+      }
+    }
+
+    return serveFromMemory({ url: filter.url })
+  }
 }
+
+export const createTilesRequestHandler = (
+  components: Pick<AppComponents, 'map' | 'features'>
+) => createTilesHandler(components, 'v2', (tiles) => tiles)
 
 export const createLegacyTilesRequestHandler = (
   components: Pick<AppComponents, 'map' | 'features'>
-) => {
-  const { map, features } = components
-  return cacheWrapper(
-    async (context: { url: URL }) => {
-      if (!map.isReady()) {
-        return { status: 503, body: 'Not ready' }
-      }
-
-      // the uploaded files hold every tile, so filtered requests are served from memory
-      if (
-        !hasTilesFilterParams(context.url) &&
-        (await features.getIsFeatureEnabled(
-          ApplicationName.DAPPS,
-          Feature.ATLAS_REDIRECT_TO_S3
-        ))
-      ) {
-        const lastUploadedUrls = map.getLastUploadedTilesUrl()
-        if (lastUploadedUrls.v1) {
-          return {
-            status: 301,
-            headers: {
-              location: lastUploadedUrls.v1,
-              'cache-control': 'public, max-age=60',
-            } as Record<string, string>,
-          }
-        }
-      }
-
-      const tiles = await map.getTiles()
-      const data = toLegacyTiles(getFilterFromUrl(context.url, tiles))
-      return {
-        status: 200,
-        headers: {
-          'content-type': 'application/json',
-        } as Record<string, string>,
-        body: JSON.stringify({ ok: true, data }),
-      }
-    },
-    [map.getLastUpdatedAt],
-    { getKey: getTilesCacheKey }
-  )
-}
+) => createTilesHandler(components, 'v1', toLegacyTiles)
 
 export async function miniMapHandler(context: Context) {
   const { renderMiniMap, map, metrics } = context.components
