@@ -2,6 +2,7 @@ import { toLegacyTiles } from '../adapters/legacy-tiles'
 import { cacheWrapper } from '../logic/cache-wrapper'
 import { extractParams, getFilterFromUrl } from '../logic/filter-params'
 import { isErrorWithMessage } from '../logic/error'
+import { getTilesCacheKey, hasTilesFilterParams } from '../logic/tiles-request'
 import { AppComponents, Context } from '../types'
 import { ApplicationName, Feature } from '../modules/features/types'
 
@@ -15,11 +16,13 @@ export const createTilesRequestHandler = (
         return { status: 503, body: 'Not ready' }
       }
 
+      // the uploaded files hold every tile, so filtered requests are served from memory
       if (
-        await features.getIsFeatureEnabled(
+        !hasTilesFilterParams(context.url) &&
+        (await features.getIsFeatureEnabled(
           ApplicationName.DAPPS,
           Feature.ATLAS_REDIRECT_TO_S3
-        )
+        ))
       ) {
         const lastUploadedUrls = map.getLastUploadedTilesUrl()
         if (lastUploadedUrls.v2) {
@@ -43,7 +46,8 @@ export const createTilesRequestHandler = (
         body: JSON.stringify({ ok: true, data }),
       }
     },
-    [map.getLastUpdatedAt]
+    [map.getLastUpdatedAt],
+    { getKey: getTilesCacheKey }
   )
 }
 
@@ -57,11 +61,13 @@ export const createLegacyTilesRequestHandler = (
         return { status: 503, body: 'Not ready' }
       }
 
+      // the uploaded files hold every tile, so filtered requests are served from memory
       if (
-        await features.getIsFeatureEnabled(
+        !hasTilesFilterParams(context.url) &&
+        (await features.getIsFeatureEnabled(
           ApplicationName.DAPPS,
           Feature.ATLAS_REDIRECT_TO_S3
-        )
+        ))
       ) {
         const lastUploadedUrls = map.getLastUploadedTilesUrl()
         if (lastUploadedUrls.v1) {
@@ -85,7 +91,8 @@ export const createLegacyTilesRequestHandler = (
         body: JSON.stringify({ ok: true, data }),
       }
     },
-    [map.getLastUpdatedAt]
+    [map.getLastUpdatedAt],
+    { getKey: getTilesCacheKey }
   )
 }
 
