@@ -10,13 +10,13 @@ export const metricDeclarations = {
   ...theGraphMetrics,
   dcl_map_render_time: {
     help: 'map render time',
-    buckets: [0.1, 5, 15, 50, 100, 500],
+    buckets: [0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10],
     type: IMetricsComponent.HistogramType,
     labelNames: ['status'],
   },
   dcl_mini_map_render_time: {
     help: 'map render time',
-    buckets: [0.1, 5, 15, 50, 100, 500],
+    buckets: [0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10],
     type: IMetricsComponent.HistogramType,
     labelNames: ['status'],
   },

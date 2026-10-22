@@ -26,6 +26,7 @@ import {
   createMiniMapRendererComponent,
 } from './adapters/mini-map-renderer'
 import { createS3Component } from './modules/s3/component'
+import { createRenderLimiterComponent } from './modules/render-limiter/component'
 import { allowAnyOriginMiddleware } from './logic/allow-any-origin-middleware'
 
 export async function initComponents(): Promise<AppComponents> {
@@ -123,6 +124,7 @@ export async function initComponents(): Promise<AppComponents> {
   const statusChecks = await createStatusCheckComponent({ server, config })
   const renderMiniMap = await createMiniMapRendererComponent({ map })
   const renderEstateMiniMap = await createEstatesRendererComponent({ map })
+  const renderLimiter = await createRenderLimiterComponent({ config })
   const features = await createFeaturesComponent(
     {
       config,
@@ -152,6 +154,7 @@ export async function initComponents(): Promise<AppComponents> {
     rentals,
     renderMiniMap,
     renderEstateMiniMap,
+    renderLimiter,
     features,
     dappsReadDatabase,
     trades,

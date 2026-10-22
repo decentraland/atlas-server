@@ -1,4 +1,6 @@
 import { Tile, tileFields } from '../modules/map/types'
+import { Coord } from '../modules/render'
+import { InvalidRequestError } from './error'
 
 const validFields = new Set(tileFields)
 
@@ -59,7 +61,7 @@ export function getFilterFromUrl(
       newResult[id] = newTile
       return newResult
     }, {} as typeof result)
-  } else if (exclude && result.length > 0) {
+  } else if (exclude) {
     const fieldsToExclude = exclude.split(',')
     const fieldsInclude = Array.from(validFields).filter(
       (field) => !fieldsToExclude.includes(field)
@@ -79,6 +81,39 @@ export function getFilterFromUrl(
   return result
 }
 
+// bounds the work of a single render: canvas pixels and tiles drawn per layer
+export const MAX_IMAGE_PIXELS = 2048 * 2048
+export const MAX_IMAGE_TILES = 40000
+
+const INTEGER_PATTERN = /^-?\d+$/
+
+/**
+ * Parses a coordinate strictly: only an optionally signed run of digits is accepted.
+ * @throws InvalidRequestError when the value is not a safe integer.
+ */
+export function parseCoordinate(value: string, name: string): number {
+  const coordinate = Number(value)
+  if (!INTEGER_PATTERN.test(value) || !Number.isSafeInteger(coordinate)) {
+    throw new InvalidRequestError(`Invalid ${name}: expected an integer`)
+  }
+  return coordinate
+}
+
+function parseCoords(value: string, name: string): Coord {
+  const parts = value.split(',')
+  if (parts.length !== 2) {
+    throw new InvalidRequestError(`Invalid ${name}: expected "x,y"`)
+  }
+  return {
+    x: parseCoordinate(parts[0], name),
+    y: parseCoordinate(parts[1], name),
+  }
+}
+
+/**
+ * Reads the image params of the map PNG routes.
+ * @throws InvalidRequestError when a coordinate is malformed or the image exceeds the render budget.
+ */
 export function extractParams(url: URL) {
   const parse = (
     name: string,
@@ -100,19 +135,27 @@ export function extractParams(url: URL) {
   const width = parse('width', 1024, 100, 4096)
   const height = parse('height', 1024, 100, 4096)
   const size = parse('size', 20, 5, 50)
-  const [x, y] = url.searchParams.has('center')
-    ? (url.searchParams.get('center') as string)
-        .split(',')
-        .map((coord) => +coord)
-    : [0, 0]
-  const center = { x, y }
+  if (width * height > MAX_IMAGE_PIXELS) {
+    throw new InvalidRequestError(
+      `Image too large: width * height must be at most ${MAX_IMAGE_PIXELS} pixels`
+    )
+  }
+  if (Math.ceil(width / size) * Math.ceil(height / size) > MAX_IMAGE_TILES) {
+    throw new InvalidRequestError(
+      `Too many tiles: (width / size) * (height / size) must be at most ${MAX_IMAGE_TILES}`
+    )
+  }
+  const centerParam = url.searchParams.get('center')
+  const center =
+    centerParam !== null ? parseCoords(centerParam, 'center') : { x: 0, y: 0 }
   const showOnSale = url.searchParams.get('on-sale') === 'true'
   const showListedForRent = url.searchParams.get('listed-for-rent') === 'true'
-  const selected = url.searchParams.has('selected')
-    ? (url.searchParams.get('selected') as string).split(';').map((id) => {
-        const [x, y] = id.split(',').map((coord) => parseInt(coord))
-        return { x, y }
-      })
+  const selectedParam = url.searchParams.get('selected')
+  const selected = selectedParam
+    ? selectedParam
+        .split(';')
+        .filter((id) => id !== '')
+        .map((id) => parseCoords(id, 'selected'))
     : []
   return {
     width,

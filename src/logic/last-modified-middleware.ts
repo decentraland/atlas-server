@@ -4,6 +4,17 @@ import { Context } from '../types'
 const THREE_MINUTES = 180
 const TWO_MINUTES = 120
 
+function toHeaderRecord(headers: HeadersInit = {}): Record<string, string> {
+  if (headers instanceof Headers || Array.isArray(headers)) {
+    return Object.fromEntries(new Headers(headers).entries())
+  }
+  return { ...headers }
+}
+
+function hasHeader(headers: Record<string, string>, name: string): boolean {
+  return Object.keys(headers).some((key) => key.toLowerCase() === name)
+}
+
 export function lastModifiedMiddleware(
   getLastModifiedTime: () => number,
   options: { maxAge?: number; staleWhileRevalidate?: number } = {
@@ -36,10 +47,21 @@ export function lastModifiedMiddleware(
     }
 
     const response = await next()
+    const status = response.status ?? 200
+    // errors and redirects must not be cached publicly with the map's date
+    if (status < 200 || status >= 300) {
+      return response
+    }
+
+    const headers = toHeaderRecord(response.headers)
     response.headers = {
-      ...response.headers,
-      'Last-Modified': lastModifiedHeader,
-      'Cache-Control': cacheControlHeader,
+      ...headers,
+      ...(hasHeader(headers, 'last-modified')
+        ? {}
+        : { 'Last-Modified': lastModifiedHeader }),
+      ...(hasHeader(headers, 'cache-control')
+        ? {}
+        : { 'Cache-Control': cacheControlHeader }),
     }
 
     return response

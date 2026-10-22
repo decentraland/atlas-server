@@ -256,7 +256,7 @@ paths:
         on sale and rental listings.
         
         ## Parameters
-        - **width/height**: Image dimensions (100-4096px, default: 1024)
+        - **width/height**: Image dimensions (100-4096px, default: 1024); width * height is limited to 2048 * 2048 pixels and (width / size) * (height / size) to 40000 tiles
         - **size**: Size of each tile in pixels (5-50px, default: 20)
         - **center**: Coordinates to center the map on
         - **selected**: Semicolon-separated list of coordinates to highlight
@@ -336,6 +336,12 @@ paths:
               schema:
                 type: string
                 format: binary
+        '400':
+          description: Invalid coordinates, or the image exceeds the render budget
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '500':
           description: Error generating image
           content:
@@ -343,7 +349,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '503':
-          description: Service not ready
+          description: Service not ready, or too many renders queued (sent with Retry-After and no-store)
 
   /v1/map.png:
     get:
@@ -398,6 +404,12 @@ paths:
               schema:
                 type: string
                 format: binary
+        '400':
+          description: Invalid coordinates, or the image exceeds the render budget
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '500':
           description: Error
           content:
@@ -405,7 +417,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '503':
-          description: Not ready
+          description: Service not ready, or too many renders queued (sent with Retry-After and no-store)
 
   /v1/minimap.png:
     get:
@@ -440,7 +452,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '503':
-          description: Service not ready
+          description: Service not ready, or too many renders queued (sent with Retry-After and no-store)
 
   /v1/estatemap.png:
     get:
@@ -466,7 +478,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '503':
-          description: Not ready
+          description: Service not ready, or too many renders queued (sent with Retry-After and no-store)
 
   /v2/parcels/{x}/{y}/map.png:
     get:
@@ -529,6 +541,12 @@ paths:
               schema:
                 type: string
                 format: binary
+        '400':
+          description: Invalid coordinates, or the image exceeds the render budget
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '500':
           description: Error
           content:
@@ -536,7 +554,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '503':
-          description: Not ready
+          description: Service not ready, or too many renders queued (sent with Retry-After and no-store)
 
   /v1/parcels/{x}/{y}/map.png:
     get:
@@ -584,10 +602,16 @@ paths:
               schema:
                 type: string
                 format: binary
+        '400':
+          description: Invalid coordinates, or the image exceeds the render budget
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '500':
           description: Error
         '503':
-          description: Not ready
+          description: Service not ready, or too many renders queued (sent with Retry-After and no-store)
 
   /v2/estates/{estateId}/map.png:
     get:
@@ -650,6 +674,12 @@ paths:
               schema:
                 type: string
                 example: "https://ui.decentraland.org/dissolved_estate.png"
+        '400':
+          description: Invalid coordinates, or the image exceeds the render budget
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '500':
           description: Error
           content:
@@ -657,7 +687,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '503':
-          description: Not ready
+          description: Service not ready, or too many renders queued (sent with Retry-After and no-store)
 
   /v1/estates/{estateId}/map.png:
     get:
@@ -702,10 +732,16 @@ paths:
                 format: binary
         '302':
           description: Redirect to dissolved estate image
+        '400':
+          description: Invalid coordinates, or the image exceeds the render budget
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '500':
           description: Error
         '503':
-          description: Not ready
+          description: Service not ready, or too many renders queued (sent with Retry-After and no-store)
 
   /v2/parcels/{x}/{y}:
     get:
@@ -738,7 +774,7 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/NFT'
-        '403':
+        '400':
           description: Invalid coordinates
           content:
             text/plain:
@@ -784,7 +820,7 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/NFT'
-        '403':
+        '400':
           description: Invalid estate ID
           content:
             text/plain:
