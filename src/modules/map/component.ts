@@ -198,20 +198,22 @@ export async function createMapComponent(
       componentLogger.info('Starting tiles upload to S3...')
 
       // Upload v1 format (legacy)
-      lastUploadedTilesUrl.v1 = await s3.uploadTilesJson(
-        'v1',
-        toLegacyTiles(tilesData)
-      )
-      componentLogger.info(`Uploaded v1 tiles to ${lastUploadedTilesUrl.v1}`)
+      const v1 = await s3.uploadTilesJson('v1', toLegacyTiles(tilesData))
+      componentLogger.info(`Uploaded v1 tiles to ${v1}`)
 
       // Upload v2 format (current)
-      lastUploadedTilesUrl.v2 = await s3.uploadTilesJson('v2', tilesData)
-      componentLogger.info(`Uploaded v2 tiles to ${lastUploadedTilesUrl.v2}`)
+      const v2 = await s3.uploadTilesJson('v2', tilesData)
+      componentLogger.info(`Uploaded v2 tiles to ${v2}`)
 
       // Upload timestamp separately
       await s3.uploadTimestamp(lastUpdatedAt)
       componentLogger.info(`Uploaded timestamp to S3`)
+
+      // redirect only once the whole upload succeeded
+      lastUploadedTilesUrl = { v1, v2 }
     } catch (error) {
+      // after a failed upload the files in S3 may be older than the served data
+      lastUploadedTilesUrl = {}
       componentLogger.warn(
         `Failed to upload tiles to S3 (will serve from memory): ${error}`
       )

@@ -94,6 +94,44 @@ describe('when getting the open rental listings', () => {
     })
   })
 
+  describe('and the response body stalls', () => {
+    let request: Promise<RentalListing[]>
+
+    beforeEach(async () => {
+      jest.useFakeTimers()
+      fetchMock.mockImplementationOnce(
+        async (
+          _url: string,
+          options: { abortController: AbortController }
+        ) => ({
+          ok: true,
+          status: 200,
+          json: () =>
+            new Promise((_resolve, reject) => {
+              const { signal } = options.abortController
+              if (signal.aborted) {
+                reject(new Error('The operation was aborted'))
+              }
+              signal.addEventListener('abort', () =>
+                reject(new Error('The operation was aborted'))
+              )
+            }),
+        })
+      )
+      request = rentalsComponent.getOpenRentalListings()
+      request.catch(() => undefined)
+      await jest.advanceTimersByTimeAsync(30000)
+    })
+
+    afterEach(() => {
+      jest.useRealTimers()
+    })
+
+    it('should abort the request once the deadline passes', () => {
+      return expect(request).rejects.toThrow('The operation was aborted')
+    })
+  })
+
   describe('and fetching a page fails', () => {
     beforeEach(() => {
       fetchMock.mockResolvedValueOnce({

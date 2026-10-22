@@ -3,7 +3,14 @@ import {
   IConfigComponent,
   ILoggerComponent,
 } from '@well-known-components/interfaces'
+import { promisify } from 'util'
+import { gzip } from 'zlib'
 import { Tile, LegacyTile } from '../map/types'
+
+const gzipAsync = promisify(gzip)
+
+const S3_REQUEST_TIMEOUT = 60000
+const S3_CONNECTION_TIMEOUT = 5000
 
 export interface IS3Component {
   uploadTilesJson(
@@ -28,12 +35,6 @@ export async function createS3Component(components: {
     const endpoint = await config.getString('AWS_S3_ENDPOINT')
     const cdnUrl = await config.getString('CDN_URL')
 
-    if (cdnUrl) {
-      console.log('CDN URL provided', cdnUrl)
-    } else {
-      console.log('No CDN URL provided')
-    }
-
     if (!bucketName) {
       componentLogger.warn(
         'Missing AWS bucket - S3 component will use stub implementation'
@@ -43,25 +44,30 @@ export async function createS3Component(components: {
 
     const s3Config: S3ClientConfig = {
       region,
+      requestHandler: {
+        requestTimeout: S3_REQUEST_TIMEOUT,
+        connectionTimeout: S3_CONNECTION_TIMEOUT,
+      },
     }
 
     if (endpoint) {
-      console.log('Endpoint provided')
       s3Config.endpoint = endpoint
-    } else {
-      console.log('No endpoint provided')
     }
 
     // Only add credentials if they are provided
     if (accessKeyId && secretAccessKey) {
-      console.log('Credentials provided')
       s3Config.credentials = {
         accessKeyId,
         secretAccessKey,
       }
-    } else {
-      console.log('No credentials provided')
     }
+
+    componentLogger.info('S3 component configured', {
+      bucket: bucketName,
+      cdnUrl: cdnUrl || 'none',
+      endpoint: endpoint || 'default',
+      credentials: accessKeyId && secretAccessKey ? 'static' : 'default chain',
+    })
 
     const s3Client = new S3Client(s3Config)
 
@@ -76,14 +82,10 @@ export async function createS3Component(components: {
           new PutObjectCommand({
             Bucket: bucketName,
             Key: key,
-            Body: JSON.stringify({ ok: true, data: tiles }),
+            Body: await gzipAsync(JSON.stringify({ ok: true, data: tiles })),
             ContentType: 'application/json',
+            ContentEncoding: 'gzip',
             CacheControl: 'public, max-age=60',
-            Metadata: {
-              'Access-Control-Allow-Origin': '*',
-              'Access-Control-Allow-Methods': 'GET',
-              'Access-Control-Allow-Headers': 'Content-Type',
-            },
           })
         )
 
@@ -112,11 +114,6 @@ export async function createS3Component(components: {
             Body: JSON.stringify({ timestamp }),
             ContentType: 'application/json',
             CacheControl: 'public, max-age=60',
-            Metadata: {
-              'Access-Control-Allow-Origin': '*',
-              'Access-Control-Allow-Methods': 'GET',
-              'Access-Control-Allow-Headers': 'Content-Type',
-            },
           })
         )
         componentLogger.info(`Uploaded timestamp to S3`)
