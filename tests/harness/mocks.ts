@@ -59,6 +59,19 @@ jest.mock('../../src/modules/map/component', () => {
   }
 })
 
+// runs the worker transpiled by the jest globalSetup
+jest.mock('../../src/adapters/render-pool/component', () => {
+  const actual = jest.requireActual('../../src/adapters/render-pool/component')
+  const { COMPILED_RENDER_WORKER } = require('./compile-render-worker')
+  return {
+    ...actual,
+    createRenderPoolComponent: (components: unknown) =>
+      actual.createRenderPoolComponent(components, {
+        workerFilename: COMPILED_RENDER_WORKER,
+      }),
+  }
+})
+
 // the real map never becomes ready under the stubs, so the bar's redraw timer would outlive the test on a TTY
 jest.mock('cli-progress', () => ({
   SingleBar: jest.fn().mockImplementation(() => ({

@@ -1,8 +1,8 @@
-import { createCanvas } from 'canvas'
-import { Coord, Layer, getViewport, renderMap } from '../render'
+import { Coord, Layer, describeMap, getViewport } from '../render'
 import { IMapComponent, Tile, TileType } from '../map/types'
 import { coordsToId, isExpired as isOrderExpired } from '../map/utils'
 import { isExpired as isRentalExpired } from '../../logic/rental'
+import { MapRenderJob } from '../../adapters/render-pool'
 import { IImageComponent } from './types'
 
 export function createImageComponent(components: {
@@ -25,7 +25,7 @@ export function createImageComponent(components: {
     }
   }
 
-  async function getStream(
+  async function getRenderJob(
     width: number,
     height: number,
     size: number,
@@ -33,11 +33,9 @@ export function createImageComponent(components: {
     selected: Coord[],
     showOnSale: boolean,
     showOnRent: boolean
-  ) {
+  ): Promise<MapRenderJob> {
     const pan = { x: 0, y: 0 }
     const { nw, se } = getViewport({ width, height, center, size, padding: 1 })
-    const canvas = createCanvas(width, height)
-    const ctx = canvas.getContext('2d')
     const tiles = await map.getTiles()
     const layer: Layer = (x, y) => {
       const id = coordsToId(x, y)
@@ -79,20 +77,22 @@ export function createImageComponent(components: {
       layers.push(fillLayer)
     }
 
-    renderMap({
-      ctx,
-      width,
-      height,
-      size,
-      pan,
-      center,
-      nw,
-      se,
-      layers,
-    })
-    return canvas.createPNGStream()
+    // the layers close over the tiles, so they are resolved here and drawn on a worker
+    return {
+      kind: 'map',
+      scene: describeMap({
+        width,
+        height,
+        size,
+        pan,
+        center,
+        nw,
+        se,
+        layers,
+      }),
+    }
   }
   return {
-    getStream,
+    getRenderJob,
   }
 }

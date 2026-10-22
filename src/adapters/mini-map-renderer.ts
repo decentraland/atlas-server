@@ -1,9 +1,21 @@
-import { createCanvas } from 'canvas'
-import { Readable } from 'stream'
 import { IMapComponent } from '../modules/map/types'
+import { PixelsRenderJob } from './render-pool'
 
 export type MiniMapRendererComponent = {
-  getStream(): Promise<Readable>
+  /** Builds the minimap pixels; the render pool encodes them. */
+  getRenderJob(): Promise<PixelsRenderJob>
+}
+
+const DIMENSION = 512
+
+function toRenderJob(data: Uint8ClampedArray): PixelsRenderJob {
+  return {
+    kind: 'pixels',
+    width: DIMENSION,
+    height: DIMENSION,
+    data,
+    compressionLevel: 5,
+  }
 }
 
 /**
@@ -15,13 +27,11 @@ export type MiniMapRendererComponent = {
 export async function createMiniMapRendererComponent(components: {
   map: IMapComponent
 }): Promise<MiniMapRendererComponent> {
-  const dimension = 512
-  const canvas = createCanvas(dimension, dimension)
-  const ctx = canvas.getContext('2d')
+  const dimension = DIMENSION
 
-  const picture = ctx.createImageData(dimension, dimension)
-
-  async function getStream() {
+  async function getRenderJob() {
+    // a fresh buffer per render, since it is transferred to the worker
+    const pixels = new Uint8ClampedArray(dimension * dimension * 4)
     const data = await components.map.getTiles()
     for (var pos in data) {
       const { x, y, top, left, topLeft, type } = data[pos]
@@ -51,19 +61,17 @@ export async function createMiniMapRendererComponent(components: {
       const absoluteY = dimension - (y + 256)
       const pointer = (x + 256 + absoluteY * dimension) * 4
 
-      picture.data[pointer] = flagsR
-      picture.data[pointer + 1] = flagsG
-      picture.data[pointer + 2] = 0
-      picture.data[pointer + 3] = 255
+      pixels[pointer] = flagsR
+      pixels[pointer + 1] = flagsG
+      pixels[pointer + 2] = 0
+      pixels[pointer + 3] = 255
     }
 
-    ctx.putImageData(picture, 0, 0)
-
-    return canvas.createPNGStream({ compressionLevel: 5 })
+    return toRenderJob(pixels)
   }
 
   return {
-    getStream,
+    getRenderJob,
   }
 }
 
@@ -73,13 +81,11 @@ export async function createMiniMapRendererComponent(components: {
 export async function createEstatesRendererComponent(components: {
   map: IMapComponent
 }): Promise<MiniMapRendererComponent> {
-  const dimension = 512
-  const canvas = createCanvas(dimension, dimension)
-  const ctx = canvas.getContext('2d')
+  const dimension = DIMENSION
 
-  const picture = ctx.createImageData(dimension, dimension)
-
-  async function getStream() {
+  async function getRenderJob() {
+    // a fresh buffer per render, since it is transferred to the worker
+    const pixels = new Uint8ClampedArray(dimension * dimension * 4)
     const data = await components.map.getTiles()
     // 1-based so 0 keeps meaning "no estate"
     const estateIndexes = new Map<string, number>()
@@ -111,18 +117,16 @@ export async function createEstatesRendererComponent(components: {
       const absoluteY = dimension - (y + 256)
       const pointer = (x + 256 + absoluteY * dimension) * 4
 
-      picture.data[pointer] = flagsR
-      picture.data[pointer + 1] = flagsG
-      picture.data[pointer + 2] = flagsB
-      picture.data[pointer + 3] = 255
+      pixels[pointer] = flagsR
+      pixels[pointer + 1] = flagsG
+      pixels[pointer + 2] = flagsB
+      pixels[pointer + 3] = 255
     }
 
-    ctx.putImageData(picture, 0, 0)
-
-    return canvas.createPNGStream({ compressionLevel: 5 })
+    return toRenderJob(pixels)
   }
 
   return {
-    getStream,
+    getRenderJob,
   }
 }

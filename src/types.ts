@@ -18,7 +18,7 @@ import { IS3Component } from './modules/s3/component'
 import { Metrics } from './metrics'
 import { MiniMapRendererComponent } from './adapters/mini-map-renderer'
 import { ITradesComponent } from './modules/trades/component'
-import { IRenderLimiterComponent } from './modules/render-limiter/types'
+import { IRenderPoolComponent } from './adapters/render-pool'
 
 export type GlobalContext = {
   components: AppComponents
@@ -41,7 +41,7 @@ export type AppComponents = {
   statusChecks: IBaseComponent
   renderMiniMap: MiniMapRendererComponent
   renderEstateMiniMap: MiniMapRendererComponent
-  renderLimiter: IRenderLimiterComponent
+  renderPool: IRenderPoolComponent
   features: IFeaturesComponent
   dappsReadDatabase: IPgComponent
   trades: ITradesComponent

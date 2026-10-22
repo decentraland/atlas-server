@@ -1,6 +1,5 @@
 import { toLegacyTiles } from '../adapters/legacy-tiles'
 import { cacheWrapper } from '../logic/cache-wrapper'
-import { Readable } from 'stream'
 import { IHttpServerComponent } from '@dcl/core-commons'
 import {
   extractParams,
@@ -10,8 +9,12 @@ import {
 import { InvalidRequestError, isErrorWithMessage } from '../logic/error'
 import { getMapBounds, getTilesFilter, MapBounds } from '../logic/tiles-request'
 import { Tile } from '../modules/map/types'
-import { RenderBusyError } from '../modules/render-limiter/errors'
-import { AppComponents, Context } from '../types'
+import {
+  RenderAbortedError,
+  RenderBusyError,
+  RenderJob,
+} from '../adapters/render-pool'
+import { AppComponents } from '../types'
 import { ApplicationName, Feature } from '../modules/features/types'
 
 type TilesResponse = {
@@ -88,49 +91,21 @@ export const createLegacyTilesRequestHandler = (
   components: Pick<AppComponents, 'map' | 'features'>
 ) => createTilesHandler(components, 'v1', toLegacyTiles)
 
-type RenderMetric = 'dcl_map_render_time' | 'dcl_mini_map_render_time'
-
 const RENDER_RETRY_AFTER_SECONDS = '5'
 const TOKEN_ID_PATTERN = /^(0|[1-9]\d*)$/
 
-async function bufferStream(stream: Readable): Promise<Buffer> {
-  const chunks: Buffer[] = []
-  for await (const chunk of stream) {
-    chunks.push(chunk)
-  }
-  return Buffer.concat(chunks)
-}
+type PngComponents = Pick<AppComponents, 'map' | 'renderPool'>
+// aborts a render still waiting for a thread when the client disconnects
+type PngRequest = { request: { signal: AbortSignal } }
 
-// draws and encodes inside the limiter so the PNG is complete before the slot frees
 async function renderPng(
-  components: Pick<AppComponents, 'metrics' | 'renderLimiter'>,
-  metric: RenderMetric,
-  getStream: () => Promise<Readable>
+  components: Pick<AppComponents, 'renderPool'>,
+  request: PngRequest['request'],
+  getJob: () => Promise<RenderJob>
 ): Promise<IHttpServerComponent.IResponse> {
-  const { metrics, renderLimiter } = components
-  const waitTimer = metrics.startTimer('dcl_map_render_wait_seconds')
-  let acquired = false
-  let png: Buffer
-  try {
-    png = await renderLimiter.run(async () => {
-      acquired = true
-      waitTimer.end({ result: 'acquired' })
-      const renderTimer = metrics.startTimer(metric)
-      try {
-        const buffer = await bufferStream(await getStream())
-        renderTimer.end({ status: 200 })
-        return buffer
-      } catch (error) {
-        renderTimer.end({ status: 500 })
-        throw error
-      }
-    })
-  } catch (error) {
-    if (!acquired) {
-      waitTimer.end({ result: 'rejected' })
-    }
-    throw error
-  }
+  const png = await components.renderPool.render(getJob, {
+    signal: request.signal,
+  })
   return {
     status: 200,
     headers: {
@@ -144,7 +119,8 @@ function toPngErrorResponse(error: unknown): IHttpServerComponent.IResponse {
   if (error instanceof InvalidRequestError) {
     return { status: 400, body: { ok: false, error: error.message } }
   }
-  if (error instanceof RenderBusyError) {
+  // an aborted render has no client left to read the response
+  if (error instanceof RenderBusyError || error instanceof RenderAbortedError) {
     return {
       status: 503,
       headers: {
@@ -177,30 +153,37 @@ async function handlePngRequest(
   }
 }
 
-export async function miniMapHandler(context: Context) {
-  const { components } = context
+export async function miniMapHandler(
+  context: PngRequest & {
+    components: PngComponents & Pick<AppComponents, 'renderMiniMap'>
+  }
+) {
+  const { components, request } = context
   return handlePngRequest(components, () =>
-    renderPng(components, 'dcl_mini_map_render_time', () =>
-      components.renderMiniMap.getStream()
-    )
+    renderPng(components, request, components.renderMiniMap.getRenderJob)
   )
 }
 
-export async function estateMapHandler(context: Context) {
-  const { components } = context
+export async function estateMapHandler(
+  context: PngRequest & {
+    components: PngComponents & Pick<AppComponents, 'renderEstateMiniMap'>
+  }
+) {
+  const { components, request } = context
   return handlePngRequest(components, () =>
-    renderPng(components, 'dcl_mini_map_render_time', () =>
-      components.renderEstateMiniMap.getStream()
-    )
+    renderPng(components, request, components.renderEstateMiniMap.getRenderJob)
   )
 }
 
-export const mapPngRequestHandler = async (context: {
-  components: Pick<AppComponents, 'image' | 'map' | 'metrics' | 'renderLimiter'>
-  url: URL
-}) => {
-  const { image } = context.components
-  return handlePngRequest(context.components, () => {
+export const mapPngRequestHandler = async (
+  context: PngRequest & {
+    components: PngComponents & Pick<AppComponents, 'image'>
+    url: URL
+  }
+) => {
+  const { components, request } = context
+  const { image } = components
+  return handlePngRequest(components, async () => {
     const {
       width,
       height,
@@ -210,8 +193,8 @@ export const mapPngRequestHandler = async (context: {
       showListedForRent,
       selected,
     } = extractParams(context.url)
-    return renderPng(context.components, 'dcl_map_render_time', () =>
-      image.getStream(
+    return renderPng(components, request, () =>
+      image.getRenderJob(
         width,
         height,
         size,
@@ -224,15 +207,17 @@ export const mapPngRequestHandler = async (context: {
   })
 }
 
-export const parcelMapPngRequestHandler = async (context: {
-  components: Pick<AppComponents, 'image' | 'map' | 'metrics' | 'renderLimiter'>
-  params: {
-    x: string
-    y: string
+export const parcelMapPngRequestHandler = async (
+  context: PngRequest & {
+    components: PngComponents & Pick<AppComponents, 'image'>
+    params: {
+      x: string
+      y: string
+    }
+    url: URL
   }
-  url: URL
-}) => {
-  const { components, params } = context
+) => {
+  const { components, params, request } = context
   const { image } = components
   return handlePngRequest(components, async () => {
     const center = {
@@ -242,8 +227,8 @@ export const parcelMapPngRequestHandler = async (context: {
     const { width, height, size, showOnSale, showListedForRent } =
       extractParams(context.url)
     const selected = [center]
-    return renderPng(context.components, 'dcl_map_render_time', () =>
-      image.getStream(
+    return renderPng(components, request, () =>
+      image.getRenderJob(
         width,
         height,
         size,
@@ -256,13 +241,16 @@ export const parcelMapPngRequestHandler = async (context: {
   })
 }
 
-export const estateMapPngRequestHandler = async (context: {
-  components: Pick<AppComponents, 'image' | 'map' | 'metrics' | 'renderLimiter'>
-  params: { estateId: string }
-  url: URL
-}) => {
-  const { image, map } = context.components
-  return handlePngRequest(context.components, async () => {
+export const estateMapPngRequestHandler = async (
+  context: PngRequest & {
+    components: PngComponents & Pick<AppComponents, 'image'>
+    params: { estateId: string }
+    url: URL
+  }
+) => {
+  const { components, request } = context
+  const { image, map } = components
+  return handlePngRequest(components, async () => {
     const { width, height, size, showOnSale, showListedForRent } =
       extractParams(context.url)
     const { estateId } = context.params
@@ -284,8 +272,8 @@ export const estateMapPngRequestHandler = async (context: {
     const x = xs[(xs.length / 2) | 0] || 0
     const y = ys[(ys.length / 2) | 0] || 0
     const center = { x, y }
-    return renderPng(context.components, 'dcl_map_render_time', () =>
-      image.getStream(
+    return renderPng(components, request, () =>
+      image.getRenderJob(
         width,
         height,
         size,

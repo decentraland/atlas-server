@@ -3,7 +3,8 @@ import {
   MiniMapRendererComponent,
 } from '../../src/adapters/mini-map-renderer'
 import { IMapComponent, Tile, TileType } from '../../src/modules/map/types'
-import { decodePng, readStream } from '../helpers/png'
+import { decodePng } from '../helpers/png'
+import { startRenderPool, StartedRenderPool } from '../helpers/render-pool'
 
 function buildTile(x: number, y: number, estateId?: string): Tile {
   return {
@@ -23,8 +24,10 @@ describe('when rendering the estates minimap', () => {
   let renderer: MiniMapRendererComponent
   let tiles: Tile[]
   let estateIndexAt: (x: number, y: number) => number
+  let renderPool: StartedRenderPool
 
   beforeEach(async () => {
+    renderPool = await startRenderPool()
     tiles = [
       buildTile(0, 0, '10'),
       buildTile(1, 0, '20'),
@@ -42,12 +45,16 @@ describe('when rendering the estates minimap', () => {
       } as unknown as IMapComponent,
     })
     const pixelAt = await decodePng(
-      await readStream(await renderer.getStream())
+      await renderPool.pool.render(renderer.getRenderJob)
     )
     estateIndexAt = (x, y) => {
       const [r, g, b] = pixelAt(x + 256, 512 - (y + 256))
       return (r << 16) | (g << 8) | b
     }
+  })
+
+  afterEach(async () => {
+    await renderPool.stop()
   })
 
   it('should encode every parcel of an estate with the same index', () => {

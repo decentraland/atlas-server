@@ -21,6 +21,8 @@ module.exports = {
   coverageThreshold: {
     global: { statements: 80, branches: 72, functions: 80, lines: 80 },
   },
+  // the render pool's worker threads run a transpiled copy of src/
+  globalSetup: '<rootDir>/tests/harness/compile-render-worker.js',
   projects: [
     {
       ...project,
