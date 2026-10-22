@@ -2,6 +2,7 @@ import { Readable } from 'stream'
 import {
   estateMapHandler,
   estateMapPngRequestHandler,
+  miniMapHandler,
   estateRequestHandler,
   mapPngRequestHandler,
   parcelMapPngRequestHandler,
@@ -10,10 +11,8 @@ import {
 } from '../../src/controllers/handlers'
 import { NFT } from '../../src/modules/api/types'
 import { Tile, TileType } from '../../src/modules/map/types'
-import {
-  createRenderLimiter,
-  RenderQueueFullError,
-} from '../../src/modules/render-limiter'
+import { createRenderLimiter } from '../../src/modules/render-limiter/component'
+import { RenderBusyError } from '../../src/modules/render-limiter/errors'
 import { AppComponents, Context } from '../../src/types'
 
 const LAND_CONTRACT_ADDRESS = '0xf87e31492faf9a91b02ee0deaad50d51d56d5d4d'
@@ -59,6 +58,7 @@ describe('when handling the map image requests', () => {
   let getStream: jest.Mock
   let startTimer: jest.Mock
   let endTimer: jest.Mock
+  let endWaitTimer: jest.Mock
   let renderLimiterRun: jest.Mock
   let png: Buffer
 
@@ -68,7 +68,10 @@ describe('when handling the map image requests', () => {
     getTiles = jest.fn().mockResolvedValue({})
     getStream = jest.fn(async () => Readable.from([png]))
     endTimer = jest.fn()
-    startTimer = jest.fn().mockReturnValue({ end: endTimer })
+    endWaitTimer = jest.fn()
+    startTimer = jest.fn((name: string) => ({
+      end: name === 'dcl_map_render_wait_seconds' ? endWaitTimer : endTimer,
+    }))
     const renderLimiter = createRenderLimiter({
       maxConcurrent: 1,
       maxQueued: 1,
@@ -112,6 +115,10 @@ describe('when handling the map image requests', () => {
       it('should end the render timer with a 200 status', () => {
         expect(endTimer).toHaveBeenCalledWith({ status: 200 })
       })
+
+      it('should record the wait for the render slot as acquired', () => {
+        expect(endWaitTimer).toHaveBeenCalledWith({ result: 'acquired' })
+      })
     })
 
     describe('and the center is not a pair of integers', () => {
@@ -131,8 +138,8 @@ describe('when handling the map image requests', () => {
         expect(getStream).not.toHaveBeenCalled()
       })
 
-      it('should end the render timer with a 400 status', () => {
-        expect(endTimer).toHaveBeenCalledWith({ status: 400 })
+      it('should not time a render', () => {
+        expect(startTimer).not.toHaveBeenCalled()
       })
     })
 
@@ -165,14 +172,16 @@ describe('when handling the map image requests', () => {
         expect(response).toEqual({ status: 503, body: 'Not ready' })
       })
 
-      it('should end the render timer with a 503 status', () => {
-        expect(endTimer).toHaveBeenCalledWith({ status: 503 })
+      it('should not time a render', () => {
+        expect(startTimer).not.toHaveBeenCalled()
       })
     })
 
     describe('and the render queue is full', () => {
       beforeEach(async () => {
-        renderLimiterRun.mockRejectedValueOnce(new RenderQueueFullError())
+        renderLimiterRun.mockRejectedValueOnce(
+          new RenderBusyError('Too many map renders queued')
+        )
         url = new URL('http://localhost/v1/map.png')
         response = await mapPngRequestHandler({ components, url })
       })
@@ -185,8 +194,12 @@ describe('when handling the map image requests', () => {
         })
       })
 
-      it('should end the render timer with a 503 status', () => {
-        expect(endTimer).toHaveBeenCalledWith({ status: 503 })
+      it('should record the wait for the render slot as rejected', () => {
+        expect(endWaitTimer).toHaveBeenCalledWith({ result: 'rejected' })
+      })
+
+      it('should not time a render', () => {
+        expect(startTimer).not.toHaveBeenCalledWith('dcl_map_render_time')
       })
     })
 
@@ -210,30 +223,60 @@ describe('when handling the map image requests', () => {
     })
   })
 
-  describe('and the estates minimap is requested', () => {
-    let response: Awaited<ReturnType<typeof estateMapHandler>>
-    let getEstatesStream: jest.Mock
+  describe.each([
+    ['minimap', miniMapHandler],
+    ['estates minimap', estateMapHandler],
+  ])('and the %s is requested', (_, handler) => {
+    let context: Context
+    let response: Awaited<ReturnType<typeof handler>>
 
-    beforeEach(async () => {
-      getEstatesStream = jest.fn(async () => Readable.from([png]))
-      response = await estateMapHandler({
+    beforeEach(() => {
+      const getMiniMapStream = jest.fn(async () => Readable.from([png]))
+      context = {
         components: {
           ...components,
-          renderEstateMiniMap: { getStream: getEstatesStream },
+          renderMiniMap: { getStream: getMiniMapStream },
+          renderEstateMiniMap: { getStream: getMiniMapStream },
         },
-      } as unknown as Context)
+      } as unknown as Context
     })
 
-    it('should respond with a 200 and the encoded PNG', () => {
-      expect(response).toEqual({
-        status: 200,
-        headers: { 'content-type': 'image/png' },
-        body: png,
+    describe('and a render slot is available', () => {
+      beforeEach(async () => {
+        response = await handler(context)
+      })
+
+      it('should respond with a 200 and the encoded PNG', () => {
+        expect(response).toEqual({
+          status: 200,
+          headers: { 'content-type': 'image/png' },
+          body: png,
+        })
+      })
+
+      it('should time the slot wait and then the minimap render', () => {
+        expect(startTimer.mock.calls.map(([name]) => name)).toEqual([
+          'dcl_map_render_wait_seconds',
+          'dcl_mini_map_render_time',
+        ])
       })
     })
 
-    it('should end the minimap render timer with a 200 status', () => {
-      expect(endTimer).toHaveBeenCalledWith({ status: 200 })
+    describe('and the render queue is full', () => {
+      beforeEach(async () => {
+        renderLimiterRun.mockRejectedValueOnce(
+          new RenderBusyError('Too many map renders queued')
+        )
+        response = await handler(context)
+      })
+
+      it('should respond with a non cacheable 503 that asks to retry later', () => {
+        expect(response).toEqual({
+          status: 503,
+          headers: { 'retry-after': '5', 'cache-control': 'no-store' },
+          body: { ok: false, error: 'Too many map renders queued' },
+        })
+      })
     })
   })
 

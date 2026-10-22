@@ -124,7 +124,7 @@ export async function initComponents(): Promise<AppComponents> {
   const statusChecks = await createStatusCheckComponent({ server, config })
   const renderMiniMap = await createMiniMapRendererComponent({ map })
   const renderEstateMiniMap = await createEstatesRendererComponent({ map })
-  const renderLimiter = await createRenderLimiterComponent({ config })
+  const renderLimiter = await createRenderLimiterComponent({ config, logs })
   const features = await createFeaturesComponent(
     {
       config,

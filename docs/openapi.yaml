@@ -69,7 +69,7 @@ paths:
         ## Filtering Options
         - **Coordinate filtering**: Use x1, y1, x2, y2 to request a specific area
         - **Field inclusion**: Use 'include' to select specific fields
-        - **Field exclusion**: Use 'exclude' to omit specific fields
+        - **Field exclusion**: Use 'exclude' to omit specific fields (ignored when 'include' is set)
         
         ## Caching
         This endpoint includes Last-Modified headers and supports conditional requests with If-Modified-Since.
@@ -107,7 +107,7 @@ paths:
           example: "id,x,y,type,owner,price"
         - name: exclude
           in: query
-          description: Comma-separated list of fields to exclude from each tile
+          description: Comma-separated list of fields to exclude from each tile. Applies on its own; ignored when include is set.
           schema:
             type: string
           example: "updatedAt,tokenId"
@@ -256,7 +256,7 @@ paths:
         on sale and rental listings.
         
         ## Parameters
-        - **width/height**: Image dimensions (100-4096px, default: 1024); width * height is limited to 2048 * 2048 pixels and (width / size) * (height / size) to 40000 tiles
+        - **width/height**: Image dimensions (100-4096px, default: 1024); width * height is limited to 2048 * 2048 pixels and ceil(width / size) * ceil(height / size) to 45000 tiles
         - **size**: Size of each tile in pixels (5-50px, default: 20)
         - **center**: Coordinates to center the map on
         - **selected**: Semicolon-separated list of coordinates to highlight
@@ -349,7 +349,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '503':
-          description: Service not ready, or too many renders queued (sent with Retry-After and no-store)
+          description: Service not ready, or the render queue is full or timed out (sent with Retry-After and no-store)
 
   /v1/map.png:
     get:
@@ -417,7 +417,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '503':
-          description: Service not ready, or too many renders queued (sent with Retry-After and no-store)
+          description: Service not ready, or the render queue is full or timed out (sent with Retry-After and no-store)
 
   /v1/minimap.png:
     get:
@@ -452,7 +452,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '503':
-          description: Service not ready, or too many renders queued (sent with Retry-After and no-store)
+          description: Service not ready, or the render queue is full or timed out (sent with Retry-After and no-store)
 
   /v1/estatemap.png:
     get:
@@ -478,7 +478,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '503':
-          description: Service not ready, or too many renders queued (sent with Retry-After and no-store)
+          description: Service not ready, or the render queue is full or timed out (sent with Retry-After and no-store)
 
   /v2/parcels/{x}/{y}/map.png:
     get:
@@ -554,7 +554,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '503':
-          description: Service not ready, or too many renders queued (sent with Retry-After and no-store)
+          description: Service not ready, or the render queue is full or timed out (sent with Retry-After and no-store)
 
   /v1/parcels/{x}/{y}/map.png:
     get:
@@ -611,7 +611,7 @@ paths:
         '500':
           description: Error
         '503':
-          description: Service not ready, or too many renders queued (sent with Retry-After and no-store)
+          description: Service not ready, or the render queue is full or timed out (sent with Retry-After and no-store)
 
   /v2/estates/{estateId}/map.png:
     get:
@@ -687,7 +687,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '503':
-          description: Service not ready, or too many renders queued (sent with Retry-After and no-store)
+          description: Service not ready, or the render queue is full or timed out (sent with Retry-After and no-store)
 
   /v1/estates/{estateId}/map.png:
     get:
@@ -741,7 +741,7 @@ paths:
         '500':
           description: Error
         '503':
-          description: Service not ready, or too many renders queued (sent with Retry-After and no-store)
+          description: Service not ready, or the render queue is full or timed out (sent with Retry-After and no-store)
 
   /v2/parcels/{x}/{y}:
     get:

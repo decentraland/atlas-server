@@ -117,6 +117,7 @@ describe('when extracting the image params from the url', () => {
     ['the bevy explorer chunks', 'width=768&height=768&size=16&center=8,-24'],
     ['the estate token images', 'width=1024&height=1024&size=24'],
     ['the largest allowed image', 'width=2048&height=2048&size=11'],
+    ['the documented default size at the smallest tile', 'size=5'],
   ])('and the params are the ones of %s', (_, query) => {
     beforeEach(() => {
       url = new URL(`http://localhost/v1/map.png?${query}`)
@@ -151,7 +152,7 @@ describe('when extracting the image params from the url', () => {
     it('should throw an invalid request error explaining the tile limit', () => {
       expect(() => extractParams(url)).toThrow(
         new InvalidRequestError(
-          'Too many tiles: (width / size) * (height / size) must be at most 40000'
+          'Too many tiles: ceil(width / size) * ceil(height / size) must be at most 45000'
         )
       )
     })

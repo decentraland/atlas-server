@@ -83,7 +83,7 @@ export function getFilterFromUrl(
 
 // bounds the work of a single render: canvas pixels and tiles drawn per layer
 export const MAX_IMAGE_PIXELS = 2048 * 2048
-export const MAX_IMAGE_TILES = 40000
+export const MAX_IMAGE_TILES = 45000
 
 const INTEGER_PATTERN = /^-?\d+$/
 
@@ -142,7 +142,7 @@ export function extractParams(url: URL) {
   }
   if (Math.ceil(width / size) * Math.ceil(height / size) > MAX_IMAGE_TILES) {
     throw new InvalidRequestError(
-      `Too many tiles: (width / size) * (height / size) must be at most ${MAX_IMAGE_TILES}`
+      `Too many tiles: ceil(width / size) * ceil(height / size) must be at most ${MAX_IMAGE_TILES}`
     )
   }
   const centerParam = url.searchParams.get('center')

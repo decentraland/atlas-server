@@ -20,6 +20,12 @@ export const metricDeclarations = {
     type: IMetricsComponent.HistogramType,
     labelNames: ['status'],
   },
+  dcl_map_render_wait_seconds: {
+    help: 'time a map render waits for a render slot',
+    buckets: [0.01, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5],
+    type: IMetricsComponent.HistogramType,
+    labelNames: ['result'],
+  },
   dcl_map_update: {
     type: IMetricsComponent.CounterType,
     help: 'Updates',

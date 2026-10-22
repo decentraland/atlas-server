@@ -111,12 +111,34 @@ async function bufferStream(stream: Readable): Promise<Buffer> {
 
 // draws and encodes inside the limiter so the PNG is complete before the slot frees
 async function renderPng(
-  renderLimiter: AppComponents['renderLimiter'],
+  components: Pick<AppComponents, 'metrics' | 'renderLimiter'>,
+  metric: RenderMetric,
   getStream: () => Promise<Readable>
 ): Promise<IHttpServerComponent.IResponse> {
-  const png = await renderLimiter.run(async () =>
-    bufferStream(await getStream())
-  )
+  const { metrics, renderLimiter } = components
+  const waitTimer = metrics.startTimer('dcl_map_render_wait_seconds')
+  let acquired = false
+  let png: Buffer
+  try {
+    png = await renderLimiter.run(async () => {
+      acquired = true
+      waitTimer.end({ result: 'acquired' })
+      const renderTimer = metrics.startTimer(metric)
+      try {
+        const buffer = await bufferStream(await getStream())
+        renderTimer.end({ status: 200 })
+        return buffer
+      } catch (error) {
+        renderTimer.end({ status: 500 })
+        throw error
+      }
+    })
+  } catch (error) {
+    if (!acquired) {
+      waitTimer.end({ result: 'rejected' })
+    }
+    throw error
+  }
   return {
     status: 200,
     headers: {
@@ -149,37 +171,35 @@ function toPngErrorResponse(error: unknown): IHttpServerComponent.IResponse {
   }
 }
 
-// times the whole request, encode included, and ends the timer on every path
 async function handlePngRequest(
-  components: Pick<AppComponents, 'map' | 'metrics'>,
-  metric: RenderMetric,
+  components: Pick<AppComponents, 'map'>,
   handle: () => Promise<IHttpServerComponent.IResponse>
 ): Promise<IHttpServerComponent.IResponse> {
-  const { map, metrics } = components
-  const timer = metrics.startTimer(metric)
-  let response: IHttpServerComponent.IResponse
-  try {
-    response = map.isReady()
-      ? await handle()
-      : { status: 503, body: 'Not ready' }
-  } catch (error) {
-    response = toPngErrorResponse(error)
+  if (!components.map.isReady()) {
+    return { status: 503, body: 'Not ready' }
   }
-  timer.end({ status: response.status ?? 200 })
-  return response
+  try {
+    return await handle()
+  } catch (error) {
+    return toPngErrorResponse(error)
+  }
 }
 
 export async function miniMapHandler(context: Context) {
-  const { renderMiniMap, renderLimiter } = context.components
-  return handlePngRequest(context.components, 'dcl_mini_map_render_time', () =>
-    renderPng(renderLimiter, () => renderMiniMap.getStream())
+  const { components } = context
+  return handlePngRequest(components, () =>
+    renderPng(components, 'dcl_mini_map_render_time', () =>
+      components.renderMiniMap.getStream()
+    )
   )
 }
 
 export async function estateMapHandler(context: Context) {
-  const { renderEstateMiniMap, renderLimiter } = context.components
-  return handlePngRequest(context.components, 'dcl_mini_map_render_time', () =>
-    renderPng(renderLimiter, () => renderEstateMiniMap.getStream())
+  const { components } = context
+  return handlePngRequest(components, () =>
+    renderPng(components, 'dcl_mini_map_render_time', () =>
+      components.renderEstateMiniMap.getStream()
+    )
   )
 }
 
@@ -187,8 +207,8 @@ export const mapPngRequestHandler = async (context: {
   components: Pick<AppComponents, 'image' | 'map' | 'metrics' | 'renderLimiter'>
   url: URL
 }) => {
-  const { image, renderLimiter } = context.components
-  return handlePngRequest(context.components, 'dcl_map_render_time', () => {
+  const { image } = context.components
+  return handlePngRequest(context.components, () => {
     const {
       width,
       height,
@@ -198,7 +218,7 @@ export const mapPngRequestHandler = async (context: {
       showListedForRent,
       selected,
     } = extractParams(context.url)
-    return renderPng(renderLimiter, () =>
+    return renderPng(context.components, 'dcl_map_render_time', () =>
       image.getStream(
         width,
         height,
@@ -221,8 +241,8 @@ export const parcelMapPngRequestHandler = async (context: {
   url: URL
 }) => {
   const { components, params } = context
-  const { image, renderLimiter } = components
-  return handlePngRequest(components, 'dcl_map_render_time', async () => {
+  const { image } = components
+  return handlePngRequest(components, async () => {
     const center = {
       x: parseCoordinate(params.x, 'x'),
       y: parseCoordinate(params.y, 'y'),
@@ -230,7 +250,7 @@ export const parcelMapPngRequestHandler = async (context: {
     const { width, height, size, showOnSale, showListedForRent } =
       extractParams(context.url)
     const selected = [center]
-    return renderPng(renderLimiter, () =>
+    return renderPng(context.components, 'dcl_map_render_time', () =>
       image.getStream(
         width,
         height,
@@ -249,45 +269,41 @@ export const estateMapPngRequestHandler = async (context: {
   params: { estateId: string }
   url: URL
 }) => {
-  const { image, map, renderLimiter } = context.components
-  return handlePngRequest(
-    context.components,
-    'dcl_map_render_time',
-    async () => {
-      const { width, height, size, showOnSale, showListedForRent } =
-        extractParams(context.url)
-      const { estateId } = context.params
-      const tiles = await map.getTiles()
-      const selected = Object.values(tiles).filter(
-        (tile) => tile.estateId && tile.estateId === estateId
-      )
-      if (selected.length === 0) {
-        const headers: Record<string, string> = {
-          location: 'https://ui.decentraland.org/dissolved_estate.png',
-        }
-        return {
-          status: 302,
-          headers,
-        }
+  const { image, map } = context.components
+  return handlePngRequest(context.components, async () => {
+    const { width, height, size, showOnSale, showListedForRent } =
+      extractParams(context.url)
+    const { estateId } = context.params
+    const tiles = await map.getTiles()
+    const selected = Object.values(tiles).filter(
+      (tile) => tile.estateId && tile.estateId === estateId
+    )
+    if (selected.length === 0) {
+      const headers: Record<string, string> = {
+        location: 'https://ui.decentraland.org/dissolved_estate.png',
       }
-      const xs = selected.map((coords) => coords.x).sort((a, b) => a - b)
-      const ys = selected.map((coords) => coords.y).sort((a, b) => a - b)
-      const x = xs[(xs.length / 2) | 0] || 0
-      const y = ys[(ys.length / 2) | 0] || 0
-      const center = { x, y }
-      return renderPng(renderLimiter, () =>
-        image.getStream(
-          width,
-          height,
-          size,
-          center,
-          selected,
-          showOnSale,
-          showListedForRent
-        )
-      )
+      return {
+        status: 302,
+        headers,
+      }
     }
-  )
+    const xs = selected.map((coords) => coords.x).sort((a, b) => a - b)
+    const ys = selected.map((coords) => coords.y).sort((a, b) => a - b)
+    const x = xs[(xs.length / 2) | 0] || 0
+    const y = ys[(ys.length / 2) | 0] || 0
+    const center = { x, y }
+    return renderPng(context.components, 'dcl_map_render_time', () =>
+      image.getStream(
+        width,
+        height,
+        size,
+        center,
+        selected,
+        showOnSale,
+        showListedForRent
+      )
+    )
+  })
 }
 
 export const parcelRequestHandler = async (context: {

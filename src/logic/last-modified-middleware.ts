@@ -3,6 +3,7 @@ import { Context } from '../types'
 
 const THREE_MINUTES = 180
 const TWO_MINUTES = 120
+const SHORT_CACHE_CONTROL = 'max-age=60, s-maxage=60, public'
 
 function toHeaderRecord(headers: HeadersInit = {}): Record<string, string> {
   if (headers instanceof Headers || Array.isArray(headers)) {
@@ -48,12 +49,19 @@ export function lastModifiedMiddleware(
 
     const response = await next()
     const status = response.status ?? 200
-    // errors and redirects must not be cached publicly with the map's date
+    const headers = toHeaderRecord(response.headers)
+    // redirects and 404s get a short public cache so the CDN absorbs repeats
+    if ((status >= 300 && status < 400) || status === 404) {
+      response.headers = hasHeader(headers, 'cache-control')
+        ? headers
+        : { ...headers, 'Cache-Control': SHORT_CACHE_CONTROL }
+      return response
+    }
+    // other errors are never cached with the map's date
     if (status < 200 || status >= 300) {
       return response
     }
 
-    const headers = toHeaderRecord(response.headers)
     response.headers = {
       ...headers,
       ...(hasHeader(headers, 'last-modified')

@@ -22,7 +22,44 @@ describe('when the last modified middleware decorates a response', () => {
     middleware = lastModifiedMiddleware(() => Date.parse(LAST_MODIFIED))
   })
 
-  describe.each([302, 400, 404, 500, 503])(
+  describe.each([301, 302, 404])(
+    'and the response has a %p status',
+    (status) => {
+      beforeEach(async () => {
+        response = { status, headers: { location: '/elsewhere' } }
+        result = await middleware(context, () => Promise.resolve(response))
+      })
+
+      it('should add a short public cache and no Last-Modified header', () => {
+        expect(result.headers).toEqual({
+          location: '/elsewhere',
+          'Cache-Control': 'max-age=60, s-maxage=60, public',
+        })
+      })
+    }
+  )
+
+  describe('and a redirect already has a cache-control header', () => {
+    beforeEach(async () => {
+      response = {
+        status: 301,
+        headers: {
+          location: '/elsewhere',
+          'cache-control': 'public, max-age=600',
+        },
+      }
+      result = await middleware(context, () => Promise.resolve(response))
+    })
+
+    it('should keep it as the only cache control header', () => {
+      expect(result.headers).toEqual({
+        location: '/elsewhere',
+        'cache-control': 'public, max-age=600',
+      })
+    })
+  })
+
+  describe.each([400, 500, 503])(
     'and the response has a %p status',
     (status) => {
       beforeEach(async () => {

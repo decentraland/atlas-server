@@ -14,8 +14,7 @@ export interface IRenderLimiterComponent extends IBaseComponent {
    * Runs a render once a slot is free.
    * @param task - the work to bound; it must finish the PNG encode before resolving.
    * @returns the task's result.
-   * @throws RenderQueueFullError when the queue is full.
-   * @throws RenderQueueTimeoutError when no slot frees up within maxWaitMs.
+   * @throws RenderBusyError when the queue is full or no slot frees up within maxWaitMs.
    */
   run<T>(task: () => Promise<T>): Promise<T>
 }
