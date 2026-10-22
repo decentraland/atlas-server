@@ -26,6 +26,7 @@ import {
   createMiniMapRendererComponent,
 } from './adapters/mini-map-renderer'
 import { createS3Component } from './modules/s3/component'
+import { allowAnyOriginMiddleware } from './logic/allow-any-origin-middleware'
 
 export async function initComponents(): Promise<AppComponents> {
   const config = await createDotEnvConfigComponent(
@@ -33,9 +34,15 @@ export async function initComponents(): Promise<AppComponents> {
     process.env
   )
 
+  const corsMethods = await config.getString('CORS_METHOD')
   const cors = {
     origin: await config.getString('CORS_ORIGIN'),
-    method: await config.getString('CORS_METHOD'),
+    methods: corsMethods
+      ? corsMethods
+          .split(',')
+          .map((method) => method.trim())
+          .filter(Boolean)
+      : undefined,
   }
   const subgraphURL = await config.requireString('SUBGRAPH_URL')
 
@@ -59,6 +66,9 @@ export async function initComponents(): Promise<AppComponents> {
     { config, logs },
     { cors }
   )
+  if (!cors.origin || cors.origin === '*') {
+    server.use(allowAnyOriginMiddleware({ logs }))
+  }
   createHttpTracerComponent({ server, tracer })
   instrumentHttpServerWithRequestLogger({ server, logger: logs })
 
