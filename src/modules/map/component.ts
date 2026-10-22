@@ -12,6 +12,8 @@ import {
   getEstateDependentIds,
   getEstateFlags,
   isExpired,
+  isSameTile,
+  stableStringify,
 } from './utils'
 import { isExpired as isRentalListingExpired } from '../../logic/rental'
 import { toLegacyTiles } from '../../adapters/legacy-tiles'
@@ -30,6 +32,8 @@ export async function createMapComponent(
   // config
   const refreshInterval =
     (await config.requireNumber('REFRESH_INTERVAL')) * 1000
+  const rentalsSweepInterval =
+    (await config.requireNumber('RENTALS_SWEEP_INTERVAL')) * 1000
   const landContractAddress = await config.requireString(
     'LAND_CONTRACT_ADDRESS'
   )
@@ -54,6 +58,7 @@ export async function createMapComponent(
   // last trades fetched, reused when fetching them fails
   let activeTrades: Trade[] = []
   let cursors: Cursors = { land: 0, rentals: 0 }
+  let lastRentalsSweepAt = 0
   let lastUpdatedAt = 0 // newest change fetched, in ms
   let dataUpdatedAt = 0 // last change to the served data, in ms
   let lastUploadedTilesUrl: { v1?: string; v2?: string } = {}
@@ -95,25 +100,48 @@ export async function createMapComponent(
     return nextTiles
   }
 
+  function getParcelKey(parcel: NFT): string | null {
+    const xAttr = parcel.attributes.find(
+      (attribute) => attribute.trait_type === 'X'
+    )
+    const yAttr = parcel.attributes.find(
+      (attribute) => attribute.trait_type === 'Y'
+    )
+    return xAttr && yAttr ? xAttr.value + ',' + yAttr.value : null
+  }
+
   function addParcels(newParcels: NFT[], oldParcels: Record<string, NFT>) {
     for (const parcel of newParcels) {
-      const xAttr = parcel.attributes.find(
-        (attribute) => attribute.trait_type === 'X'
-      )
-      const yAttr = parcel.attributes.find(
-        (attribute) => attribute.trait_type === 'Y'
-      )
-
-      const x = xAttr ? xAttr.value : null
-      const y = yAttr ? yAttr.value : null
-
-      if (x !== null && y !== null) {
-        const id = x + ',' + y
+      const id = getParcelKey(parcel)
+      if (id !== null) {
         oldParcels[id] = parcel
       }
     }
 
     return oldParcels
+  }
+
+  // drops what the map already has: updates overlap the previous fetch, and re-reads must not count as changes
+  function withoutUnchanged(
+    result: Result,
+    oldParcels: Record<string, NFT>,
+    oldEstates: Record<string, NFT>
+  ): Result {
+    const isSameNft = (a: NFT | undefined, b: NFT) =>
+      !!a && stableStringify(a) === stableStringify(b)
+    return {
+      ...result,
+      tiles: result.tiles.filter(
+        (tile) => !isSameTile(baseTiles[tile.id], tile)
+      ),
+      parcels: result.parcels.filter((parcel) => {
+        const key = getParcelKey(parcel)
+        return key === null || !isSameNft(oldParcels[key], parcel)
+      }),
+      estates: result.estates.filter(
+        (estate) => !isSameNft(oldEstates[estate.id], estate)
+      ),
+    }
   }
   function addEstates(newEstates: NFT[], oldEstates: Record<string, NFT>) {
     for (const estate of newEstates) {
@@ -330,6 +358,8 @@ export async function createMapComponent(
 
     baseTiles = initialBaseTiles
     cursors = result.cursors
+    // the full fetch reads every open rental listing
+    lastRentalsSweepAt = Date.now()
     lastUpdatedAt = result.updatedAt
     dataUpdatedAt = result.updatedAt
     tiles.resolve(tilesWithTrades)
@@ -433,12 +463,23 @@ export async function createMapComponent(
           const oldParcels = await parcels
           const oldEstates = await estates
 
+          const sweepRentals =
+            Date.now() - lastRentalsSweepAt >= rentalsSweepInterval
           let result: Result | null = null
           try {
-            result = await api.fetchUpdatedData(cursors, baseTiles)
+            result = withoutUnchanged(
+              await api.fetchUpdatedData(cursors, baseTiles, {
+                sweepRentals,
+              }),
+              oldParcels,
+              oldEstates
+            )
           } catch (error) {
             // the land changes are retried next pass; expirations and trades still apply meanwhile
             events.emit(MapEvents.ERROR, error)
+          }
+          if (result?.rentalsSwept) {
+            lastRentalsSweepAt = Date.now()
           }
           const hasUpdates =
             !!result &&

@@ -81,6 +81,32 @@ export function addSpecialTiles(tiles: Record<string, Tile>) {
   return tiles
 }
 
+// JSON with sorted keys and without undefined values, to compare objects built in different orders
+export function stableStringify(value: unknown): string {
+  if (Array.isArray(value)) {
+    return `[${value.map(stableStringify).join(',')}]`
+  }
+  if (value && typeof value === 'object') {
+    const record = value as Record<string, unknown>
+    return `{${Object.keys(record)
+      .filter((key) => record[key] !== undefined)
+      .sort()
+      .map((key) => `${JSON.stringify(key)}:${stableStringify(record[key])}`)
+      .join(',')}}`
+  }
+  return JSON.stringify(value)
+}
+
+/** True when both tiles hold the same data; estate flags are left out as they are derived from the neighbours. */
+export function isSameTile(a: Tile | undefined, b: Tile): boolean {
+  if (!a) {
+    return false
+  }
+  const { top: _aTop, left: _aLeft, topLeft: _aTopLeft, ...aData } = a
+  const { top: _bTop, left: _bLeft, topLeft: _bTopLeft, ...bData } = b
+  return stableStringify(aData) === stableStringify(bData)
+}
+
 export function isExpired(tile: Tile) {
   return tile && tile.expiresAt && tile.expiresAt <= Date.now() / 1000
 }

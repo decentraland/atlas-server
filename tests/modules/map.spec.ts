@@ -77,6 +77,7 @@ async function waitUntil(condition: () => boolean) {
 describe('map component', () => {
   let map: IMapComponent & IBaseComponent
   let refreshIntervalInSeconds: number
+  let rentalsSweepIntervalInSeconds: number
   let fetchData: jest.Mock
   let fetchUpdatedData: jest.Mock
   let getTilesJson: jest.Mock
@@ -88,6 +89,7 @@ describe('map component', () => {
 
   beforeEach(async () => {
     refreshIntervalInSeconds = 0.001
+    rentalsSweepIntervalInSeconds = 3600
     freshResult = {
       tiles: [buildTile('1,1'), buildTile('0,0', { type: TileType.PLAZA })],
       parcels: [],
@@ -111,7 +113,13 @@ describe('map component', () => {
 
   async function createMap() {
     const config = {
-      requireNumber: jest.fn().mockResolvedValue(refreshIntervalInSeconds),
+      requireNumber: jest.fn((name: string) =>
+        Promise.resolve(
+          name === 'RENTALS_SWEEP_INTERVAL'
+            ? rentalsSweepIntervalInSeconds
+            : refreshIntervalInSeconds
+        )
+      ),
       requireString: jest.fn((name: string) =>
         Promise.resolve(
           name === 'ESTATE_CONTRACT_ADDRESS'
@@ -614,6 +622,35 @@ describe('map component', () => {
       })
     })
 
+    describe('and the rentals sweep interval has not elapsed since the full fetch', () => {
+      beforeEach(async () => {
+        fetchData.mockResolvedValueOnce(freshResult)
+        await startAndWaitUntilReady()
+        await waitUntil(() => fetchUpdatedData.mock.calls.length >= 1)
+      })
+
+      it('should not ask for the rentals sweep', () => {
+        expect(fetchUpdatedData.mock.calls[0][2]).toEqual({
+          sweepRentals: false,
+        })
+      })
+    })
+
+    describe('and the rentals sweep interval has elapsed', () => {
+      beforeEach(async () => {
+        rentalsSweepIntervalInSeconds = 0
+        fetchData.mockResolvedValueOnce(freshResult)
+        await startAndWaitUntilReady()
+        await waitUntil(() => fetchUpdatedData.mock.calls.length >= 1)
+      })
+
+      it('should ask for the rentals sweep', () => {
+        expect(fetchUpdatedData.mock.calls[0][2]).toEqual({
+          sweepRentals: true,
+        })
+      })
+    })
+
     describe('and fetching the land updates keeps failing', () => {
       beforeEach(() => {
         fetchUpdatedData.mockRejectedValue(new Error('Subgraph 502'))
@@ -652,6 +689,34 @@ describe('map component', () => {
         it('should still remove the rental listing', async () => {
           expect((await map.getTiles())['1,1'].rentalListing).toBeUndefined()
         })
+      })
+    })
+
+    describe('and an update only re-reads what the map already has', () => {
+      let uploadsAtReady: number
+      let lastUpdatedAtAtReady: number
+
+      beforeEach(async () => {
+        freshResult.tiles = [buildTile('1,1', { estateId: '7', top: true })]
+        fetchData.mockResolvedValueOnce(freshResult)
+        fetchUpdatedData.mockResolvedValue({
+          tiles: [buildTile('1,1', { estateId: '7' })],
+          parcels: [],
+          estates: [],
+          updatedAt: 9000,
+          cursors: { land: 9, rentals: 5000 },
+        })
+        await startAndWaitUntilReady()
+        uploadsAtReady = uploadTilesJson.mock.calls.length
+        lastUpdatedAtAtReady = map.getLastUpdatedAt()
+        await waitUntil(() => fetchUpdatedData.mock.calls.length >= 3)
+      })
+
+      it('should neither upload the tiles nor move the last updated time', () => {
+        expect({
+          uploads: uploadTilesJson.mock.calls.length - uploadsAtReady,
+          lastUpdatedAt: map.getLastUpdatedAt(),
+        }).toEqual({ uploads: 0, lastUpdatedAt: lastUpdatedAtAtReady })
       })
     })
 

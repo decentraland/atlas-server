@@ -19,7 +19,6 @@ let configComponentMock: IConfigComponent
 let fetchResponse: Response
 let rentalsComponent: IRentalsComponent
 let fetchMock: jest.Mock
-let rentalIds: string[]
 
 beforeEach(async () => {
   fetchMock = jest.fn()
@@ -45,199 +44,113 @@ beforeEach(async () => {
   })
 })
 
-describe('when getting the open rental listings by NFT id', () => {
-  let result: Record<string, RentalListing>
-  let responses: SignaturesServerPaginatedResponse<RentalListing[]>[]
-  let expectedResult: Record<string, RentalListing>
+describe('when getting the open rental listings', () => {
+  let result: RentalListing[]
+  let firstPage: RentalListing[]
+  let secondPage: RentalListing[]
 
-  describe("and the list of rental ids doesn't exhaust the length of the signature server's URL", () => {
+  describe('and they span more than one page', () => {
     beforeEach(async () => {
-      rentalIds = Array.from({ length: 2 }, (_, i) => `parcel-${i}`)
-      responses = [
-        {
-          ok: true,
-          data: {
-            results: rentalIds.map((id) => ({
-              id,
-              nftId: id,
-            })) as RentalListing[],
-            page: 1,
-            pages: 1,
-            limit: 50,
-            total: 2,
-          },
-        },
-      ]
-      expectedResult = responses[0].data.results.reduce(
-        (acc, curr) => ({
-          ...acc,
-          [curr.id]: curr,
-        }),
-        {}
+      firstPage = Array.from(
+        { length: 100 },
+        (_, i) => ({ id: `${i}`, nftId: `parcel-${i}` } as RentalListing)
       )
-      fetchMock.mockResolvedValueOnce({
-        ok: true,
-        status: 200,
-        json: jest.fn().mockResolvedValueOnce(responses[0]),
-      })
-
-      result = await rentalsComponent.getRentalsListingsOfNFTs(rentalIds)
-    })
-
-    it('should fetch and return the rental listings once', () => {
-      expect(fetchMock).toHaveBeenCalledTimes(1)
-    })
-
-    it('should have queried all the nft ids', () => {
-      const parsedUrl = new URL(fetchMock.mock.calls[0][0])
-      expect(parsedUrl.searchParams.getAll('nftIds')).toEqual(rentalIds)
-    })
-
-    it('should only ask for open rental listings', () => {
-      const parsedUrl = new URL(fetchMock.mock.calls[0][0])
-      expect(parsedUrl.searchParams.getAll('status')).toEqual(['open'])
-    })
-
-    it('should return the rental listings', () => {
-      expect(result).toEqual(expectedResult)
-    })
-  })
-
-  describe("and the list of rental ids exhausts the length of the signature server's URL twice", () => {
-    beforeEach(async () => {
-      rentalIds = Array.from({ length: 200 }, (_, i) => `parcel-${i}`)
-      responses = [
-        {
-          ok: true,
-          data: {
-            results: rentalIds.map((id) => ({
-              id,
-              nftId: id,
-            })) as RentalListing[],
-            page: 1,
-            pages: 2,
-            limit: 50,
-            total: 500,
-          },
-        },
-        {
-          ok: true,
-          data: {
-            results: rentalIds.map((id) => ({
-              id,
-              nftId: id,
-            })) as RentalListing[],
-            page: 2,
-            pages: 2,
-            limit: 50,
-            total: 500,
-          },
-        },
-      ]
-      expectedResult = responses
-        .flatMap((resp) => resp.data.results)
-        .reduce(
-          (acc, curr) => ({
-            ...acc,
-            [curr.id]: curr,
-          }),
-          {}
-        )
-      responses.forEach((response) => {
-        fetchMock.mockResolvedValueOnce({
+      secondPage = [{ id: '100', nftId: 'parcel-100' } as RentalListing]
+      fetchMock
+        .mockResolvedValueOnce({
           ok: true,
           status: 200,
-          json: jest.fn().mockResolvedValueOnce(response),
+          json: () =>
+            Promise.resolve({
+              ok: true,
+              data: { results: firstPage, total: 101, page: 0, pages: 2 },
+            }),
         })
-      })
-
-      result = await rentalsComponent.getRentalsListingsOfNFTs(rentalIds)
-    })
-
-    it('should fetch and return the rental listings twice', () => {
-      expect(fetchMock).toHaveBeenCalledTimes(2)
-    })
-
-    it('should have queried all the nft ids', () => {
-      expect(
-        fetchMock.mock.calls.flatMap((call) =>
-          new URL(call[0]).searchParams.getAll('nftIds')
-        )
-      ).toEqual(rentalIds)
-    })
-
-    it('should return the rental listings', () => {
-      expect(result).toEqual(expectedResult)
-    })
-  })
-
-  describe('and fetching the list of rental fails', () => {
-    beforeEach(() => {
-      rentalIds = Array.from({ length: 1 }, (_, i) => `parcel-${i}`)
-      fetchResponse = {
-        status: 500,
-        json: jest.fn().mockResolvedValueOnce({
-          ok: false,
-          message: error,
-        }) as any,
-      } as Response
-      fetchMock.mockResolvedValueOnce(fetchResponse)
-    })
-
-    it('should throw an error with the message returned in the JSON message', () => {
-      return expect(
-        rentalsComponent.getRentalsListingsOfNFTs(rentalIds)
-      ).rejects.toThrowError(error)
-    })
-
-    it('should return the rental listings', () => {
-      expect(result).toEqual(expectedResult)
-    })
-  })
-
-  describe('and the signatures server returns tens of thousands of rental listings', () => {
-    let startedAt: number
-    let elapsed: number
-
-    beforeEach(async () => {
-      rentalIds = Array.from({ length: 30000 }, (_, i) => `parcel-${i}`)
-      fetchMock.mockResolvedValueOnce({
-        ok: true,
-        status: 200,
-        json: jest.fn().mockResolvedValueOnce({
+        .mockResolvedValueOnce({
           ok: true,
-          data: {
-            results: rentalIds.map((id) => ({ id, nftId: id })),
-            page: 1,
-            pages: 1,
-            limit: 30000,
-            total: 30000,
-          },
-        }),
-      })
-      fetchMock.mockResolvedValue({
-        ok: true,
-        status: 200,
-        json: jest.fn().mockResolvedValue({
-          ok: true,
-          data: { results: [], page: 1, pages: 1, limit: 0, total: 0 },
-        }),
-      })
-      startedAt = Date.now()
-      result = await rentalsComponent.getRentalsListingsOfNFTs(rentalIds)
-      elapsed = Date.now() - startedAt
+          status: 200,
+          json: () =>
+            Promise.resolve({
+              ok: true,
+              data: { results: secondPage, total: 101, page: 1, pages: 2 },
+            }),
+        })
+      result = await rentalsComponent.getOpenRentalListings()
     })
 
     afterEach(() => {
       fetchMock.mockReset()
     })
 
-    it('should index them by nft id in linear time', () => {
-      expect({
-        indexed: Object.keys(result).length,
-        fast: elapsed < 1000,
-      }).toEqual({ indexed: 30000, fast: true })
+    it('should request every page of open listings', () => {
+      expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+        `${rentalsURL}/v1/rentals-listings?status=open&limit=100&offset=0`,
+        `${rentalsURL}/v1/rentals-listings?status=open&limit=100&offset=100`,
+      ])
     })
+
+    it('should return the listings of all pages', () => {
+      expect(result).toEqual([...firstPage, ...secondPage])
+    })
+  })
+
+  describe('and fetching a page fails', () => {
+    beforeEach(() => {
+      fetchMock.mockResolvedValueOnce({
+        ok: false,
+        status: 500,
+        json: () => Promise.resolve({ ok: false, message: error }),
+      })
+    })
+
+    afterEach(() => {
+      fetchMock.mockReset()
+    })
+
+    it('should throw the error returned by the server', () => {
+      return expect(
+        rentalsComponent.getOpenRentalListings()
+      ).rejects.toThrowError(error)
+    })
+  })
+})
+
+describe('when getting the open rental listings of some nfts', () => {
+  let result: RentalListing[]
+
+  beforeEach(async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: () =>
+        Promise.resolve({
+          ok: true,
+          data: {
+            results: [{ id: '1', nftId: 'estate-0x2-1' }],
+            total: 1,
+            page: 0,
+            pages: 1,
+          },
+        }),
+    })
+    result = await rentalsComponent.getOpenRentalListingsOfNfts([
+      'estate-0x2-1',
+      'parcel-0x1-5',
+    ])
+  })
+
+  afterEach(() => {
+    fetchMock.mockReset()
+  })
+
+  it('should ask for the open listings of those nfts only', () => {
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      `${rentalsURL}/v1/rentals-listings?status=open&limit=100&nftIds=estate-0x2-1&nftIds=parcel-0x1-5`,
+    ])
+  })
+
+  it('should return the listings found', () => {
+    expect(result).toEqual([{ id: '1', nftId: 'estate-0x2-1' }])
   })
 })
 
