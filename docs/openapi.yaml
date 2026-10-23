@@ -17,6 +17,19 @@ info:
     ### Rate Limiting
     The API implements caching and last-modified headers for optimal performance. Clients should respect 
     cache-control headers to minimize server load
+
+    ### Map image caching
+    The PNG endpoints only change when the map does. Every 200 carries a weak `ETag`
+    (`W/"<map version>-<request hash>"`), `Last-Modified` (the map version) and
+    `Cache-Control: public, max-age=300, s-maxage=86400, stale-while-revalidate=86400`,
+    so a CDN may serve a copy up to a day old. Conditional requests (`If-None-Match`, or
+    `If-Modified-Since` without it) are answered with a 304 before anything is rendered.
+    Equivalent requests (e.g. the same `selected` parcels in another order) share the ETag.
+
+    To always get the latest image while caching it forever, add `v=<lastUpdatedAt>` with
+    the value returned by `/v2/tiles/info`: when it equals the current map version the
+    response is `Cache-Control: public, max-age=31536000, immutable`. Any other `v` is
+    ignored and the current image is served with the standard caching headers.
     
     ### Authentication
     No authentication is required for this public API
@@ -317,25 +330,26 @@ paths:
             type: boolean
             default: false
           example: true
+        - $ref: '#/components/parameters/ImageVersion'
+        - $ref: '#/components/parameters/IfNoneMatch'
+        - $ref: '#/components/parameters/IfModifiedSince'
       responses:
         '200':
           description: PNG image of the map
           headers:
-            Content-Type:
-              schema:
-                type: string
-                example: "image/png"
+            ETag:
+              $ref: '#/components/headers/ImageETag'
             Last-Modified:
-              schema:
-                type: string
+              $ref: '#/components/headers/ImageLastModified'
             Cache-Control:
-              schema:
-                type: string
+              $ref: '#/components/headers/ImageCacheControl'
           content:
             image/png:
               schema:
                 type: string
                 format: binary
+        '304':
+          $ref: '#/components/responses/ImageNotModified'
         '400':
           description: Invalid coordinates, or the image exceeds the render budget
           content:
@@ -396,14 +410,26 @@ paths:
           in: query
           schema:
             type: boolean
+        - $ref: '#/components/parameters/ImageVersion'
+        - $ref: '#/components/parameters/IfNoneMatch'
+        - $ref: '#/components/parameters/IfModifiedSince'
       responses:
         '200':
           description: PNG image
+          headers:
+            ETag:
+              $ref: '#/components/headers/ImageETag'
+            Last-Modified:
+              $ref: '#/components/headers/ImageLastModified'
+            Cache-Control:
+              $ref: '#/components/headers/ImageCacheControl'
           content:
             image/png:
               schema:
                 type: string
                 format: binary
+        '304':
+          $ref: '#/components/responses/ImageNotModified'
         '400':
           description: Invalid coordinates, or the image exceeds the render budget
           content:
@@ -425,26 +451,29 @@ paths:
         - Map Images
       summary: Generate a minimap PNG image
       description: |
-        Generates a minimap view of the entire Decentraland world. This endpoint uses extended caching 
-        (10 minutes) for better performance.
+        Generates a minimap view of the entire Decentraland world. It is rendered once per map version.
       operationId: getMinimap
+      parameters:
+        - $ref: '#/components/parameters/ImageVersion'
+        - $ref: '#/components/parameters/IfNoneMatch'
+        - $ref: '#/components/parameters/IfModifiedSince'
       responses:
         '200':
           description: PNG minimap image
           headers:
-            Content-Type:
-              schema:
-                type: string
-                example: "image/png"
+            ETag:
+              $ref: '#/components/headers/ImageETag'
+            Last-Modified:
+              $ref: '#/components/headers/ImageLastModified'
             Cache-Control:
-              schema:
-                type: string
-                example: "public, max-age=600, stale-while-revalidate=600"
+              $ref: '#/components/headers/ImageCacheControl'
           content:
             image/png:
               schema:
                 type: string
                 format: binary
+        '304':
+          $ref: '#/components/responses/ImageNotModified'
         '500':
           description: Error generating minimap
           content:
@@ -460,17 +489,29 @@ paths:
         - Map Images
       summary: Generate an estate-focused minimap PNG image
       description: |
-        Generates a minimap view with emphasis on estate boundaries. Uses extended caching 
-        (10 minutes) for better performance.
+        Generates a minimap view with emphasis on estate boundaries. It is rendered once per map version.
       operationId: getEstateMap
+      parameters:
+        - $ref: '#/components/parameters/ImageVersion'
+        - $ref: '#/components/parameters/IfNoneMatch'
+        - $ref: '#/components/parameters/IfModifiedSince'
       responses:
         '200':
           description: PNG estate map image
+          headers:
+            ETag:
+              $ref: '#/components/headers/ImageETag'
+            Last-Modified:
+              $ref: '#/components/headers/ImageLastModified'
+            Cache-Control:
+              $ref: '#/components/headers/ImageCacheControl'
           content:
             image/png:
               schema:
                 type: string
                 format: binary
+        '304':
+          $ref: '#/components/responses/ImageNotModified'
         '500':
           description: Error
           content:
@@ -533,14 +574,26 @@ paths:
           in: query
           schema:
             type: boolean
+        - $ref: '#/components/parameters/ImageVersion'
+        - $ref: '#/components/parameters/IfNoneMatch'
+        - $ref: '#/components/parameters/IfModifiedSince'
       responses:
         '200':
           description: PNG image centered on the parcel
+          headers:
+            ETag:
+              $ref: '#/components/headers/ImageETag'
+            Last-Modified:
+              $ref: '#/components/headers/ImageLastModified'
+            Cache-Control:
+              $ref: '#/components/headers/ImageCacheControl'
           content:
             image/png:
               schema:
                 type: string
                 format: binary
+        '304':
+          $ref: '#/components/responses/ImageNotModified'
         '400':
           description: Invalid coordinates, or the image exceeds the render budget
           content:
@@ -594,14 +647,26 @@ paths:
           in: query
           schema:
             type: boolean
+        - $ref: '#/components/parameters/ImageVersion'
+        - $ref: '#/components/parameters/IfNoneMatch'
+        - $ref: '#/components/parameters/IfModifiedSince'
       responses:
         '200':
           description: PNG image
+          headers:
+            ETag:
+              $ref: '#/components/headers/ImageETag'
+            Last-Modified:
+              $ref: '#/components/headers/ImageLastModified'
+            Cache-Control:
+              $ref: '#/components/headers/ImageCacheControl'
           content:
             image/png:
               schema:
                 type: string
                 format: binary
+        '304':
+          $ref: '#/components/responses/ImageNotModified'
         '400':
           description: Invalid coordinates, or the image exceeds the render budget
           content:
@@ -659,16 +724,28 @@ paths:
           in: query
           schema:
             type: boolean
+        - $ref: '#/components/parameters/ImageVersion'
+        - $ref: '#/components/parameters/IfNoneMatch'
+        - $ref: '#/components/parameters/IfModifiedSince'
       responses:
         '200':
           description: PNG image centered on the estate
+          headers:
+            ETag:
+              $ref: '#/components/headers/ImageETag'
+            Last-Modified:
+              $ref: '#/components/headers/ImageLastModified'
+            Cache-Control:
+              $ref: '#/components/headers/ImageCacheControl'
           content:
             image/png:
               schema:
                 type: string
                 format: binary
+        '304':
+          $ref: '#/components/responses/ImageNotModified'
         '302':
-          description: Redirect to dissolved estate image
+          description: Redirect to dissolved estate image, cached for a minute
           headers:
             location:
               schema:
@@ -722,14 +799,26 @@ paths:
           in: query
           schema:
             type: boolean
+        - $ref: '#/components/parameters/ImageVersion'
+        - $ref: '#/components/parameters/IfNoneMatch'
+        - $ref: '#/components/parameters/IfModifiedSince'
       responses:
         '200':
           description: PNG image
+          headers:
+            ETag:
+              $ref: '#/components/headers/ImageETag'
+            Last-Modified:
+              $ref: '#/components/headers/ImageLastModified'
+            Cache-Control:
+              $ref: '#/components/headers/ImageCacheControl'
           content:
             image/png:
               schema:
                 type: string
                 format: binary
+        '304':
+          $ref: '#/components/responses/ImageNotModified'
         '302':
           description: Redirect to dissolved estate image
         '400':
@@ -1046,6 +1135,60 @@ paths:
                 example: "Not ready"
 
 components:
+  parameters:
+    ImageVersion:
+      name: v
+      in: query
+      required: false
+      description: |
+        The map version the URL is pinned to: `lastUpdatedAt` from `/v2/tiles/info`, in milliseconds.
+        When it equals the current version the image is served as immutable for a year; otherwise
+        it is ignored. It never changes the image.
+      schema:
+        type: string
+      example: "1767268800000"
+    IfNoneMatch:
+      name: If-None-Match
+      in: header
+      required: false
+      description: ETags of the copies the client holds, or `*`; a match is answered with a 304.
+      schema:
+        type: string
+    IfModifiedSince:
+      name: If-Modified-Since
+      in: header
+      required: false
+      description: Only evaluated without If-None-Match; a date at or after the map version is answered with a 304.
+      schema:
+        type: string
+  headers:
+    ImageETag:
+      description: Weak validator of the image, from the map version and the normalized request
+      schema:
+        type: string
+        example: 'W/"1767268800000-0123456789abcdef"'
+    ImageLastModified:
+      description: The map version the image was rendered from
+      schema:
+        type: string
+        example: "Thu, 01 Jan 2026 12:00:00 GMT"
+    ImageCacheControl:
+      description: |
+        `public, max-age=300, s-maxage=86400, stale-while-revalidate=86400`, or
+        `public, max-age=31536000, immutable` when `v` equals the current map version
+      schema:
+        type: string
+        example: "public, max-age=300, s-maxage=86400, stale-while-revalidate=86400"
+  responses:
+    ImageNotModified:
+      description: The client's copy is current; nothing is rendered
+      headers:
+        ETag:
+          $ref: '#/components/headers/ImageETag'
+        Last-Modified:
+          $ref: '#/components/headers/ImageLastModified'
+        Cache-Control:
+          $ref: '#/components/headers/ImageCacheControl'
   schemas:
     Tile:
       type: object

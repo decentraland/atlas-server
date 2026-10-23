@@ -27,6 +27,7 @@ import {
 } from './adapters/mini-map-renderer'
 import { createS3Component } from './modules/s3/component'
 import { createRenderPoolComponent } from './adapters/render-pool'
+import { createImageCacheComponent } from './adapters/image-cache'
 import { allowAnyOriginMiddleware } from './logic/allow-any-origin-middleware'
 import { ApplicationName } from './modules/features/types'
 
@@ -126,6 +127,7 @@ export async function initComponents(): Promise<AppComponents> {
   const renderMiniMap = await createMiniMapRendererComponent({ map })
   const renderEstateMiniMap = await createEstatesRendererComponent({ map })
   const renderPool = await createRenderPoolComponent({ config, logs, metrics })
+  const imageCache = await createImageCacheComponent({ config, logs, metrics })
   const features = await createFeaturesComponent(
     {
       config,
@@ -158,6 +160,7 @@ export async function initComponents(): Promise<AppComponents> {
     renderMiniMap,
     renderEstateMiniMap,
     renderPool,
+    imageCache,
     features,
     dappsReadDatabase,
     trades,

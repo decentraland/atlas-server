@@ -45,52 +45,15 @@ export async function setupRouter(
     createTilesRequestHandler(components)
   )
   router.get('/v2/tiles/info', tilesInfoRequestHandler)
-  router.get(
-    '/v1/map.png',
-    lastModifiedMiddlewareByMapDate,
-    mapPngRequestHandler
-  )
-  router.get(
-    '/v1/minimap.png',
-    lastModifiedMiddleware(map.getLastUpdatedAt, {
-      maxAge: 600,
-      staleWhileRevalidate: 600,
-    }),
-    miniMapHandler
-  )
-  router.get(
-    '/v1/estatemap.png',
-    lastModifiedMiddleware(map.getLastUpdatedAt, {
-      maxAge: 600,
-      staleWhileRevalidate: 600,
-    }),
-    estateMapHandler
-  )
-  router.get(
-    '/v1/parcels/:x/:y/map.png',
-    lastModifiedMiddlewareByMapDate,
-    parcelMapPngRequestHandler
-  )
-  router.get(
-    '/v1/estates/:estateId/map.png',
-    lastModifiedMiddlewareByMapDate,
-    estateMapPngRequestHandler
-  )
-  router.get(
-    '/v2/map.png',
-    lastModifiedMiddlewareByMapDate,
-    mapPngRequestHandler
-  )
-  router.get(
-    '/v2/parcels/:x/:y/map.png',
-    lastModifiedMiddlewareByMapDate,
-    parcelMapPngRequestHandler
-  )
-  router.get(
-    '/v2/estates/:estateId/map.png',
-    lastModifiedMiddlewareByMapDate,
-    estateMapPngRequestHandler
-  )
+  // the images answer their own conditional requests and set their own caching headers
+  router.get('/v1/map.png', mapPngRequestHandler)
+  router.get('/v1/minimap.png', miniMapHandler)
+  router.get('/v1/estatemap.png', estateMapHandler)
+  router.get('/v1/parcels/:x/:y/map.png', parcelMapPngRequestHandler)
+  router.get('/v1/estates/:estateId/map.png', estateMapPngRequestHandler)
+  router.get('/v2/map.png', mapPngRequestHandler)
+  router.get('/v2/parcels/:x/:y/map.png', parcelMapPngRequestHandler)
+  router.get('/v2/estates/:estateId/map.png', estateMapPngRequestHandler)
   router.get('/v2/ping', pingRequestHandler)
   router.get('/v2/ready', readyRequestHandler)
   router.get(

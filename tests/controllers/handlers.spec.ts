@@ -15,6 +15,10 @@ import {
   RenderBusyError,
   RenderJob,
 } from '../../src/adapters/render-pool'
+import { createImageCache } from '../../src/adapters/image-cache'
+import { IMAGE_CACHE_CONTROL } from '../../src/logic/image-http-cache'
+import { createTestMetricsComponent } from '@dcl/metrics'
+import { metricDeclarations } from '../../src/metrics'
 import { AppComponents } from '../../src/types'
 
 const LAND_CONTRACT_ADDRESS = '0xf87e31492faf9a91b02ee0deaad50d51d56d5d4d'
@@ -22,7 +26,23 @@ const CHECKSUMMED_LAND_CONTRACT_ADDRESS =
   '0xF87E31492Faf9A91B02Ee0dEAAd50d51d56D5d4d'
 const ESTATE_CONTRACT_ADDRESS = '0x959e104e1a4db6317fa58f8295f586e1a978c297'
 
-type PngComponents = Pick<AppComponents, 'image' | 'map' | 'renderPool'>
+type PngComponents = Pick<
+  AppComponents,
+  'image' | 'map' | 'renderPool' | 'imageCache'
+>
+
+const MAP_VERSION = Date.UTC(2026, 0, 1, 12, 0, 0)
+
+function buildPngHeaders(cacheControl = IMAGE_CACHE_CONTROL) {
+  return {
+    etag: expect.stringMatching(
+      new RegExp(`^W/"${MAP_VERSION}-[0-9a-f]{16}"$`)
+    ),
+    'last-modified': new Date(MAP_VERSION).toUTCString(),
+    'cache-control': cacheControl,
+    'content-type': 'image/png',
+  }
+}
 
 function buildTile(x: number, y: number, estateId?: string): Tile {
   return {
@@ -52,7 +72,7 @@ function buildNft(id: string): NFT {
 
 describe('when handling the map image requests', () => {
   let components: PngComponents
-  let request: { signal: AbortSignal }
+  let request: { signal: AbortSignal; headers: Headers }
   let isReady: jest.Mock
   let getTiles: jest.Mock
   let getRenderJob: jest.Mock
@@ -69,7 +89,7 @@ describe('when handling the map image requests', () => {
       data: new Uint8ClampedArray(4),
       compressionLevel: 5,
     }
-    request = { signal: new AbortController().signal }
+    request = { signal: new AbortController().signal, headers: new Headers() }
     isReady = jest.fn().mockReturnValue(true)
     getTiles = jest.fn().mockResolvedValue({})
     getRenderJob = jest.fn().mockResolvedValue(job)
@@ -81,9 +101,17 @@ describe('when handling the map image requests', () => {
       }
     )
     components = {
-      map: { isReady, getTiles } as unknown as AppComponents['map'],
+      map: {
+        isReady,
+        getTiles,
+        getLastUpdatedAt: () => MAP_VERSION,
+      } as unknown as AppComponents['map'],
       image: { getRenderJob },
       renderPool: { render },
+      imageCache: createImageCache(
+        { metrics: createTestMetricsComponent(metricDeclarations) },
+        { maxBytes: 1024 * 1024 }
+      ),
     }
   })
 
@@ -102,7 +130,7 @@ describe('when handling the map image requests', () => {
       it('should respond with a 200 and the encoded PNG', () => {
         expect(response).toEqual({
           status: 200,
-          headers: { 'content-type': 'image/png' },
+          headers: buildPngHeaders(),
           body: png,
         })
       })
@@ -119,9 +147,9 @@ describe('when handling the map image requests', () => {
         )
       })
 
-      it("should render it in the pool, cancelled by the request's signal", () => {
+      it('should render it in the pool with a signal the waiting requests can abort', () => {
         expect(render).toHaveBeenCalledWith('map', expect.any(Function), {
-          signal: request.signal,
+          signal: expect.any(AbortSignal),
         })
       })
     })
@@ -243,6 +271,7 @@ describe('when handling the map image requests', () => {
       getMiniMapJob = jest.fn().mockResolvedValue(job)
       context = {
         request,
+        url: new URL(`http://localhost/v1/${kind}.png`),
         components: {
           ...components,
           renderMiniMap: { getRenderJob: getMiniMapJob },
@@ -259,7 +288,7 @@ describe('when handling the map image requests', () => {
       it('should respond with a 200 and the encoded PNG', () => {
         expect(response).toEqual({
           status: 200,
-          headers: { 'content-type': 'image/png' },
+          headers: buildPngHeaders(),
           body: png,
         })
       })
@@ -321,7 +350,7 @@ describe('when handling the map image requests', () => {
       it('should respond with a 200 and the encoded PNG', () => {
         expect(response).toEqual({
           status: 200,
-          headers: { 'content-type': 'image/png' },
+          headers: buildPngHeaders(),
           body: png,
         })
       })
@@ -375,7 +404,7 @@ describe('when handling the map image requests', () => {
       it('should respond with a 200 and the encoded PNG', () => {
         expect(response).toEqual({
           status: 200,
-          headers: { 'content-type': 'image/png' },
+          headers: buildPngHeaders(),
           body: png,
         })
       })
@@ -396,6 +425,7 @@ describe('when handling the map image requests', () => {
           status: 302,
           headers: {
             location: 'https://ui.decentraland.org/dissolved_estate.png',
+            'cache-control': 'max-age=60, s-maxage=60, public',
           },
         })
       })
