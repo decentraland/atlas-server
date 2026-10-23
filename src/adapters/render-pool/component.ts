@@ -39,6 +39,21 @@ const DEFAULT_MAX_THREADS = 2
 const DEFAULT_MAX_QUEUED = 8
 const DEFAULT_MAX_WAIT_MS = 5000
 
+/** Why a render failed, for dcl_map_render_errors_total. */
+type RenderErrorReason =
+  /** no thread within the queue and wait bounds, or the pool is not running */
+  | 'busy'
+  /** the client left before the job reached a thread */
+  | 'aborted'
+  /** building the job on the main thread failed */
+  | 'prepare'
+  /** the job could not be sent to a thread */
+  | 'transport'
+  /** the worker reported an error drawing or encoding */
+  | 'worker_error'
+  /** the thread died mid-render, e.g. out of memory */
+  | 'worker_crash'
+
 type Waiter = {
   resolve: () => void
   reject: (error: Error) => void
@@ -73,6 +88,10 @@ export function createRenderPool(
   let active = 0
   let accepting = false
   let pool: Piscina<RenderJob, RenderResult> | undefined
+
+  function countError(kind: RenderKind, reason: RenderErrorReason): void {
+    metrics.increment('dcl_map_render_errors_total', { kind, reason })
+  }
 
   function timeoutError(): RenderBusyError {
     return new RenderBusyError(
@@ -135,16 +154,23 @@ export function createRenderPool(
 
   async function run(kind: RenderKind, job: RenderJob): Promise<Buffer> {
     if (!pool) {
+      countError(kind, 'busy')
       throw new RenderBusyError('Map renders are not running')
     }
     let result: RenderResult
     try {
       result = await pool.run(job, { transferList: getTransferList(job) })
     } catch (error) {
-      // the job never ran (e.g. the thread failed to start), so there is no render time
+      // the worker never reported back: the job was not sent, or its thread died
+      // (e.g. out of memory), so there is no render time, only the error count
+      // a DataCloneError is a DOMException, which is not an Error
+      const { name, message } = Object(error)
+      const reason = name === 'DataCloneError' ? 'transport' : 'worker_crash'
+      countError(kind, reason)
       logger.error('The render pool failed to run a render', {
         kind,
-        error: error instanceof Error ? error.message : String(error),
+        reason,
+        error: typeof message === 'string' ? message : String(error),
       })
       throw error
     }
@@ -152,6 +178,7 @@ export function createRenderPool(
     const metric =
       kind === 'map' ? 'dcl_map_render_time' : 'dcl_mini_map_render_time'
     if (!('png' in result)) {
+      countError(kind, 'worker_error')
       metrics.observe(metric, { status: 500 }, result.renderSeconds)
       throw new RenderFailedError(result.error.message)
     }
@@ -170,12 +197,19 @@ export function createRenderPool(
       await acquire(signal)
     } catch (error) {
       waitTimer.end({ result: 'rejected' })
+      countError(kind, error instanceof RenderAbortedError ? 'aborted' : 'busy')
       throw error
     }
     waitTimer.end({ result: 'acquired' })
     try {
       const preparedAt = performance.now()
-      const job = await getJob()
+      let job: RenderJob
+      try {
+        job = await getJob()
+      } catch (error) {
+        countError(kind, 'prepare')
+        throw error
+      }
       metrics.observe(
         'dcl_map_render_prepare_seconds',
         { kind },
@@ -183,6 +217,7 @@ export function createRenderPool(
       )
       // the client left while the job was being built
       if (signal?.aborted) {
+        countError(kind, 'aborted')
         throw new RenderAbortedError('The request was aborted')
       }
       return await run(kind, job)
@@ -227,13 +262,21 @@ export function createRenderPool(
     )
     // loads canvas now, so the first render doesn't pay for it and stop() never
     // terminates a thread halfway through loading it, which aborts the process
-    await pool.run({
-      kind: 'pixels',
-      width: 1,
-      height: 1,
-      data: new Uint8ClampedArray(4),
-      compressionLevel: 5,
-    })
+    try {
+      await pool.run({
+        kind: 'pixels',
+        width: 1,
+        height: 1,
+        data: new Uint8ClampedArray(4),
+        compressionLevel: 5,
+      })
+    } catch (error) {
+      accepting = false
+      const failed = pool
+      pool = undefined
+      await failed.destroy()
+      throw error
+    }
   }
 
   async function stop(): Promise<void> {

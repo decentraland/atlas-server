@@ -18,6 +18,7 @@ import {
   PixelsRenderJob,
   RenderAbortedError,
   RenderBusyError,
+  RenderFailedError,
   RenderJob,
 } from '../../src/adapters/render-pool'
 import renderOnWorker from '../../src/adapters/render-pool/worker'
@@ -32,6 +33,27 @@ import {
 } from '../../src/modules/render'
 import { decodePng } from '../helpers/png'
 import { startRenderPool, StartedRenderPool } from '../helpers/render-pool'
+
+const mockPiscinas: Piscina[] = []
+// records every pool, to look at its threads
+jest.mock('piscina', () => {
+  const actual = jest.requireActual('piscina')
+  class TrackedPiscina extends actual.Piscina {
+    constructor(options: unknown) {
+      super(options)
+      mockPiscinas.push(this as unknown as Piscina)
+    }
+  }
+  // the exports are getters, which a spread would drop
+  const exports = Object.fromEntries(
+    Object.getOwnPropertyNames(actual).map((name) => [name, actual[name]])
+  )
+  return { ...exports, Piscina: TrackedPiscina }
+})
+
+const CRASHING_RENDER_WORKER = require.resolve(
+  '../helpers/crashing-render-worker'
+)
 
 // transpiled by the jest globalSetup
 const {
@@ -185,7 +207,18 @@ describe('when rendering in the render pool', () => {
 
     it('should reject with the error of the worker', async () => {
       await expect(failedRender).rejects.toThrow(
-        'Expected 8 bytes of RGBA pixels, got 4'
+        new RenderFailedError('Expected 8 bytes of RGBA pixels, got 4')
+      )
+    })
+
+    it('should reject with a render failed error', async () => {
+      await expect(failedRender).rejects.toBeInstanceOf(RenderFailedError)
+    })
+
+    it('should count it as a worker error', () => {
+      expect(renderPool.increment).toHaveBeenCalledWith(
+        'dcl_map_render_errors_total',
+        { kind: 'minimap', reason: 'worker_error' }
       )
     })
 
@@ -226,11 +259,19 @@ describe('when rendering in the render pool', () => {
       await expect(failedRender).rejects.toThrow('could not be cloned')
     })
 
+    it('should count it as a transport error', () => {
+      expect(renderPool.increment).toHaveBeenCalledWith(
+        'dcl_map_render_errors_total',
+        { kind: 'minimap', reason: 'transport' }
+      )
+    })
+
     it('should log the failure', () => {
       expect(renderPool.logError).toHaveBeenCalledWith(
         'The render pool failed to run a render',
         {
           kind: 'minimap',
+          reason: 'transport',
           error: expect.stringContaining('could not be cloned'),
         }
       )
@@ -268,6 +309,13 @@ describe('when rendering in the render pool', () => {
 
     it('should reject with an aborted error', async () => {
       await expect(failedRender).rejects.toThrow(RenderAbortedError)
+    })
+
+    it('should count it as a aborted error', () => {
+      expect(renderPool.increment).toHaveBeenCalledWith(
+        'dcl_map_render_errors_total',
+        { kind: 'minimap', reason: 'aborted' }
+      )
     })
 
     it('should not send the job to a worker', () => {
@@ -315,6 +363,13 @@ describe('when rendering in the render pool', () => {
 
     it('should reject with the error', async () => {
       await expect(failedRender).rejects.toThrow('No tiles')
+    })
+
+    it('should count it as a prepare error', () => {
+      expect(renderPool.increment).toHaveBeenCalledWith(
+        'dcl_map_render_errors_total',
+        { kind: 'minimap', reason: 'prepare' }
+      )
     })
 
     it('should free the thread for the next render', async () => {
@@ -378,6 +433,13 @@ describe('when rendering in the render pool', () => {
         expect(renderPool.endWaitTimer).toHaveBeenCalledWith({
           result: 'rejected',
         })
+      })
+
+      it('should count it as a busy error', () => {
+        expect(renderPool.increment).toHaveBeenCalledWith(
+          'dcl_map_render_errors_total',
+          { kind: 'minimap', reason: 'busy' }
+        )
       })
     })
 
@@ -560,24 +622,78 @@ describe('when the render pool is stopped shortly after it starts', () => {
 
 describe('when the render pool starts', () => {
   let renderPool: StartedRenderPool
-  let firstRenderMs: number
+  let piscina: Piscina
 
   beforeEach(async () => {
+    mockPiscinas.length = 0
     renderPool = await startRenderPool()
-    const startedAt = performance.now()
-    await renderPool.pool.render('minimap', () =>
-      buildPixelsJob([[0, 0, 0, 255]])
-    )
-    firstRenderMs = performance.now() - startedAt
+    piscina = mockPiscinas[0]
   })
 
   afterEach(async () => {
     await renderPool.stop()
   })
 
-  it('should have a thread with canvas loaded before the first render', () => {
-    // loading canvas in a new thread takes ~100 ms; a warm thread answers in a few
-    expect(firstRenderMs).toBeLessThan(50)
+  it('should have one thread that already loaded the worker and canvas', () => {
+    expect({
+      threads: piscina.threads.length,
+      completed: piscina.completed,
+    }).toEqual({ threads: 1, completed: 1 })
+  })
+})
+
+describe('when the warm-up render fails', () => {
+  let starting: Promise<StartedRenderPool>
+
+  beforeEach(async () => {
+    starting = startRenderPool({
+      workerFilename: '/nonexistent/render-worker.js',
+    })
+    await starting.catch(() => undefined)
+  })
+
+  it('should fail to start', async () => {
+    await expect(starting).rejects.toThrow('/nonexistent/render-worker.js')
+  })
+})
+
+describe('when a thread dies mid-render', () => {
+  let renderPool: StartedRenderPool
+  let crashedRender: Promise<Buffer>
+  let nextRender: Promise<Buffer>
+
+  beforeEach(async () => {
+    renderPool = await startRenderPool({
+      workerFilename: CRASHING_RENDER_WORKER,
+    })
+    crashedRender = renderPool.pool.render('minimap', () => ({
+      ...buildPixelsJob([[0, 0, 0, 255]]),
+      width: 13,
+    }))
+    await crashedRender.catch(() => undefined)
+    nextRender = renderPool.pool.render('minimap', () =>
+      buildPixelsJob([[0, 0, 0, 255]])
+    )
+    await nextRender.catch(() => undefined)
+  })
+
+  afterEach(async () => {
+    await renderPool.stop()
+  })
+
+  it('should reject that render', async () => {
+    await expect(crashedRender).rejects.toThrow()
+  })
+
+  it('should count it as a worker crash', () => {
+    expect(renderPool.increment).toHaveBeenCalledWith(
+      'dcl_map_render_errors_total',
+      { kind: 'minimap', reason: 'worker_crash' }
+    )
+  })
+
+  it('should render the next job on a replacement thread', async () => {
+    await expect(nextRender).resolves.toBeInstanceOf(Buffer)
   })
 })
 
