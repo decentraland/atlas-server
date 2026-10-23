@@ -192,20 +192,15 @@ export async function createImageCacheComponent(
 ): Promise<IImageCacheComponent> {
   const { config, logs, metrics } = components
   const logger = logs.getLogger('image-cache')
-  let value: number | undefined
-  try {
-    value = await config.getNumber('IMAGE_CACHE_MAX_BYTES')
-  } catch {
-    // not a number at all
-    value = NaN
-  }
+  // a plain count of bytes: getNumber would read "64MB" or "1e6" as numbers
+  const value = (await config.getString('IMAGE_CACHE_MAX_BYTES'))?.trim()
   let maxBytes = DEFAULT_IMAGE_CACHE_MAX_BYTES
-  if (value !== undefined) {
-    if (Number.isSafeInteger(value) && value >= 0) {
-      maxBytes = value
+  if (value) {
+    if (/^\d+$/.test(value) && Number.isSafeInteger(Number(value))) {
+      maxBytes = Number(value)
     } else {
       logger.warn('Invalid IMAGE_CACHE_MAX_BYTES, using the default', {
-        value: String(value),
+        value,
         defaultValue: DEFAULT_IMAGE_CACHE_MAX_BYTES,
       })
     }

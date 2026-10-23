@@ -12,6 +12,7 @@ import {
   getEstateDependentIds,
   getEstateFlags,
   getLandVersion,
+  getOverlayVersion,
   hasLandChanged,
   isExpired,
   isSameTile,
@@ -64,6 +65,7 @@ export async function createMapComponent(
   let lastUpdatedAt = 0 // newest change fetched, in ms
   let dataUpdatedAt = 0 // last change to the served data, in ms
   let landVersion = '' // fingerprint of what the images draw without overlays
+  let overlayVersion = '' // fingerprint of what the images draw with the price and rental overlays
   let lastUploadedTilesUrl: { v1?: string; v2?: string } = {}
 
   // methods
@@ -368,6 +370,7 @@ export async function createMapComponent(
     lastUpdatedAt = result.updatedAt
     dataUpdatedAt = result.updatedAt
     landVersion = getLandVersion(initialBaseTiles)
+    overlayVersion = getOverlayVersion(landVersion, tilesWithTrades)
     tiles.resolve(tilesWithTrades)
     parcels.resolve(initialParcels)
     estates.resolve(initialEstates)
@@ -500,12 +503,19 @@ export async function createMapComponent(
             nextBaseTiles,
             await fetchActiveTrades()
           )
-          if (
-            result &&
+          const landChanged =
+            !!result &&
             hasUpdates &&
             hasLandChanged(baseTiles, nextBaseTiles, result.tiles)
-          ) {
+          const servedTilesChanged = haveServedTilesChanged(
+            oldTiles,
+            tilesWithTrades
+          )
+          if (landChanged) {
             landVersion = getLandVersion(nextBaseTiles)
+          }
+          if (landChanged || servedTilesChanged) {
+            overlayVersion = getOverlayVersion(landVersion, tilesWithTrades)
           }
           baseTiles = nextBaseTiles
           if (result) {
@@ -514,10 +524,7 @@ export async function createMapComponent(
           tiles = future()
           tiles.resolve(tilesWithTrades)
 
-          if (
-            !hasUpdates &&
-            !haveServedTilesChanged(oldTiles, tilesWithTrades)
-          ) {
+          if (!hasUpdates && !servedTilesChanged) {
             return
           }
 
@@ -664,6 +671,7 @@ export async function createMapComponent(
     isReady,
     getLastUpdatedAt,
     getLandVersion: () => landVersion,
+    getOverlayVersion: () => overlayVersion,
     getLastUploadedTilesUrl: () => lastUploadedTilesUrl,
   }
 }

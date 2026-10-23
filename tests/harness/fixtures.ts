@@ -46,6 +46,7 @@ export type FixtureMapData = {
   tokens?: Record<string, NFT>
   lastUpdatedAt?: number
   landVersion?: string
+  overlayVersion?: string
   lastUploadedTilesUrl?: { v1?: string; v2?: string }
   ready?: boolean
 }
@@ -98,6 +99,9 @@ export function createFixtureMap(data: FixtureMapData = {}): FixtureMap {
     getLandVersion: jest
       .fn()
       .mockImplementation(() => data.landVersion ?? '0000000000000000'),
+    getOverlayVersion: jest
+      .fn()
+      .mockImplementation(() => data.overlayVersion ?? 'ffffffffffffffff'),
     getLastUploadedTilesUrl: jest
       .fn()
       .mockImplementation(() => data.lastUploadedTilesUrl ?? {}),

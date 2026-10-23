@@ -27,8 +27,8 @@ function defer(): Deferred {
   return { promise, resolve, reject }
 }
 
-// "map:1000:" and a sha256 in hex
-const KEY_BYTES = 9 + 64
+// "land:1000:" and a sha256 in hex
+const KEY_BYTES = 10 + 64
 const PNG_BYTES = 6
 const ENTRY_BYTES = KEY_BYTES + PNG_BYTES
 
@@ -57,9 +57,9 @@ describe('when serving images through the image cache', () => {
     observe = jest.fn()
     png = Buffer.alloc(PNG_BYTES, 1)
     render = jest.fn().mockResolvedValue(png)
-    request = { kind: 'map', key: 'a', scope: 'map', version: '1000' }
+    request = { kind: 'map', key: 'a', scope: 'land', version: '1000' }
     // two entries fit
-    maxBytes = ENTRY_BYTES * 2 + 2
+    maxBytes = ENTRY_BYTES * 2 + 20
     createCache()
   })
 
@@ -133,11 +133,11 @@ describe('when serving images through the image cache', () => {
     beforeEach(async () => {
       await cache.getOrRender(request, render)
       await cache.getOrRender(
-        { ...request, key: 'b', scope: 'land', version: 'aaaa' },
+        { ...request, key: 'b', scope: 'overlay', version: 'aaaa' },
         render
       )
       await cache.getOrRender(
-        { ...request, key: 'b', scope: 'land', version: 'bbbb' },
+        { ...request, key: 'b', scope: 'overlay', version: 'bbbb' },
         render
       )
       await cache.getOrRender(request, render)
@@ -439,13 +439,13 @@ describe('when serving images through the image cache', () => {
 })
 
 describe('when creating the image cache from config', () => {
-  let getNumber: jest.Mock
+  let getString: jest.Mock
   let warn: jest.Mock
   let render: jest.Mock
   let cache: IImageCacheComponent
 
   beforeEach(() => {
-    getNumber = jest.fn()
+    getString = jest.fn()
     warn = jest.fn()
     render = jest.fn().mockResolvedValue(Buffer.alloc(PNG_BYTES))
   })
@@ -456,7 +456,7 @@ describe('when creating the image cache from config', () => {
 
   async function create() {
     return createImageCacheComponent({
-      config: { getNumber } as unknown as IConfigComponent,
+      config: { getString } as unknown as IConfigComponent,
       logs: {
         getLogger: () => ({
           warn,
@@ -477,7 +477,7 @@ describe('when creating the image cache from config', () => {
     const request: ImageRequest = {
       kind: 'map',
       key: 'a',
-      scope: 'map',
+      scope: 'land',
       version: '1000',
     }
     await cache.getOrRender(request, render)
@@ -487,7 +487,7 @@ describe('when creating the image cache from config', () => {
 
   describe('and IMAGE_CACHE_MAX_BYTES fits a single image', () => {
     beforeEach(async () => {
-      getNumber.mockResolvedValueOnce(ENTRY_BYTES)
+      getString.mockResolvedValueOnce(String(ENTRY_BYTES))
       cache = await create()
       await requestTwiceWithAnotherImageBetween()
     })
@@ -497,21 +497,27 @@ describe('when creating the image cache from config', () => {
     })
   })
 
-  describe('and IMAGE_CACHE_MAX_BYTES is not set', () => {
+  describe.each([
+    ['not set', undefined],
+    ['empty', ''],
+  ])('and IMAGE_CACHE_MAX_BYTES is %s', (_name, value) => {
     beforeEach(async () => {
-      getNumber.mockResolvedValueOnce(undefined)
+      getString.mockResolvedValueOnce(value)
       cache = await create()
       await requestTwiceWithAnotherImageBetween()
     })
 
-    it('should use the default budget', () => {
-      expect(render).toHaveBeenCalledTimes(2)
+    it('should use the default budget without warning', () => {
+      expect({
+        renders: render.mock.calls.length,
+        warnings: warn.mock.calls,
+      }).toEqual({ renders: 2, warnings: [] })
     })
   })
 
   describe('and IMAGE_CACHE_MAX_BYTES is 0', () => {
     beforeEach(async () => {
-      getNumber.mockResolvedValueOnce(0)
+      getString.mockResolvedValueOnce('0')
       cache = await create()
       await requestTwiceWithAnotherImageBetween()
     })
@@ -521,27 +527,29 @@ describe('when creating the image cache from config', () => {
     })
   })
 
-  describe.each([
-    ['negative', async () => -1, '-1'],
-    ['not an integer', async () => 1.5, '1.5'],
-    [
-      'not a number',
-      async () => {
-        throw new Error('should be a number')
-      },
-      'NaN',
-    ],
-  ])('and IMAGE_CACHE_MAX_BYTES is %s', (_name, read, logged) => {
-    beforeEach(async () => {
-      getNumber.mockImplementationOnce(read)
-      cache = await create()
-    })
+  describe.each(['64MB', '1e6', '12.5', '-1', '0x10', '99999999999999999999'])(
+    'and IMAGE_CACHE_MAX_BYTES is %p',
+    (value) => {
+      beforeEach(async () => {
+        getString.mockResolvedValueOnce(value)
+        cache = await create()
+        await requestTwiceWithAnotherImageBetween()
+      })
 
-    it('should warn and use the default', () => {
-      expect(warn).toHaveBeenCalledWith(
-        'Invalid IMAGE_CACHE_MAX_BYTES, using the default',
-        { value: logged, defaultValue: 64 * 1024 * 1024 }
-      )
-    })
-  })
+      it('should warn and use the default', () => {
+        expect({
+          renders: render.mock.calls.length,
+          warnings: warn.mock.calls,
+        }).toEqual({
+          renders: 2,
+          warnings: [
+            [
+              'Invalid IMAGE_CACHE_MAX_BYTES, using the default',
+              { value, defaultValue: 64 * 1024 * 1024 },
+            ],
+          ],
+        })
+      })
+    }
+  )
 })

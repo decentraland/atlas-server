@@ -9,42 +9,29 @@ export const VERSIONED_IMAGE_CACHE_CONTROL =
 // the dissolved estate redirect, as the last-modified middleware sets for redirects
 export const REDIRECT_CACHE_CONTROL = 'max-age=60, s-maxage=60, public'
 
-/**
- * The version an image is rendered from: the land version for images without overlays, which
- * is derived from the data, or the map's last update time for the ones with price or rental overlays.
- */
-export type ImageVersion = {
-  value: string
-  /** the time of the version in ms, when it has one; it backs Last-Modified and If-Modified-Since */
-  updatedAt?: number
-}
-
 export type ImageCacheHeaders = {
   etag: string
-  'last-modified'?: string
   'cache-control': string
 }
 
 /**
- * Builds the caching headers of a map image.
- * @param version - the image's version.
+ * Builds the caching headers of a map image. There is no Last-Modified: the versions are
+ * fingerprints of the data, the same on every replica, rather than times.
+ * @param version - the image's version: the land version, or the overlay version for images with overlays.
  * @param key - the normalized request, so equivalent URLs share an ETag.
  * @param url - the request URL; its `v` param pins the response to a version.
- * @returns the ETag, Cache-Control and, for time based versions, Last-Modified headers.
+ * @returns the ETag and Cache-Control headers.
  */
 export function getImageCacheHeaders(
-  version: ImageVersion,
+  version: string,
   key: string,
   url: URL
 ): ImageCacheHeaders {
   const hash = createHash('sha1').update(key).digest('hex').slice(0, 16)
   return {
-    etag: `W/"${version.value}-${hash}"`,
-    ...(version.updatedAt !== undefined
-      ? { 'last-modified': new Date(version.updatedAt).toUTCString() }
-      : {}),
+    etag: `W/"${version}-${hash}"`,
     'cache-control':
-      url.searchParams.get('v') === version.value
+      url.searchParams.get('v') === version
         ? VERSIONED_IMAGE_CACHE_CONTROL
         : IMAGE_CACHE_CONTROL,
   }
@@ -55,31 +42,23 @@ function toOpaqueTag(tag: string): string {
 }
 
 /**
- * Tells whether the client already holds the image (RFC 9110 13.1.2 and 13.1.3, weak comparison).
- * If-Modified-Since is only evaluated without If-None-Match, and only for time based versions.
+ * Tells whether the client already holds the image, by If-None-Match (RFC 9110 13.1.2, weak
+ * comparison). Without a Last-Modified, If-Modified-Since never applies.
  * @param headers - the request headers.
  * @param etag - the image's current ETag.
- * @param version - the image's version.
  * @returns true when a 304 can be answered.
  */
 export function isNotModified(
   headers: Pick<Headers, 'get'>,
-  etag: string,
-  version: ImageVersion
+  etag: string
 ): boolean {
   const ifNoneMatch = headers.get('if-none-match')
-  if (ifNoneMatch !== null) {
-    const current = toOpaqueTag(etag)
-    return ifNoneMatch
-      .split(',')
-      .map((tag) => tag.trim())
-      .some((tag) => tag === '*' || toOpaqueTag(tag) === current)
-  }
-  const ifModifiedSince = headers.get('if-modified-since')
-  if (ifModifiedSince === null || version.updatedAt === undefined) {
+  if (ifNoneMatch === null) {
     return false
   }
-  const since = Date.parse(ifModifiedSince)
-  // Last-Modified has a precision of seconds
-  return !isNaN(since) && Math.floor(version.updatedAt / 1000) * 1000 <= since
+  const current = toOpaqueTag(etag)
+  return ifNoneMatch
+    .split(',')
+    .map((tag) => tag.trim())
+    .some((tag) => tag === '*' || toOpaqueTag(tag) === current)
 }

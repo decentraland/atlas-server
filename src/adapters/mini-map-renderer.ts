@@ -1,4 +1,4 @@
-import { IMapComponent } from '../modules/map/types'
+import { IMapComponent, Tile } from '../modules/map/types'
 import { PixelsRenderJob } from './render-pool'
 
 export type MiniMapRendererComponent = {
@@ -75,6 +75,40 @@ export async function createMiniMapRendererComponent(components: {
   }
 }
 
+const TOKEN_ID_PATTERN = /^\d+$/
+
+// token ids by numeric value, any other id after them in string order
+function compareEstateIds(a: string, b: string): number {
+  const aIsTokenId = TOKEN_ID_PATTERN.test(a)
+  const bIsTokenId = TOKEN_ID_PATTERN.test(b)
+  if (aIsTokenId && bIsTokenId) {
+    return a.length - b.length || (a < b ? -1 : a > b ? 1 : 0)
+  }
+  if (aIsTokenId !== bIsTokenId) {
+    return aIsTokenId ? -1 : 1
+  }
+  return a < b ? -1 : a > b ? 1 : 0
+}
+
+/**
+ * Numbers the estates by id, so every replica holding the same tiles draws the same image
+ * however it stored them. Indexes are 1-based so 0 keeps meaning "no estate".
+ */
+function getEstateIndexes(tiles: Record<string, Tile>): Map<string, number> {
+  const estateIds = new Set<string>()
+  for (const id in tiles) {
+    const { estateId } = tiles[id]
+    if (estateId) {
+      estateIds.add(estateId)
+    }
+  }
+  return new Map(
+    Array.from(estateIds)
+      .sort(compareEstateIds)
+      .map((estateId, i) => [estateId, i + 1])
+  )
+}
+
 /**
  * This minimap encodes independent estates on the three visible color channels
  */
@@ -87,25 +121,14 @@ export async function createEstatesRendererComponent(components: {
     // a fresh buffer per render, since it is transferred to the worker
     const pixels = new Uint8ClampedArray(dimension * dimension * 4)
     const data = await components.map.getTiles()
-    // 1-based so 0 keeps meaning "no estate"
-    const estateIndexes = new Map<string, number>()
+    const estateIndexes = getEstateIndexes(data)
 
     for (var pos in data) {
       const { x, y, estateId } = data[pos]
       let flagsR = 0
       let flagsG = 0
       let flagsB = 0
-      let index = 0
-
-      if (estateId) {
-        const existing = estateIndexes.get(estateId)
-        if (existing === undefined) {
-          index = estateIndexes.size + 1
-          estateIndexes.set(estateId, index)
-        } else {
-          index = existing
-        }
-      }
+      let index = estateId ? estateIndexes.get(estateId) ?? 0 : 0
 
       flagsB = index & 0xff
       index >>= 8

@@ -13,7 +13,6 @@ import { RenderAbortedError, RenderBusyError } from '../adapters/render-pool'
 import { ImageKind, ImageVersionScope } from '../adapters/image-cache'
 import {
   getImageCacheHeaders,
-  ImageVersion,
   isNotModified,
   REDIRECT_CACHE_CONTROL,
 } from '../logic/image-http-cache'
@@ -118,7 +117,7 @@ type PngRequest = {
 type PngSource = {
   kind: ImageKind
   key: string
-  /** draws prices or rentals, so it changes with every map update rather than with the land */
+  /** draws prices or rentals, so it follows the overlay version rather than the land version */
   overlays: boolean
   render: (signal: AbortSignal) => Promise<Buffer>
 }
@@ -221,16 +220,14 @@ function toPngErrorResponse(error: unknown): IHttpServerComponent.IResponse {
   }
 }
 
-// images without overlays follow the land version, which is the same on every replica
+// both versions are fingerprints of the data, the same on every replica
 function getImageVersion(
   map: AppComponents['map'],
   overlays: boolean
-): { scope: ImageVersionScope; version: ImageVersion } {
-  if (!overlays) {
-    return { scope: 'land', version: { value: map.getLandVersion() } }
-  }
-  const updatedAt = map.getLastUpdatedAt()
-  return { scope: 'map', version: { value: String(updatedAt), updatedAt } }
+): { scope: ImageVersionScope; version: string } {
+  return overlays
+    ? { scope: 'overlay', version: map.getOverlayVersion() }
+    : { scope: 'land', version: map.getLandVersion() }
 }
 
 /**
@@ -252,12 +249,12 @@ async function handlePngRequest(
     const { kind, key, overlays, render } = await getSource()
     const { scope, version } = getImageVersion(map, overlays)
     const headers = getImageCacheHeaders(version, `${kind}|${key}`, url)
-    if (isNotModified(request.headers, headers.etag, version)) {
+    if (isNotModified(request.headers, headers.etag)) {
       imageCache.record(kind, 'not_modified')
       return { status: 304, headers: { ...headers } }
     }
     const png = await imageCache.getOrRender(
-      { kind, key, scope, version: version.value, signal: request.signal },
+      { kind, key, scope, version, signal: request.signal },
       render
     )
     return {
@@ -527,6 +524,10 @@ export async function tilesInfoRequestHandler(context: {
       'cache-control': 'no-cache',
     },
     status: 200,
-    body: { lastUpdatedAt, landVersion: map.getLandVersion() },
+    body: {
+      lastUpdatedAt,
+      landVersion: map.getLandVersion(),
+      overlayVersion: map.getOverlayVersion(),
+    },
   }
 }

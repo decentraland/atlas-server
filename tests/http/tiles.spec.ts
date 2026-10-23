@@ -76,6 +76,7 @@ describe('when requesting the tiles', () => {
         tiles,
         lastUpdatedAt,
         landVersion: '0123456789abcdef',
+        overlayVersion: 'fedcba9876543210',
       })
       server = await startTestServer({ map })
     })
@@ -85,7 +86,7 @@ describe('when requesting the tiles', () => {
         response = await server.fetch('/v2/tiles/info')
       })
 
-      it('should respond with a 200, the last update time and the land version, not cached', async () => {
+      it('should respond with a 200, the last update time and the image versions, not cached', async () => {
         expect({
           status: response.status,
           cacheControl: response.headers.get('cache-control'),
@@ -93,7 +94,11 @@ describe('when requesting the tiles', () => {
         }).toEqual({
           status: 200,
           cacheControl: 'no-cache',
-          body: { lastUpdatedAt, landVersion: '0123456789abcdef' },
+          body: {
+            lastUpdatedAt,
+            landVersion: '0123456789abcdef',
+            overlayVersion: 'fedcba9876543210',
+          },
         })
       })
     })

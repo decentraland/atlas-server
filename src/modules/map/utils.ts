@@ -156,3 +156,33 @@ export function hasLandChanged(
     )
   )
 }
+
+/**
+ * Fingerprints what the map images draw with the price and rental overlays: the land plus every
+ * listed tile's price, order expiration and rental expiration. Expired orders and rentals are
+ * dropped from the tiles, which changes it too.
+ * @param landVersion - the version of the land.
+ * @param tiles - the served tiles, with trades.
+ * @returns a 16 hex digits version.
+ */
+export function getOverlayVersion(
+  landVersion: string,
+  tiles: Record<string, Tile>
+): string {
+  const parts: string[] = []
+  for (const id in tiles) {
+    const { price, expiresAt, rentalListing } = tiles[id]
+    if (price !== undefined || rentalListing) {
+      parts.push(
+        `${id}|${price ?? ''}|${expiresAt ?? ''}|${
+          rentalListing?.expiration ?? ''
+        }`
+      )
+    }
+  }
+  parts.sort()
+  return createHash('sha1')
+    .update(`${landVersion};${parts.join(';')}`)
+    .digest('hex')
+    .slice(0, 16)
+}

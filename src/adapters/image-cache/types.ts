@@ -13,9 +13,9 @@ export type ImageCacheResult =
 
 /**
  * What an image's version tracks: `land` for images without price or rental overlays,
- * which only change with the land, and `map` for the ones that draw them.
+ * which only change with the land, and `overlay` for the ones that draw them.
  */
-export type ImageVersionScope = 'land' | 'map'
+export type ImageVersionScope = 'land' | 'overlay'
 
 export type ImageRequest = {
   kind: ImageKind

@@ -27,6 +27,8 @@ export interface IMapComponent {
   getLastUpdatedAt: () => number
   /** Changes only when what the images draw without price or rental overlays changes; equal across replicas for the same data. */
   getLandVersion: () => string
+  /** Changes only when what the images draw with price or rental overlays changes; equal across replicas for the same data. */
+  getOverlayVersion: () => string
   getLastUploadedTilesUrl: () => { v1?: string; v2?: string }
 }
 

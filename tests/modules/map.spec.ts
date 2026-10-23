@@ -566,6 +566,7 @@ describe('map component', () => {
 
     describe('and an update only changes a price', () => {
       let landVersionAtReady: string
+      let overlayVersionAtReady: string
 
       beforeEach(async () => {
         fetchData.mockResolvedValueOnce(freshResult)
@@ -584,6 +585,7 @@ describe('map component', () => {
         })
         await startAndWaitUntilReady()
         landVersionAtReady = map.getLandVersion()
+        overlayVersionAtReady = map.getOverlayVersion()
         lastUpdatedAtAtReady = map.getLastUpdatedAt()
         await waitUntil(() => fetchUpdatedData.mock.calls.length >= 2)
       })
@@ -596,6 +598,52 @@ describe('map component', () => {
           movedLastUpdatedAt: true,
           landVersion: landVersionAtReady,
         })
+      })
+
+      it('should change the overlay version', () => {
+        expect(map.getOverlayVersion()).not.toBe(overlayVersionAtReady)
+      })
+    })
+
+    describe('and an order expires', () => {
+      let overlayVersionAtReady: string
+
+      beforeEach(async () => {
+        jest.useFakeTimers({ doNotFake: ['setTimeout', 'setImmediate'] })
+        freshResult.tiles = [
+          buildTile('1,1', {
+            price: 9,
+            expiresAt: Math.round(Date.now() / 1000) + 60,
+          }),
+        ]
+        fetchData.mockResolvedValueOnce(freshResult)
+        await startAndWaitUntilReady()
+        overlayVersionAtReady = map.getOverlayVersion()
+        jest.setSystemTime(Date.now() + 120_000)
+        const calls = fetchUpdatedData.mock.calls.length
+        await waitUntil(() => fetchUpdatedData.mock.calls.length >= calls + 2)
+      })
+
+      it('should change the overlay version', () => {
+        expect(map.getOverlayVersion()).not.toBe(overlayVersionAtReady)
+      })
+    })
+
+    describe('and an update brings nothing new', () => {
+      let overlayVersionAtReady: string
+
+      beforeEach(async () => {
+        freshResult.tiles = [
+          buildTile('1,1', { price: 9, expiresAt: futureExpiration }),
+        ]
+        fetchData.mockResolvedValueOnce(freshResult)
+        await startAndWaitUntilReady()
+        overlayVersionAtReady = map.getOverlayVersion()
+        await waitUntil(() => fetchUpdatedData.mock.calls.length >= 2)
+      })
+
+      it('should keep the overlay version', () => {
+        expect(map.getOverlayVersion()).toBe(overlayVersionAtReady)
       })
     })
 
@@ -794,10 +842,15 @@ describe('map component', () => {
   })
   describe('when two replicas reach the same tiles by different paths', () => {
     let landVersions: string[]
+    let overlayVersions: string[]
 
     beforeEach(async () => {
       const estateTiles = [
-        buildTile('1,1', { estateId: '7' }),
+        buildTile('1,1', {
+          estateId: '7',
+          price: 9,
+          expiresAt: futureExpiration,
+        }),
         buildTile('2,1', { estateId: '7' }),
         buildTile('1,0', { estateId: '7' }),
         buildTile('2,0', { estateId: '7' }),
@@ -807,6 +860,7 @@ describe('map component', () => {
       fetchData.mockResolvedValueOnce(freshResult)
       await startAndWaitUntilReady()
       const firstLandVersion = map.getLandVersion()
+      const firstOverlayVersion = map.getOverlayVersion()
       await map.stop!()
       // the second one boots before 2,0 joins the estate and reads it as an update
       freshResult = {
@@ -829,6 +883,7 @@ describe('map component', () => {
         secondLandVersionAtReady,
         map.getLandVersion(),
       ]
+      overlayVersions = [firstOverlayVersion, map.getOverlayVersion()]
     })
 
     it('should give both the same land version once they hold the same tiles', () => {
@@ -836,6 +891,10 @@ describe('map component', () => {
         differedBeforeTheUpdate: landVersions[1] !== landVersions[0],
         equalAfterIt: landVersions[2] === landVersions[0],
       }).toEqual({ differedBeforeTheUpdate: true, equalAfterIt: true })
+    })
+
+    it('should give both the same overlay version', () => {
+      expect(overlayVersions[1]).toBe(overlayVersions[0])
     })
   })
 })

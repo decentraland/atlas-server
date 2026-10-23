@@ -20,12 +20,15 @@ const LAND_HEADERS = {
   etag: expect.stringMatching(new RegExp(`^W/"${LAND_VERSION}-[0-9a-f]{16}"$`)),
   lastModified: null,
 }
-const MAP_HEADERS = {
-  etag: expect.stringMatching(new RegExp(`^W/"${MAP_VERSION}-[0-9a-f]{16}"$`)),
-  lastModified: new Date(MAP_VERSION).toUTCString(),
+const OVERLAY_VERSION = 'ffffffffffffffff'
+const OVERLAY_HEADERS = {
+  etag: expect.stringMatching(
+    new RegExp(`^W/"${OVERLAY_VERSION}-[0-9a-f]{16}"$`)
+  ),
+  lastModified: null,
 }
 
-// images without overlays follow the land version, the others the map update time
+// images without overlays follow the land version, the others the overlay version
 const PNG_ROUTES = [
   [`/v1/map.png?${SMALL}&center=0,0`, LAND_HEADERS],
   [`/v2/map.png?${SMALL}&center=0,0`, LAND_HEADERS],
@@ -35,9 +38,9 @@ const PNG_ROUTES = [
   [`/v2/estates/7/map.png?${SMALL}`, LAND_HEADERS],
   ['/v1/minimap.png', LAND_HEADERS],
   ['/v1/estatemap.png', LAND_HEADERS],
-  [`${ON_SALE}&center=0,0`, MAP_HEADERS],
-  [`/v2/parcels/0/0/map.png?${SMALL}&listed-for-rent=true`, MAP_HEADERS],
-  [`/v2/estates/7/map.png?${SMALL}&on-sale=true`, MAP_HEADERS],
+  [`${ON_SALE}&center=0,0`, OVERLAY_HEADERS],
+  [`/v2/parcels/0/0/map.png?${SMALL}&listed-for-rent=true`, OVERLAY_HEADERS],
+  [`/v2/estates/7/map.png?${SMALL}&on-sale=true`, OVERLAY_HEADERS],
 ] as const
 
 function readCacheHeaders(response: Response) {
@@ -59,6 +62,7 @@ describe('when requesting map images that can be cached', () => {
     map = createFixtureMap({
       lastUpdatedAt: MAP_VERSION,
       landVersion: LAND_VERSION,
+      overlayVersion: OVERLAY_VERSION,
       tiles: [
         buildTile('0,0', { type: TileType.PLAZA }),
         buildTile('1,0', { type: TileType.OWNED, estateId: '7' }),
@@ -129,53 +133,24 @@ describe('when requesting map images that can be cached', () => {
     })
   })
 
-  describe('and an image with overlays is first requested with If-Modified-Since of the map version', () => {
-    beforeEach(async () => {
-      response = await server.fetch(ON_SALE, {
-        headers: { 'If-Modified-Since': new Date(MAP_VERSION).toUTCString() },
+  describe.each([
+    ['without overlays', `/v2/map.png?${SMALL}`],
+    ['with overlays', ON_SALE],
+  ])(
+    'and an image %s is requested with only If-Modified-Since',
+    (_name, path) => {
+      beforeEach(async () => {
+        response = await server.fetch(path, {
+          headers: { 'If-Modified-Since': new Date(MAP_VERSION).toUTCString() },
+        })
+        await response.arrayBuffer()
       })
-    })
 
-    it('should respond with a 304 with the image cache policy', () => {
-      expect({
-        status: response.status,
-        cacheControl: response.headers.get('cache-control'),
-      }).toEqual({ status: 304, cacheControl: IMAGE_CACHE_CONTROL })
-    })
-
-    it('should not render it', () => {
-      expect(render).not.toHaveBeenCalled()
-    })
-  })
-
-  describe('and an image without overlays is requested with If-Modified-Since', () => {
-    beforeEach(async () => {
-      response = await server.fetch(`/v2/map.png?${SMALL}`, {
-        headers: { 'If-Modified-Since': new Date(MAP_VERSION).toUTCString() },
+      it('should respond with a 200, as only its ETag identifies its version', () => {
+        expect(response.status).toBe(200)
       })
-      await response.arrayBuffer()
-    })
-
-    it('should respond with a 200, as only its ETag identifies its version', () => {
-      expect(response.status).toBe(200)
-    })
-  })
-
-  describe('and an image is requested with a stale ETag and a current If-Modified-Since', () => {
-    beforeEach(async () => {
-      response = await server.fetch(ON_SALE, {
-        headers: {
-          'If-None-Match': 'W/"1-0123456789abcdef"',
-          'If-Modified-Since': new Date(MAP_VERSION).toUTCString(),
-        },
-      })
-      await response.arrayBuffer()
-    })
-
-    it('should respond with a 200, as If-None-Match takes precedence', () => {
-      expect(response.status).toBe(200)
-    })
-  })
+    }
+  )
 
   describe('and equivalent URLs of the same image are requested', () => {
     let etags: (string | null)[]
@@ -254,6 +229,7 @@ describe('when requesting map images that can be cached', () => {
       const first = await server.fetch(path)
       await first.arrayBuffer()
       map.getLastUpdatedAt.mockReturnValue(MAP_VERSION + 60_000)
+      map.getOverlayVersion.mockReturnValue('eeeeeeeeeeeeeeee')
       if (change === 'the land changes') {
         map.getLandVersion.mockReturnValue('fedcba9876543210')
       }
@@ -294,7 +270,7 @@ describe('when requesting map images that can be cached', () => {
 
   describe.each([
     ['without overlays', `/v2/map.png?${SMALL}&v=${LAND_VERSION}`],
-    ['with overlays', `${ON_SALE}&v=${MAP_VERSION}`],
+    ['with overlays', `${ON_SALE}&v=${OVERLAY_VERSION}`],
   ])(
     'and the image %s is requested pinned to its current version',
     (_name, path) => {
@@ -314,7 +290,7 @@ describe('when requesting map images that can be cached', () => {
 
   describe('and the image is requested pinned to another version', () => {
     beforeEach(async () => {
-      response = await server.fetch(`/v2/map.png?${SMALL}&v=${MAP_VERSION}`)
+      response = await server.fetch(`/v2/map.png?${SMALL}&v=${OVERLAY_VERSION}`)
       await response.arrayBuffer()
     })
 

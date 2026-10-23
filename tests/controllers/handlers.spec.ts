@@ -35,15 +35,13 @@ type PngComponents = Pick<
 const MAP_VERSION = Date.UTC(2026, 0, 1, 12, 0, 0)
 
 const LAND_VERSION = '0123456789abcdef'
+const OVERLAY_VERSION = 'fedcba9876543210'
 
-// images without overlays follow the land version and have no modification time
+// images without overlays follow the land version, the others the overlay version
 function buildPngHeaders(overlays = false) {
-  const version = overlays ? MAP_VERSION : LAND_VERSION
+  const version = overlays ? OVERLAY_VERSION : LAND_VERSION
   return {
     etag: expect.stringMatching(new RegExp(`^W/"${version}-[0-9a-f]{16}"$`)),
-    ...(overlays
-      ? { 'last-modified': new Date(MAP_VERSION).toUTCString() }
-      : {}),
     'cache-control': IMAGE_CACHE_CONTROL,
     'content-type': 'image/png',
   }
@@ -111,6 +109,7 @@ describe('when handling the map image requests', () => {
         getTiles,
         getLastUpdatedAt: () => MAP_VERSION,
         getLandVersion: () => LAND_VERSION,
+        getOverlayVersion: () => OVERLAY_VERSION,
       } as unknown as AppComponents['map'],
       image: { getRenderJob },
       renderPool: { render },

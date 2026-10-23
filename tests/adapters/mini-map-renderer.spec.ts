@@ -69,3 +69,52 @@ describe('when rendering the estates minimap', () => {
     expect(estateIndexAt(4, 0)).toBe(0)
   })
 })
+
+describe('when rendering the estates minimap of the same tiles stored in different orders', () => {
+  let renderPool: StartedRenderPool
+  let pngs: Buffer[]
+  let estateIndexAt: (x: number, y: number) => number
+
+  beforeEach(async () => {
+    renderPool = await startRenderPool()
+    const tiles = [
+      buildTile(0, 0, '20'),
+      buildTile(1, 0, '9'),
+      buildTile(2, 0, '10'),
+      buildTile(3, 0, 'legacy'),
+      buildTile(4, 0),
+    ]
+    pngs = []
+    for (const ordered of [tiles, [...tiles].reverse()]) {
+      const renderer = await createEstatesRendererComponent({
+        map: {
+          getTiles: jest
+            .fn()
+            .mockResolvedValue(
+              Object.fromEntries(ordered.map((tile) => [tile.id, tile]))
+            ),
+        } as unknown as IMapComponent,
+      })
+      pngs.push(
+        await renderPool.pool.render('estatemap', renderer.getRenderJob)
+      )
+    }
+    const pixelAt = await decodePng(pngs[0])
+    estateIndexAt = (x, y) => {
+      const [r, g, b] = pixelAt(x + 256, 512 - (y + 256))
+      return (r << 16) | (g << 8) | b
+    }
+  })
+
+  afterEach(async () => {
+    await renderPool.stop()
+  })
+
+  it('should render byte identical images', () => {
+    expect(pngs[0].equals(pngs[1])).toBe(true)
+  })
+
+  it('should number the estates by token id, then any other id', () => {
+    expect([0, 1, 2, 3].map((x) => estateIndexAt(x, 0))).toEqual([3, 1, 2, 4])
+  })
+})
