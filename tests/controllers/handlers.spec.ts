@@ -9,13 +9,17 @@ import {
   tokenRequestHandler,
 } from '../../src/controllers/handlers'
 import { NFT } from '../../src/modules/api/types'
-import { Tile, TileType } from '../../src/modules/map/types'
+import { MapSnapshot, Tile, TileType } from '../../src/modules/map/types'
 import {
   RenderAbortedError,
   RenderBusyError,
   RenderFailedError,
   RenderJob,
 } from '../../src/adapters/render-pool'
+import { createImageCache } from '../../src/adapters/image-cache'
+import { IMAGE_CACHE_CONTROL } from '../../src/logic/image-http-cache'
+import { createTestMetricsComponent } from '@dcl/metrics'
+import { metricDeclarations } from '../../src/metrics'
 import { AppComponents } from '../../src/types'
 
 const LAND_CONTRACT_ADDRESS = '0xf87e31492faf9a91b02ee0deaad50d51d56d5d4d'
@@ -23,7 +27,23 @@ const CHECKSUMMED_LAND_CONTRACT_ADDRESS =
   '0xF87E31492Faf9A91B02Ee0dEAAd50d51d56D5d4d'
 const ESTATE_CONTRACT_ADDRESS = '0x959e104e1a4db6317fa58f8295f586e1a978c297'
 
-type PngComponents = Pick<AppComponents, 'image' | 'map' | 'renderPool'>
+type PngComponents = Pick<
+  AppComponents,
+  'image' | 'map' | 'renderPool' | 'imageCache'
+>
+
+const LAND_VERSION = '0123456789abcdef'
+const OVERLAY_VERSION = 'fedcba9876543210'
+
+// images without overlays follow the land version, the others the overlay version
+function buildPngHeaders(overlays = false) {
+  const version = overlays ? OVERLAY_VERSION : LAND_VERSION
+  return {
+    etag: expect.stringMatching(new RegExp(`^W/"${version}-[0-9a-f]{16}"$`)),
+    'cache-control': IMAGE_CACHE_CONTROL,
+    'content-type': 'image/png',
+  }
+}
 
 function buildTile(x: number, y: number, estateId?: string): Tile {
   return {
@@ -53,9 +73,10 @@ function buildNft(id: string): NFT {
 
 describe('when handling the map image requests', () => {
   let components: PngComponents
-  let request: { signal: AbortSignal }
+  let request: { signal: AbortSignal; headers: Headers }
   let isReady: jest.Mock
-  let getTiles: jest.Mock
+  let getSnapshot: jest.Mock
+  let snapshot: MapSnapshot
   let getRenderJob: jest.Mock
   let render: jest.Mock
   let job: RenderJob
@@ -70,10 +91,15 @@ describe('when handling the map image requests', () => {
       data: new Uint8ClampedArray(4),
       compressionLevel: 5,
     }
-    request = { signal: new AbortController().signal }
+    request = { signal: new AbortController().signal, headers: new Headers() }
     isReady = jest.fn().mockReturnValue(true)
-    getTiles = jest.fn().mockResolvedValue({})
-    getRenderJob = jest.fn().mockResolvedValue(job)
+    snapshot = {
+      tiles: {},
+      landVersion: LAND_VERSION,
+      overlayVersion: OVERLAY_VERSION,
+    }
+    getSnapshot = jest.fn().mockReturnValue(snapshot)
+    getRenderJob = jest.fn().mockReturnValue(job)
     // builds the job like the pool does once a thread is free
     render = jest.fn(
       async (_kind: string, getJob: () => Promise<RenderJob>) => {
@@ -82,9 +108,16 @@ describe('when handling the map image requests', () => {
       }
     )
     components = {
-      map: { isReady, getTiles } as unknown as AppComponents['map'],
+      map: {
+        isReady,
+        getSnapshot,
+      } as unknown as AppComponents['map'],
       image: { getRenderJob },
       renderPool: { render },
+      imageCache: createImageCache(
+        { metrics: createTestMetricsComponent(metricDeclarations) },
+        { maxBytes: 1024 * 1024 }
+      ),
     }
   })
 
@@ -103,13 +136,14 @@ describe('when handling the map image requests', () => {
       it('should respond with a 200 and the encoded PNG', () => {
         expect(response).toEqual({
           status: 200,
-          headers: { 'content-type': 'image/png' },
+          headers: buildPngHeaders(true),
           body: png,
         })
       })
 
-      it('should build the render job from the params', () => {
+      it("should build the render job from the params and the snapshot's tiles", () => {
         expect(getRenderJob).toHaveBeenCalledWith(
+          snapshot.tiles,
           1024,
           1024,
           20,
@@ -120,9 +154,9 @@ describe('when handling the map image requests', () => {
         )
       })
 
-      it("should render it in the pool, cancelled by the request's signal", () => {
+      it('should render it in the pool with a signal the waiting requests can abort', () => {
         expect(render).toHaveBeenCalledWith('map', expect.any(Function), {
-          signal: request.signal,
+          signal: expect.any(AbortSignal),
         })
       })
     })
@@ -256,9 +290,10 @@ describe('when handling the map image requests', () => {
     let response: Awaited<ReturnType<typeof handler>>
 
     beforeEach(() => {
-      getMiniMapJob = jest.fn().mockResolvedValue(job)
+      getMiniMapJob = jest.fn().mockReturnValue(job)
       context = {
         request,
+        url: new URL(`http://localhost/v1/${kind}.png`),
         components: {
           ...components,
           renderMiniMap: { getRenderJob: getMiniMapJob },
@@ -275,13 +310,13 @@ describe('when handling the map image requests', () => {
       it('should respond with a 200 and the encoded PNG', () => {
         expect(response).toEqual({
           status: 200,
-          headers: { 'content-type': 'image/png' },
+          headers: buildPngHeaders(),
           body: png,
         })
       })
 
-      it("should render the minimap's job", () => {
-        expect(getMiniMapJob).toHaveBeenCalledTimes(1)
+      it("should render the minimap's job from the snapshot's tiles", () => {
+        expect(getMiniMapJob.mock.calls).toEqual([[snapshot.tiles]])
       })
 
       it('should label the render with the image it is for', () => {
@@ -324,6 +359,7 @@ describe('when handling the map image requests', () => {
 
       it('should render the image centered on and selecting the parcel', () => {
         expect(getRenderJob).toHaveBeenCalledWith(
+          snapshot.tiles,
           1024,
           1024,
           20,
@@ -337,7 +373,7 @@ describe('when handling the map image requests', () => {
       it('should respond with a 200 and the encoded PNG', () => {
         expect(response).toEqual({
           status: 200,
-          headers: { 'content-type': 'image/png' },
+          headers: buildPngHeaders(),
           body: png,
         })
       })
@@ -368,14 +404,15 @@ describe('when handling the map image requests', () => {
 
     describe('and the estate has parcels', () => {
       beforeEach(async () => {
-        getTiles.mockResolvedValueOnce(
-          Object.fromEntries(
+        getSnapshot.mockReturnValueOnce({
+          ...snapshot,
+          tiles: Object.fromEntries(
             [-10, -9, 2, 10].map((x) => {
               const tile = buildTile(x, 0, '7')
               return [tile.id, tile]
             })
-          )
-        )
+          ),
+        })
         response = await estateMapPngRequestHandler({
           components,
           request,
@@ -385,13 +422,13 @@ describe('when handling the map image requests', () => {
       })
 
       it('should center the image on the numeric median of the estate parcels', () => {
-        expect(getRenderJob.mock.calls[0][3]).toEqual({ x: 2, y: 0 })
+        expect(getRenderJob.mock.calls[0][4]).toEqual({ x: 2, y: 0 })
       })
 
       it('should respond with a 200 and the encoded PNG', () => {
         expect(response).toEqual({
           status: 200,
-          headers: { 'content-type': 'image/png' },
+          headers: buildPngHeaders(),
           body: png,
         })
       })
@@ -412,6 +449,7 @@ describe('when handling the map image requests', () => {
           status: 302,
           headers: {
             location: 'https://ui.decentraland.org/dissolved_estate.png',
+            'cache-control': 'max-age=60, s-maxage=60, public',
           },
         })
       })

@@ -19,6 +19,7 @@ import { Metrics } from './metrics'
 import { MiniMapRendererComponent } from './adapters/mini-map-renderer'
 import { ITradesComponent } from './modules/trades/component'
 import { IRenderPoolComponent } from './adapters/render-pool'
+import { IImageCacheComponent } from './adapters/image-cache'
 
 export type GlobalContext = {
   components: AppComponents
@@ -42,6 +43,7 @@ export type AppComponents = {
   renderMiniMap: MiniMapRendererComponent
   renderEstateMiniMap: MiniMapRendererComponent
   renderPool: IRenderPoolComponent
+  imageCache: IImageCacheComponent
   features: IFeaturesComponent
   dappsReadDatabase: IPgComponent
   trades: ITradesComponent

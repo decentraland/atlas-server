@@ -45,6 +45,8 @@ export type FixtureMapData = {
   /** Keyed by "<contract address>-<token id>". */
   tokens?: Record<string, NFT>
   lastUpdatedAt?: number
+  landVersion?: string
+  overlayVersion?: string
   lastUploadedTilesUrl?: { v1?: string; v2?: string }
   ready?: boolean
 }
@@ -59,6 +61,12 @@ export type FixtureMap = Mocked<IMapComponent> &
   IBaseComponent &
   IStatusCheckCapableComponent & {
     setReady: (ready: boolean) => void
+    /** Swaps the served tiles and versions, as a map refresh does. */
+    refresh: (update: {
+      tiles?: Tile[]
+      landVersion?: string
+      overlayVersion?: string
+    }) => void
   }
 
 /**
@@ -69,13 +77,19 @@ export type FixtureMap = Mocked<IMapComponent> &
  */
 export function createFixtureMap(data: FixtureMapData = {}): FixtureMap {
   let ready = data.ready ?? true
-  const tiles = Object.fromEntries(
-    (data.tiles ?? []).map((tile) => [tile.id, tile])
-  )
+  const toRecord = (tiles: Tile[]) =>
+    Object.fromEntries(tiles.map((tile) => [tile.id, tile]))
+  let tiles = toRecord(data.tiles ?? [])
 
-  return {
+  const map: FixtureMap = {
     events: new EventEmitter(),
     getTiles: jest.fn().mockImplementation(async () => tiles),
+    // reads the version mocks, so re-programming them changes the snapshot too
+    getSnapshot: jest.fn().mockImplementation(() => ({
+      tiles,
+      landVersion: map.getLandVersion(),
+      overlayVersion: map.getOverlayVersion(),
+    })),
     getParcel: jest
       .fn()
       .mockImplementation(async (x, y) => data.parcels?.[`${x},${y}`] ?? null),
@@ -94,6 +108,12 @@ export function createFixtureMap(data: FixtureMapData = {}): FixtureMap {
     getLastUpdatedAt: jest
       .fn()
       .mockImplementation(() => data.lastUpdatedAt ?? 0),
+    getLandVersion: jest
+      .fn()
+      .mockImplementation(() => data.landVersion ?? '0000000000000000'),
+    getOverlayVersion: jest
+      .fn()
+      .mockImplementation(() => data.overlayVersion ?? 'ffffffffffffffff'),
     getLastUploadedTilesUrl: jest
       .fn()
       .mockImplementation(() => data.lastUploadedTilesUrl ?? {}),
@@ -106,5 +126,17 @@ export function createFixtureMap(data: FixtureMapData = {}): FixtureMap {
     setReady(value: boolean) {
       ready = value
     },
+    refresh(update) {
+      if (update.tiles) {
+        tiles = toRecord(update.tiles)
+      }
+      if (update.landVersion !== undefined) {
+        map.getLandVersion.mockReturnValue(update.landVersion)
+      }
+      if (update.overlayVersion !== undefined) {
+        map.getOverlayVersion.mockReturnValue(update.overlayVersion)
+      }
+    },
   }
+  return map
 }

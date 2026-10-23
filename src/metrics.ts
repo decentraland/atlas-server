@@ -37,6 +37,15 @@ export const metricDeclarations = {
     type: IMetricsComponent.HistogramType,
     labelNames: ['result'],
   },
+  dcl_map_image_cache_total: {
+    help: 'map image requests by how they were answered: hit, miss, shared render or not_modified',
+    type: IMetricsComponent.CounterType,
+    labelNames: ['kind', 'result'],
+  },
+  dcl_map_image_cache_bytes: {
+    help: 'bytes of rendered map images held in memory',
+    type: IMetricsComponent.GaugeType,
+  },
   dcl_map_update: {
     type: IMetricsComponent.CounterType,
     help: 'Updates',

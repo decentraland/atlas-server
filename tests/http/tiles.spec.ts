@@ -72,7 +72,12 @@ describe('when requesting the tiles', () => {
 
     beforeEach(async () => {
       lastUpdatedAt = Date.UTC(2026, 0, 1)
-      map = createFixtureMap({ tiles, lastUpdatedAt })
+      map = createFixtureMap({
+        tiles,
+        lastUpdatedAt,
+        landVersion: '0123456789abcdef',
+        overlayVersion: 'fedcba9876543210',
+      })
       server = await startTestServer({ map })
     })
 
@@ -81,7 +86,7 @@ describe('when requesting the tiles', () => {
         response = await server.fetch('/v2/tiles/info')
       })
 
-      it('should respond with a 200 and the last update time, not cached', async () => {
+      it('should respond with a 200, the last update time and the image versions, not cached', async () => {
         expect({
           status: response.status,
           cacheControl: response.headers.get('cache-control'),
@@ -89,7 +94,11 @@ describe('when requesting the tiles', () => {
         }).toEqual({
           status: 200,
           cacheControl: 'no-cache',
-          body: { lastUpdatedAt },
+          body: {
+            lastUpdatedAt,
+            landVersion: '0123456789abcdef',
+            overlayVersion: 'fedcba9876543210',
+          },
         })
       })
     })

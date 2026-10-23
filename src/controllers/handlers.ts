@@ -8,13 +8,16 @@ import {
 } from '../logic/filter-params'
 import { InvalidRequestError, isErrorWithMessage } from '../logic/error'
 import { getMapBounds, getTilesFilter, MapBounds } from '../logic/tiles-request'
-import { Tile } from '../modules/map/types'
+import { MapSnapshot, Tile } from '../modules/map/types'
+import { RenderAbortedError, RenderBusyError } from '../adapters/render-pool'
+import { ImageKind, ImageVersionScope } from '../adapters/image-cache'
 import {
-  RenderAbortedError,
-  RenderBusyError,
-  RenderJob,
-  RenderKind,
-} from '../adapters/render-pool'
+  getImageCacheHeaders,
+  isNotModified,
+  REDIRECT_CACHE_CONTROL,
+} from '../logic/image-http-cache'
+import { getEstateTiles } from '../logic/estate-tiles'
+import { getViewport } from '../modules/render'
 import { AppComponents } from '../types'
 import { ApplicationName, Feature } from '../modules/features/types'
 
@@ -94,32 +97,110 @@ export const createLegacyTilesRequestHandler = (
 
 const RENDER_RETRY_AFTER_SECONDS = '5'
 const TOKEN_ID_PATTERN = /^(0|[1-9]\d*)$/
+const DISSOLVED_ESTATE_IMAGE_URL =
+  'https://ui.decentraland.org/dissolved_estate.png'
 
-type PngComponents = Pick<AppComponents, 'map' | 'renderPool'>
-// aborts a render still waiting for a thread when the client disconnects
-type PngRequest = { request: { signal: AbortSignal } }
-
-async function renderPng(
-  components: Pick<AppComponents, 'renderPool'>,
-  request: PngRequest['request'],
-  kind: RenderKind,
-  getJob: () => Promise<RenderJob>
-): Promise<IHttpServerComponent.IResponse> {
-  const png = await components.renderPool.render(kind, getJob, {
-    signal: request.signal,
-  })
-  return {
-    status: 200,
-    headers: {
-      'content-type': 'image/png',
-    },
-    body: png,
+class DissolvedEstateError extends Error {
+  constructor(estateId: string) {
+    super(`Estate ${estateId} has no parcels`)
+    this.name = 'DissolvedEstateError'
   }
+}
+
+type PngComponents = Pick<AppComponents, 'map' | 'renderPool' | 'imageCache'>
+// aborts a render still waiting for a thread when the client disconnects
+type PngRequest = {
+  request: { signal: AbortSignal; headers: Pick<Headers, 'get'> }
+  url: URL
+}
+/** An image to serve: its route, its normalized params and how to render it on a miss. */
+type PngSource = {
+  kind: ImageKind
+  key: string
+  /** draws prices or rentals, so it follows the overlay version rather than the land version */
+  overlays: boolean
+  render: (signal: AbortSignal) => Promise<Buffer>
+}
+
+type MapImageParams = ReturnType<typeof extractParams>
+
+// the params every map image is drawn with; they are already clamped
+function getImageParamsKey(params: MapImageParams): string {
+  return [
+    `${params.width}x${params.height}`,
+    params.size,
+    params.showOnSale ? 1 : 0,
+    params.showListedForRent ? 1 : 0,
+  ].join('|')
+}
+
+// the renderer only reads the tiles inside the viewport, so a selection outside it changes nothing
+function clipSelection(params: MapImageParams): MapImageParams {
+  const { width, height, size, center } = params
+  const { nw, se } = getViewport({ width, height, center, size, padding: 1 })
+  const ids = new Set<string>()
+  const selected = params.selected.filter(({ x, y }) => {
+    const id = `${x},${y}`
+    if (x < nw.x || x >= se.x || y < se.y || y >= nw.y || ids.has(id)) {
+      return false
+    }
+    ids.add(id)
+    return true
+  })
+  return { ...params, selected }
+}
+
+// equal keys must render equal images: the selection is a set, clipped to the viewport
+function getMapImageKey(params: MapImageParams): string {
+  const { center, selected } = params
+  const selection = selected.map(({ x, y }) => `${x},${y}`).sort()
+  return [
+    getImageParamsKey(params),
+    `${center.x},${center.y}`,
+    selection.join(';'),
+  ].join('|')
+}
+
+function hasOverlays(params: MapImageParams): boolean {
+  return params.showOnSale || params.showListedForRent
+}
+
+function renderMapImage(
+  components: Pick<AppComponents, 'image' | 'renderPool'>,
+  snapshot: MapSnapshot,
+  params: MapImageParams,
+  signal: AbortSignal
+): Promise<Buffer> {
+  const { width, height, size, center, selected, showOnSale } = params
+  return components.renderPool.render(
+    'map',
+    () =>
+      components.image.getRenderJob(
+        snapshot.tiles,
+        width,
+        height,
+        size,
+        center,
+        selected,
+        showOnSale,
+        params.showListedForRent
+      ),
+    { signal }
+  )
 }
 
 function toPngErrorResponse(error: unknown): IHttpServerComponent.IResponse {
   if (error instanceof InvalidRequestError) {
     return { status: 400, body: { ok: false, error: error.message } }
+  }
+  if (error instanceof DissolvedEstateError) {
+    return {
+      status: 302,
+      headers: {
+        location: DISSOLVED_ESTATE_IMAGE_URL,
+        'cache-control': REDIRECT_CACHE_CONTROL,
+      },
+    }
   }
   // an aborted render has no client left to read the response
   if (error instanceof RenderBusyError || error instanceof RenderAbortedError) {
@@ -141,15 +222,51 @@ function toPngErrorResponse(error: unknown): IHttpServerComponent.IResponse {
   }
 }
 
+// both versions are fingerprints of the data, the same on every replica
+function getImageVersion(
+  snapshot: MapSnapshot,
+  overlays: boolean
+): { scope: ImageVersionScope; version: string } {
+  return overlays
+    ? { scope: 'overlay', version: snapshot.overlayVersion }
+    : { scope: 'land', version: snapshot.landVersion }
+}
+
+/**
+ * Serves a map image: answers conditional requests before anything is rendered, then serves the
+ * PNG from the image cache, rendering it once on a miss. The map snapshot is taken once, before
+ * anything awaits, and both the version and the render read from it, so an image always matches
+ * its ETag even when the map refreshes while the render waits for a thread.
+ */
 async function handlePngRequest(
-  components: Pick<AppComponents, 'map'>,
-  handle: () => Promise<IHttpServerComponent.IResponse>
+  context: PngRequest & {
+    components: Pick<AppComponents, 'map' | 'imageCache'>
+  },
+  getSource: (snapshot: MapSnapshot) => PngSource
 ): Promise<IHttpServerComponent.IResponse> {
-  if (!components.map.isReady()) {
+  const { components, request, url } = context
+  const { map, imageCache } = components
+  if (!map.isReady()) {
     return { status: 503, body: 'Not ready' }
   }
   try {
-    return await handle()
+    const snapshot = map.getSnapshot()
+    const { kind, key, overlays, render } = getSource(snapshot)
+    const { scope, version } = getImageVersion(snapshot, overlays)
+    const headers = getImageCacheHeaders(version, `${kind}|${key}`, url)
+    if (isNotModified(request.headers, headers.etag)) {
+      imageCache.record(kind, 'not_modified')
+      return { status: 304, headers: { ...headers } }
+    }
+    const png = await imageCache.getOrRender(
+      { kind, key, scope, version, signal: request.signal },
+      render
+    )
+    return {
+      status: 200,
+      headers: { ...headers, 'content-type': 'image/png' },
+      body: png,
+    }
   } catch (error) {
     return toPngErrorResponse(error)
   }
@@ -160,15 +277,16 @@ export async function miniMapHandler(
     components: PngComponents & Pick<AppComponents, 'renderMiniMap'>
   }
 ) {
-  const { components, request } = context
-  return handlePngRequest(components, () =>
-    renderPng(
-      components,
-      request,
-      'minimap',
-      components.renderMiniMap.getRenderJob
-    )
-  )
+  const { renderPool, renderMiniMap } = context.components
+  return handlePngRequest(context, ({ tiles }) => ({
+    kind: 'minimap',
+    key: '',
+    overlays: false,
+    render: (signal) =>
+      renderPool.render('minimap', () => renderMiniMap.getRenderJob(tiles), {
+        signal,
+      }),
+  }))
 }
 
 export async function estateMapHandler(
@@ -176,46 +294,34 @@ export async function estateMapHandler(
     components: PngComponents & Pick<AppComponents, 'renderEstateMiniMap'>
   }
 ) {
-  const { components, request } = context
-  return handlePngRequest(components, () =>
-    renderPng(
-      components,
-      request,
-      'estatemap',
-      components.renderEstateMiniMap.getRenderJob
-    )
-  )
+  const { renderPool, renderEstateMiniMap } = context.components
+  return handlePngRequest(context, ({ tiles }) => ({
+    kind: 'estatemap',
+    key: '',
+    overlays: false,
+    render: (signal) =>
+      renderPool.render(
+        'estatemap',
+        () => renderEstateMiniMap.getRenderJob(tiles),
+        { signal }
+      ),
+  }))
 }
 
 export const mapPngRequestHandler = async (
   context: PngRequest & {
     components: PngComponents & Pick<AppComponents, 'image'>
-    url: URL
   }
 ) => {
-  const { components, request } = context
-  const { image } = components
-  return handlePngRequest(components, async () => {
-    const {
-      width,
-      height,
-      size,
-      center,
-      showOnSale,
-      showListedForRent,
-      selected,
-    } = extractParams(context.url)
-    return renderPng(components, request, 'map', () =>
-      image.getRenderJob(
-        width,
-        height,
-        size,
-        center,
-        selected,
-        showOnSale,
-        showListedForRent
-      )
-    )
+  const { components } = context
+  return handlePngRequest(context, (snapshot) => {
+    const params = clipSelection(extractParams(context.url))
+    return {
+      kind: 'map',
+      key: getMapImageKey(params),
+      overlays: hasOverlays(params),
+      render: (signal) => renderMapImage(components, snapshot, params, signal),
+    }
   })
 }
 
@@ -226,30 +332,26 @@ export const parcelMapPngRequestHandler = async (
       x: string
       y: string
     }
-    url: URL
   }
 ) => {
-  const { components, params, request } = context
-  const { image } = components
-  return handlePngRequest(components, async () => {
+  const { components, params } = context
+  return handlePngRequest(context, (snapshot) => {
     const center = {
       x: parseCoordinate(params.x, 'x'),
       y: parseCoordinate(params.y, 'y'),
     }
-    const { width, height, size, showOnSale, showListedForRent } =
-      extractParams(context.url)
-    const selected = [center]
-    return renderPng(components, request, 'map', () =>
-      image.getRenderJob(
-        width,
-        height,
-        size,
-        center,
-        selected,
-        showOnSale,
-        showListedForRent
-      )
-    )
+    const imageParams = {
+      ...extractParams(context.url),
+      center,
+      selected: [center],
+    }
+    return {
+      kind: 'parcel',
+      key: getMapImageKey(imageParams),
+      overlays: hasOverlays(imageParams),
+      render: (signal) =>
+        renderMapImage(components, snapshot, imageParams, signal),
+    }
   })
 }
 
@@ -257,44 +359,36 @@ export const estateMapPngRequestHandler = async (
   context: PngRequest & {
     components: PngComponents & Pick<AppComponents, 'image'>
     params: { estateId: string }
-    url: URL
   }
 ) => {
-  const { components, request } = context
-  const { image, map } = components
-  return handlePngRequest(components, async () => {
-    const { width, height, size, showOnSale, showListedForRent } =
-      extractParams(context.url)
-    const { estateId } = context.params
-    const tiles = await map.getTiles()
-    const selected = Object.values(tiles).filter(
-      (tile) => tile.estateId && tile.estateId === estateId
-    )
+  const { components } = context
+  const { imageCache } = components
+  const { estateId } = context.params
+  return handlePngRequest(context, (snapshot) => {
+    const params = extractParams(context.url)
+    const selected = getEstateTiles(snapshot.tiles, estateId)
     if (selected.length === 0) {
-      const headers: Record<string, string> = {
-        location: 'https://ui.decentraland.org/dissolved_estate.png',
-      }
-      return {
-        status: 302,
-        headers,
-      }
+      imageCache.record('estate', 'dissolved')
+      throw new DissolvedEstateError(estateId)
     }
-    const xs = selected.map((coords) => coords.x).sort((a, b) => a - b)
-    const ys = selected.map((coords) => coords.y).sort((a, b) => a - b)
-    const x = xs[(xs.length / 2) | 0] || 0
-    const y = ys[(ys.length / 2) | 0] || 0
-    const center = { x, y }
-    return renderPng(components, request, 'map', () =>
-      image.getRenderJob(
-        width,
-        height,
-        size,
-        center,
-        selected,
-        showOnSale,
-        showListedForRent
-      )
-    )
+    return {
+      kind: 'estate',
+      // the center and selection come from the estate, not the query
+      key: [estateId, getImageParamsKey(params)].join('|'),
+      overlays: hasOverlays(params),
+      render: (signal) => {
+        const xs = selected.map((coords) => coords.x).sort((a, b) => a - b)
+        const ys = selected.map((coords) => coords.y).sort((a, b) => a - b)
+        const x = xs[(xs.length / 2) | 0] || 0
+        const y = ys[(ys.length / 2) | 0] || 0
+        return renderMapImage(
+          components,
+          snapshot,
+          { ...params, center: { x, y }, selected },
+          signal
+        )
+      },
+    }
   })
 }
 
@@ -441,6 +535,10 @@ export async function tilesInfoRequestHandler(context: {
       'cache-control': 'no-cache',
     },
     status: 200,
-    body: { lastUpdatedAt },
+    body: {
+      lastUpdatedAt,
+      landVersion: map.getLandVersion(),
+      overlayVersion: map.getOverlayVersion(),
+    },
   }
 }

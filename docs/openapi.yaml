@@ -17,6 +17,28 @@ info:
     ### Rate Limiting
     The API implements caching and last-modified headers for optimal performance. Clients should respect 
     cache-control headers to minimize server load
+
+    ### Map image caching
+    Every PNG has a version, a fingerprint of the data it draws that is the same on every
+    replica. Images without `on-sale` or `listed-for-rent` only draw the land (tile types,
+    estates and their borders) and follow the land version (`landVersion` in
+    `/v2/tiles/info`), which doesn't move on price, order or rental changes. Images with those
+    overlays follow the overlay version (`overlayVersion`), which also moves when a listing
+    is created, changes price, expires or ends. An image is drawn only from the data of its
+    version: expired listings are dropped when the map refreshes (every `REFRESH_INTERVAL`,
+    60s by default), so one may still be highlighted until then.
+
+    Every 200 carries a weak `ETag` (`W/"<version>-<request hash>"`) and
+    `Cache-Control: public, max-age=60, s-maxage=300, stale-while-revalidate=86400`, so a CDN
+    revalidates after 5 minutes; while the image is unchanged that is a 304 and nothing is
+    rendered. Images carry no `Last-Modified`, so conditional requests use `If-None-Match`.
+    Equivalent requests (e.g. the same `selected` parcels in another order, or selected
+    parcels outside the image) share the ETag.
+
+    To cache an image for good, add `v=<version>`: `landVersion` for images without overlays,
+    `overlayVersion` for images with them. When it equals the image's current version the
+    response is `Cache-Control: public, max-age=31536000, immutable`. Any other `v` is
+    ignored and the current image is served with the standard caching headers.
     
     ### Authentication
     No authentication is required for this public API
@@ -237,6 +259,20 @@ paths:
                     format: int64
                     description: UTC timestamp in milliseconds of last update
                     example: 1698765432000
+                  landVersion:
+                    type: string
+                    description: |
+                      Fingerprint of the land the map images draw (tile types, estates and their borders),
+                      equal on every replica and unchanged by prices, orders and rentals. Use it as the `v`
+                      of map images without `on-sale` or `listed-for-rent`.
+                    example: "0123456789abcdef"
+                  overlayVersion:
+                    type: string
+                    description: |
+                      Fingerprint of what the map images with `on-sale` or `listed-for-rent` draw: the land
+                      plus every listing's price and expiration, equal on every replica. Use it as the `v`
+                      of those images.
+                    example: "fedcba9876543210"
         '503':
           description: Service not ready
           headers:
@@ -317,25 +353,23 @@ paths:
             type: boolean
             default: false
           example: true
+        - $ref: '#/components/parameters/ImageVersion'
+        - $ref: '#/components/parameters/IfNoneMatch'
       responses:
         '200':
           description: PNG image of the map
           headers:
-            Content-Type:
-              schema:
-                type: string
-                example: "image/png"
-            Last-Modified:
-              schema:
-                type: string
+            ETag:
+              $ref: '#/components/headers/ImageETag'
             Cache-Control:
-              schema:
-                type: string
+              $ref: '#/components/headers/ImageCacheControl'
           content:
             image/png:
               schema:
                 type: string
                 format: binary
+        '304':
+          $ref: '#/components/responses/ImageNotModified'
         '400':
           description: Invalid coordinates, or the image exceeds the render budget
           content:
@@ -396,14 +430,23 @@ paths:
           in: query
           schema:
             type: boolean
+        - $ref: '#/components/parameters/ImageVersion'
+        - $ref: '#/components/parameters/IfNoneMatch'
       responses:
         '200':
           description: PNG image
+          headers:
+            ETag:
+              $ref: '#/components/headers/ImageETag'
+            Cache-Control:
+              $ref: '#/components/headers/ImageCacheControl'
           content:
             image/png:
               schema:
                 type: string
                 format: binary
+        '304':
+          $ref: '#/components/responses/ImageNotModified'
         '400':
           description: Invalid coordinates, or the image exceeds the render budget
           content:
@@ -425,26 +468,26 @@ paths:
         - Map Images
       summary: Generate a minimap PNG image
       description: |
-        Generates a minimap view of the entire Decentraland world. This endpoint uses extended caching 
-        (10 minutes) for better performance.
+        Generates a minimap view of the entire Decentraland world. It is rendered once per land version.
       operationId: getMinimap
+      parameters:
+        - $ref: '#/components/parameters/ImageVersion'
+        - $ref: '#/components/parameters/IfNoneMatch'
       responses:
         '200':
           description: PNG minimap image
           headers:
-            Content-Type:
-              schema:
-                type: string
-                example: "image/png"
+            ETag:
+              $ref: '#/components/headers/ImageETag'
             Cache-Control:
-              schema:
-                type: string
-                example: "public, max-age=600, stale-while-revalidate=600"
+              $ref: '#/components/headers/ImageCacheControl'
           content:
             image/png:
               schema:
                 type: string
                 format: binary
+        '304':
+          $ref: '#/components/responses/ImageNotModified'
         '500':
           description: Error generating minimap
           content:
@@ -460,17 +503,26 @@ paths:
         - Map Images
       summary: Generate an estate-focused minimap PNG image
       description: |
-        Generates a minimap view with emphasis on estate boundaries. Uses extended caching 
-        (10 minutes) for better performance.
+        Generates a minimap view with emphasis on estate boundaries. It is rendered once per land version.
       operationId: getEstateMap
+      parameters:
+        - $ref: '#/components/parameters/ImageVersion'
+        - $ref: '#/components/parameters/IfNoneMatch'
       responses:
         '200':
           description: PNG estate map image
+          headers:
+            ETag:
+              $ref: '#/components/headers/ImageETag'
+            Cache-Control:
+              $ref: '#/components/headers/ImageCacheControl'
           content:
             image/png:
               schema:
                 type: string
                 format: binary
+        '304':
+          $ref: '#/components/responses/ImageNotModified'
         '500':
           description: Error
           content:
@@ -533,14 +585,23 @@ paths:
           in: query
           schema:
             type: boolean
+        - $ref: '#/components/parameters/ImageVersion'
+        - $ref: '#/components/parameters/IfNoneMatch'
       responses:
         '200':
           description: PNG image centered on the parcel
+          headers:
+            ETag:
+              $ref: '#/components/headers/ImageETag'
+            Cache-Control:
+              $ref: '#/components/headers/ImageCacheControl'
           content:
             image/png:
               schema:
                 type: string
                 format: binary
+        '304':
+          $ref: '#/components/responses/ImageNotModified'
         '400':
           description: Invalid coordinates, or the image exceeds the render budget
           content:
@@ -594,14 +655,23 @@ paths:
           in: query
           schema:
             type: boolean
+        - $ref: '#/components/parameters/ImageVersion'
+        - $ref: '#/components/parameters/IfNoneMatch'
       responses:
         '200':
           description: PNG image
+          headers:
+            ETag:
+              $ref: '#/components/headers/ImageETag'
+            Cache-Control:
+              $ref: '#/components/headers/ImageCacheControl'
           content:
             image/png:
               schema:
                 type: string
                 format: binary
+        '304':
+          $ref: '#/components/responses/ImageNotModified'
         '400':
           description: Invalid coordinates, or the image exceeds the render budget
           content:
@@ -659,16 +729,25 @@ paths:
           in: query
           schema:
             type: boolean
+        - $ref: '#/components/parameters/ImageVersion'
+        - $ref: '#/components/parameters/IfNoneMatch'
       responses:
         '200':
           description: PNG image centered on the estate
+          headers:
+            ETag:
+              $ref: '#/components/headers/ImageETag'
+            Cache-Control:
+              $ref: '#/components/headers/ImageCacheControl'
           content:
             image/png:
               schema:
                 type: string
                 format: binary
+        '304':
+          $ref: '#/components/responses/ImageNotModified'
         '302':
-          description: Redirect to dissolved estate image
+          description: Redirect to dissolved estate image, cached for a minute
           headers:
             location:
               schema:
@@ -722,14 +801,23 @@ paths:
           in: query
           schema:
             type: boolean
+        - $ref: '#/components/parameters/ImageVersion'
+        - $ref: '#/components/parameters/IfNoneMatch'
       responses:
         '200':
           description: PNG image
+          headers:
+            ETag:
+              $ref: '#/components/headers/ImageETag'
+            Cache-Control:
+              $ref: '#/components/headers/ImageCacheControl'
           content:
             image/png:
               schema:
                 type: string
                 format: binary
+        '304':
+          $ref: '#/components/responses/ImageNotModified'
         '302':
           description: Redirect to dissolved estate image
         '400':
@@ -1046,6 +1134,47 @@ paths:
                 example: "Not ready"
 
 components:
+  parameters:
+    ImageVersion:
+      name: v
+      in: query
+      required: false
+      description: |
+        The version the URL is pinned to, from `/v2/tiles/info`: `landVersion` for images without
+        `on-sale` or `listed-for-rent`, `overlayVersion` for images with them. When it equals the
+        image's current version the image is served as immutable for a year; otherwise it is
+        ignored. It never changes the image.
+      schema:
+        type: string
+      example: "0123456789abcdef"
+    IfNoneMatch:
+      name: If-None-Match
+      in: header
+      required: false
+      description: ETags of the copies the client holds, or `*`; a match is answered with a 304.
+      schema:
+        type: string
+  headers:
+    ImageETag:
+      description: Weak validator of the image, from its version and the normalized request
+      schema:
+        type: string
+        example: 'W/"0123456789abcdef-89abcdef01234567"'
+    ImageCacheControl:
+      description: |
+        `public, max-age=60, s-maxage=300, stale-while-revalidate=86400`, or
+        `public, max-age=31536000, immutable` when `v` equals the image's current version
+      schema:
+        type: string
+        example: "public, max-age=60, s-maxage=300, stale-while-revalidate=86400"
+  responses:
+    ImageNotModified:
+      description: The client's copy is current; nothing is rendered
+      headers:
+        ETag:
+          $ref: '#/components/headers/ImageETag'
+        Cache-Control:
+          $ref: '#/components/headers/ImageCacheControl'
   schemas:
     Tile:
       type: object

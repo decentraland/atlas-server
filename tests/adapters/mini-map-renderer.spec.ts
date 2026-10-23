@@ -2,7 +2,7 @@ import {
   createEstatesRendererComponent,
   MiniMapRendererComponent,
 } from '../../src/adapters/mini-map-renderer'
-import { IMapComponent, Tile, TileType } from '../../src/modules/map/types'
+import { Tile, TileType } from '../../src/modules/map/types'
 import { decodePng } from '../helpers/png'
 import { startRenderPool, StartedRenderPool } from '../helpers/render-pool'
 
@@ -35,17 +35,12 @@ describe('when rendering the estates minimap', () => {
       buildTile(3, 0, '20'),
       buildTile(4, 0),
     ]
-    renderer = await createEstatesRendererComponent({
-      map: {
-        getTiles: jest
-          .fn()
-          .mockResolvedValue(
-            Object.fromEntries(tiles.map((tile) => [tile.id, tile]))
-          ),
-      } as unknown as IMapComponent,
-    })
+    renderer = await createEstatesRendererComponent()
+    const record = Object.fromEntries(tiles.map((tile) => [tile.id, tile]))
     const pixelAt = await decodePng(
-      await renderPool.pool.render('estatemap', renderer.getRenderJob)
+      await renderPool.pool.render('estatemap', () =>
+        renderer.getRenderJob(record)
+      )
     )
     estateIndexAt = (x, y) => {
       const [r, g, b] = pixelAt(x + 256, 512 - (y + 256))
@@ -67,5 +62,49 @@ describe('when rendering the estates minimap', () => {
 
   it('should encode a parcel without an estate as 0', () => {
     expect(estateIndexAt(4, 0)).toBe(0)
+  })
+})
+
+describe('when rendering the estates minimap of the same tiles stored in different orders', () => {
+  let renderPool: StartedRenderPool
+  let pngs: Buffer[]
+  let estateIndexAt: (x: number, y: number) => number
+
+  beforeEach(async () => {
+    renderPool = await startRenderPool()
+    const tiles = [
+      buildTile(0, 0, '20'),
+      buildTile(1, 0, '9'),
+      buildTile(2, 0, '10'),
+      buildTile(3, 0, 'legacy'),
+      buildTile(4, 0),
+    ]
+    pngs = []
+    for (const ordered of [tiles, [...tiles].reverse()]) {
+      const renderer = await createEstatesRendererComponent()
+      const record = Object.fromEntries(ordered.map((tile) => [tile.id, tile]))
+      pngs.push(
+        await renderPool.pool.render('estatemap', () =>
+          renderer.getRenderJob(record)
+        )
+      )
+    }
+    const pixelAt = await decodePng(pngs[0])
+    estateIndexAt = (x, y) => {
+      const [r, g, b] = pixelAt(x + 256, 512 - (y + 256))
+      return (r << 16) | (g << 8) | b
+    }
+  })
+
+  afterEach(async () => {
+    await renderPool.stop()
+  })
+
+  it('should render byte identical images', () => {
+    expect(pngs[0].equals(pngs[1])).toBe(true)
+  })
+
+  it('should number the estates by token id, then any other id', () => {
+    expect([0, 1, 2, 3].map((x) => estateIndexAt(x, 0))).toEqual([3, 1, 2, 4])
   })
 })
