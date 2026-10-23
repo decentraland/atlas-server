@@ -19,6 +19,7 @@ export type StartedRenderPool = {
   startTimer: jest.Mock
   endWaitTimer: jest.Mock
   observe: jest.Mock
+  increment: jest.Mock
   logError: jest.Mock
   stop: () => Promise<void>
 }
@@ -30,12 +31,15 @@ export async function startRenderPool(
   const endWaitTimer = jest.fn()
   const startTimer = jest.fn(() => ({ end: endWaitTimer }))
   const observe = jest.fn()
+  const increment = jest.fn()
   const logError = jest.fn()
   const pool = createRenderPool(
     {
-      metrics: { startTimer, observe } as unknown as IMetricsComponent<
-        keyof Metrics
-      >,
+      metrics: {
+        startTimer,
+        observe,
+        increment,
+      } as unknown as IMetricsComponent<keyof Metrics>,
       logs: {
         getLogger: () => ({
           error: logError,
@@ -60,6 +64,7 @@ export async function startRenderPool(
     startTimer,
     endWaitTimer,
     observe,
+    increment,
     logError,
     stop: () => pool[STOP_COMPONENT]!(),
   }

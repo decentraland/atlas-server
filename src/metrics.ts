@@ -26,6 +26,11 @@ export const metricDeclarations = {
     type: IMetricsComponent.HistogramType,
     labelNames: ['kind'],
   },
+  dcl_map_render_errors_total: {
+    help: 'map renders that failed, by why: busy, aborted, prepare, transport, worker_error or worker_crash',
+    type: IMetricsComponent.CounterType,
+    labelNames: ['kind', 'reason'],
+  },
   dcl_map_render_wait_seconds: {
     help: 'time a map render waits for a render slot',
     buckets: [0.01, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5],

@@ -13,6 +13,7 @@ import { Tile, TileType } from '../../src/modules/map/types'
 import {
   RenderAbortedError,
   RenderBusyError,
+  RenderFailedError,
   RenderJob,
 } from '../../src/adapters/render-pool'
 import { AppComponents } from '../../src/types'
@@ -210,6 +211,21 @@ describe('when handling the map image requests', () => {
           status: 503,
           headers: { 'retry-after': '5', 'cache-control': 'no-store' },
           body: { ok: false, error: 'The request was aborted' },
+        })
+      })
+    })
+
+    describe('and the worker fails to draw or encode the image', () => {
+      beforeEach(async () => {
+        render.mockRejectedValueOnce(new RenderFailedError('Canvas failure'))
+        url = new URL('http://localhost/v1/map.png')
+        response = await mapPngRequestHandler({ components, request, url })
+      })
+
+      it('should respond with a 500 and the error', () => {
+        expect(response).toEqual({
+          status: 500,
+          body: { ok: false, error: 'Canvas failure' },
         })
       })
     })
