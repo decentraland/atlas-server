@@ -9,6 +9,7 @@ import { createMapComponent } from '../../src/modules/map/component'
 import {
   IMapComponent,
   MapEvents,
+  MapSnapshot,
   Tile,
   TileType,
 } from '../../src/modules/map/types'
@@ -602,6 +603,43 @@ describe('map component', () => {
 
       it('should change the overlay version', () => {
         expect(map.getOverlayVersion()).not.toBe(overlayVersionAtReady)
+      })
+    })
+
+    describe('and a pass swaps the served tiles', () => {
+      let heldSnapshot: MapSnapshot
+      let heldTiles: Record<string, Tile>
+
+      beforeEach(async () => {
+        fetchData.mockResolvedValueOnce(freshResult)
+        fetchUpdatedData.mockResolvedValueOnce({
+          tiles: [buildTile('1,1', { price: 9, expiresAt: futureExpiration })],
+          parcels: [],
+          estates: [],
+          updatedAt: 6000,
+          cursors: { land: 6, rentals: 5000 },
+        })
+        await startAndWaitUntilReady()
+        heldSnapshot = map.getSnapshot()
+        heldTiles = { ...heldSnapshot.tiles }
+        await waitUntil(() => fetchUpdatedData.mock.calls.length >= 2)
+      })
+
+      it('should leave a held snapshot as it was', () => {
+        expect(heldSnapshot.tiles).toEqual(heldTiles)
+      })
+
+      it('should hold the served tiles with their versions in the new snapshot', async () => {
+        const current = map.getSnapshot()
+        expect({
+          tiles: current.tiles === (await map.getTiles()),
+          landVersion: current.landVersion,
+          overlayVersion: current.overlayVersion,
+        }).toEqual({
+          tiles: true,
+          landVersion: map.getLandVersion(),
+          overlayVersion: map.getOverlayVersion(),
+        })
       })
     })
 

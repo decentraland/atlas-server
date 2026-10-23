@@ -5,7 +5,8 @@ import {
   startTestServer,
   TestServer,
 } from '../harness'
-import { TileType } from '../../src/modules/map/types'
+import { Tile, TileType } from '../../src/modules/map/types'
+import { IRenderPoolComponent } from '../../src/adapters/render-pool'
 import {
   IMAGE_CACHE_CONTROL,
   VERSIONED_IMAGE_CACHE_CONTROL,
@@ -56,21 +57,26 @@ describe('when requesting map images that can be cached', () => {
   let server: TestServer
   let map: FixtureMap
   let render: jest.SpyInstance
+  let realRender: IRenderPoolComponent['render']
+  let tiles: Tile[]
   let response: Response
 
   beforeEach(async () => {
+    tiles = [
+      buildTile('0,0', { type: TileType.PLAZA }),
+      buildTile('1,0', { type: TileType.OWNED, estateId: '7' }),
+      buildTile('2,0', { type: TileType.OWNED, estateId: '7', left: true }),
+    ]
     map = createFixtureMap({
       lastUpdatedAt: MAP_VERSION,
       landVersion: LAND_VERSION,
       overlayVersion: OVERLAY_VERSION,
-      tiles: [
-        buildTile('0,0', { type: TileType.PLAZA }),
-        buildTile('1,0', { type: TileType.OWNED, estateId: '7' }),
-        buildTile('2,0', { type: TileType.OWNED, estateId: '7', left: true }),
-      ],
+      tiles,
     })
     server = await startTestServer({ map })
-    render = jest.spyOn(server.components.renderPool, 'render')
+    const { renderPool } = server.components
+    realRender = renderPool.render.bind(renderPool)
+    render = jest.spyOn(renderPool, 'render')
   })
 
   afterEach(async () => {
@@ -245,6 +251,79 @@ describe('when requesting map images that can be cached', () => {
         renders: render.mock.calls.length,
         sameEtag: etags[0] === etags[1],
       }).toEqual({ renders: changes ? 2 : 1, sameEtag: !changes })
+    })
+  })
+
+  describe('and the map refreshes while the render waits for a thread', () => {
+    let refreshedTiles: Tile[]
+    let pngs: { served: Buffer; expected: Buffer; afterRefresh: Buffer }
+    let etags: (string | null)[]
+
+    beforeEach(async () => {
+      refreshedTiles = [buildTile('0,0', { type: TileType.ROAD })]
+      // the pool builds the job once a thread frees, after the refresh
+      render.mockImplementationOnce((kind, getJob, options) => {
+        map.refresh({ tiles: refreshedTiles, landVersion: 'aaaaaaaaaaaaaaaa' })
+        return realRender(kind, getJob, options)
+      })
+      const path = `/v2/map.png?${SMALL}&center=0,0`
+      const served = await server.fetch(path)
+      const expected = await realRender('map', () =>
+        server.components.image.getRenderJob(
+          Object.fromEntries(tiles.map((tile) => [tile.id, tile])),
+          100,
+          100,
+          10,
+          { x: 0, y: 0 },
+          [],
+          false,
+          false
+        )
+      )
+      const afterRefresh = await server.fetch(path)
+      pngs = {
+        served: Buffer.from(await served.arrayBuffer()),
+        expected,
+        afterRefresh: Buffer.from(await afterRefresh.arrayBuffer()),
+      }
+      etags = [served.headers.get('etag'), afterRefresh.headers.get('etag')]
+    })
+
+    it('should render the tiles of the version in its ETag', () => {
+      expect({
+        etag: etags[0],
+        matches: pngs.served.equals(pngs.expected),
+      }).toEqual({ etag: LAND_HEADERS.etag, matches: true })
+    })
+
+    it('should serve the refreshed tiles under the new version', () => {
+      expect({
+        etag: etags[1],
+        differs: !pngs.afterRefresh.equals(pngs.served),
+      }).toEqual({
+        etag: expect.stringMatching(/^W\/"aaaaaaaaaaaaaaaa-/),
+        differs: true,
+      })
+    })
+  })
+
+  describe('and the map refreshes while an estate image is being described', () => {
+    beforeEach(async () => {
+      const servedTiles = await map.getTiles()
+      // a refresh landing on any await of the request
+      map.getTiles.mockImplementation(async () => {
+        map.refresh({ tiles: [], landVersion: 'aaaaaaaaaaaaaaaa' })
+        return servedTiles
+      })
+      response = await server.fetch(`/v2/estates/7/map.png?${SMALL}`)
+      await response.arrayBuffer()
+    })
+
+    it("should serve the estate of the snapshot under that snapshot's version", () => {
+      expect({
+        status: response.status,
+        etag: response.headers.get('etag'),
+      }).toEqual({ status: 200, etag: LAND_HEADERS.etag })
     })
   })
 

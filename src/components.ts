@@ -121,11 +121,11 @@ export async function initComponents(): Promise<AppComponents> {
     s3,
     logs,
   })
-  const image = createImageComponent({ map })
+  const image = createImageComponent()
   const district = createDistrictComponent()
   const statusChecks = await createStatusCheckComponent({ server, config })
-  const renderMiniMap = await createMiniMapRendererComponent({ map })
-  const renderEstateMiniMap = await createEstatesRendererComponent({ map })
+  const renderMiniMap = await createMiniMapRendererComponent()
+  const renderEstateMiniMap = await createEstatesRendererComponent()
   const renderPool = await createRenderPoolComponent({ config, logs, metrics })
   const imageCache = await createImageCacheComponent({ config, logs, metrics })
   const features = await createFeaturesComponent(

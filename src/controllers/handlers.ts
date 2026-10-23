@@ -8,7 +8,7 @@ import {
 } from '../logic/filter-params'
 import { InvalidRequestError, isErrorWithMessage } from '../logic/error'
 import { getMapBounds, getTilesFilter, MapBounds } from '../logic/tiles-request'
-import { Tile } from '../modules/map/types'
+import { MapSnapshot, Tile } from '../modules/map/types'
 import { RenderAbortedError, RenderBusyError } from '../adapters/render-pool'
 import { ImageKind, ImageVersionScope } from '../adapters/image-cache'
 import {
@@ -167,6 +167,7 @@ function hasOverlays(params: MapImageParams): boolean {
 
 function renderMapImage(
   components: Pick<AppComponents, 'image' | 'renderPool'>,
+  snapshot: MapSnapshot,
   params: MapImageParams,
   signal: AbortSignal
 ): Promise<Buffer> {
@@ -175,6 +176,7 @@ function renderMapImage(
     'map',
     () =>
       components.image.getRenderJob(
+        snapshot.tiles,
         width,
         height,
         size,
@@ -222,23 +224,25 @@ function toPngErrorResponse(error: unknown): IHttpServerComponent.IResponse {
 
 // both versions are fingerprints of the data, the same on every replica
 function getImageVersion(
-  map: AppComponents['map'],
+  snapshot: MapSnapshot,
   overlays: boolean
 ): { scope: ImageVersionScope; version: string } {
   return overlays
-    ? { scope: 'overlay', version: map.getOverlayVersion() }
-    : { scope: 'land', version: map.getLandVersion() }
+    ? { scope: 'overlay', version: snapshot.overlayVersion }
+    : { scope: 'land', version: snapshot.landVersion }
 }
 
 /**
  * Serves a map image: answers conditional requests before anything is rendered, then serves the
- * PNG from the image cache, rendering it once on a miss.
+ * PNG from the image cache, rendering it once on a miss. The map snapshot is taken once, before
+ * anything awaits, and both the version and the render read from it, so an image always matches
+ * its ETag even when the map refreshes while the render waits for a thread.
  */
 async function handlePngRequest(
   context: PngRequest & {
     components: Pick<AppComponents, 'map' | 'imageCache'>
   },
-  getSource: () => PngSource | Promise<PngSource>
+  getSource: (snapshot: MapSnapshot) => PngSource
 ): Promise<IHttpServerComponent.IResponse> {
   const { components, request, url } = context
   const { map, imageCache } = components
@@ -246,8 +250,9 @@ async function handlePngRequest(
     return { status: 503, body: 'Not ready' }
   }
   try {
-    const { kind, key, overlays, render } = await getSource()
-    const { scope, version } = getImageVersion(map, overlays)
+    const snapshot = map.getSnapshot()
+    const { kind, key, overlays, render } = getSource(snapshot)
+    const { scope, version } = getImageVersion(snapshot, overlays)
     const headers = getImageCacheHeaders(version, `${kind}|${key}`, url)
     if (isNotModified(request.headers, headers.etag)) {
       imageCache.record(kind, 'not_modified')
@@ -273,12 +278,14 @@ export async function miniMapHandler(
   }
 ) {
   const { renderPool, renderMiniMap } = context.components
-  return handlePngRequest(context, () => ({
+  return handlePngRequest(context, ({ tiles }) => ({
     kind: 'minimap',
     key: '',
     overlays: false,
     render: (signal) =>
-      renderPool.render('minimap', renderMiniMap.getRenderJob, { signal }),
+      renderPool.render('minimap', () => renderMiniMap.getRenderJob(tiles), {
+        signal,
+      }),
   }))
 }
 
@@ -288,14 +295,16 @@ export async function estateMapHandler(
   }
 ) {
   const { renderPool, renderEstateMiniMap } = context.components
-  return handlePngRequest(context, () => ({
+  return handlePngRequest(context, ({ tiles }) => ({
     kind: 'estatemap',
     key: '',
     overlays: false,
     render: (signal) =>
-      renderPool.render('estatemap', renderEstateMiniMap.getRenderJob, {
-        signal,
-      }),
+      renderPool.render(
+        'estatemap',
+        () => renderEstateMiniMap.getRenderJob(tiles),
+        { signal }
+      ),
   }))
 }
 
@@ -305,13 +314,13 @@ export const mapPngRequestHandler = async (
   }
 ) => {
   const { components } = context
-  return handlePngRequest(context, () => {
+  return handlePngRequest(context, (snapshot) => {
     const params = clipSelection(extractParams(context.url))
     return {
       kind: 'map',
       key: getMapImageKey(params),
       overlays: hasOverlays(params),
-      render: (signal) => renderMapImage(components, params, signal),
+      render: (signal) => renderMapImage(components, snapshot, params, signal),
     }
   })
 }
@@ -326,7 +335,7 @@ export const parcelMapPngRequestHandler = async (
   }
 ) => {
   const { components, params } = context
-  return handlePngRequest(context, () => {
+  return handlePngRequest(context, (snapshot) => {
     const center = {
       x: parseCoordinate(params.x, 'x'),
       y: parseCoordinate(params.y, 'y'),
@@ -340,7 +349,8 @@ export const parcelMapPngRequestHandler = async (
       kind: 'parcel',
       key: getMapImageKey(imageParams),
       overlays: hasOverlays(imageParams),
-      render: (signal) => renderMapImage(components, imageParams, signal),
+      render: (signal) =>
+        renderMapImage(components, snapshot, imageParams, signal),
     }
   })
 }
@@ -352,11 +362,11 @@ export const estateMapPngRequestHandler = async (
   }
 ) => {
   const { components } = context
-  const { map, imageCache } = components
+  const { imageCache } = components
   const { estateId } = context.params
-  return handlePngRequest(context, async () => {
+  return handlePngRequest(context, (snapshot) => {
     const params = extractParams(context.url)
-    const selected = getEstateTiles(await map.getTiles(), estateId)
+    const selected = getEstateTiles(snapshot.tiles, estateId)
     if (selected.length === 0) {
       imageCache.record('estate', 'dissolved')
       throw new DissolvedEstateError(estateId)
@@ -373,6 +383,7 @@ export const estateMapPngRequestHandler = async (
         const y = ys[(ys.length / 2) | 0] || 0
         return renderMapImage(
           components,
+          snapshot,
           { ...params, center: { x, y }, selected },
           signal
         )

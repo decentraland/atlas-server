@@ -1,9 +1,9 @@
-import { IMapComponent, Tile } from '../modules/map/types'
+import { Tile } from '../modules/map/types'
 import { PixelsRenderJob } from './render-pool'
 
 export type MiniMapRendererComponent = {
-  /** Builds the minimap pixels; the render pool encodes them. */
-  getRenderJob(): Promise<PixelsRenderJob>
+  /** Builds the minimap pixels of the given tiles, e.g. from a map snapshot; the render pool encodes them. */
+  getRenderJob(tiles: Record<string, Tile>): PixelsRenderJob
 }
 
 const DIMENSION = 512
@@ -24,15 +24,12 @@ function toRenderJob(data: Uint8ClampedArray): PixelsRenderJob {
  * GREEN = (isDistrict & 1) << 5 | (isRoad & 1) << 6 | (isOwned & 1) << 7
  * BLUE = 0
  */
-export async function createMiniMapRendererComponent(components: {
-  map: IMapComponent
-}): Promise<MiniMapRendererComponent> {
+export async function createMiniMapRendererComponent(): Promise<MiniMapRendererComponent> {
   const dimension = DIMENSION
 
-  async function getRenderJob() {
+  function getRenderJob(data: Record<string, Tile>) {
     // a fresh buffer per render, since it is transferred to the worker
     const pixels = new Uint8ClampedArray(dimension * dimension * 4)
-    const data = await components.map.getTiles()
     for (var pos in data) {
       const { x, y, top, left, topLeft, type } = data[pos]
 
@@ -112,15 +109,12 @@ function getEstateIndexes(tiles: Record<string, Tile>): Map<string, number> {
 /**
  * This minimap encodes independent estates on the three visible color channels
  */
-export async function createEstatesRendererComponent(components: {
-  map: IMapComponent
-}): Promise<MiniMapRendererComponent> {
+export async function createEstatesRendererComponent(): Promise<MiniMapRendererComponent> {
   const dimension = DIMENSION
 
-  async function getRenderJob() {
+  function getRenderJob(data: Record<string, Tile>) {
     // a fresh buffer per render, since it is transferred to the worker
     const pixels = new Uint8ClampedArray(dimension * dimension * 4)
-    const data = await components.map.getTiles()
     const estateIndexes = getEstateIndexes(data)
 
     for (var pos in data) {

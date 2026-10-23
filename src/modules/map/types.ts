@@ -16,6 +16,16 @@ export enum MapEvents {
   ERROR = 'error',
 }
 
+/**
+ * The served tiles and the versions computed from them, captured together. The map swaps whole
+ * records and never changes a served one, so holding a snapshot keeps it consistent.
+ */
+export type MapSnapshot = {
+  tiles: Record<string, Tile>
+  landVersion: string
+  overlayVersion: string
+}
+
 export interface IMapComponent {
   events: EventEmitter
   getTiles: () => Promise<Record<string, Tile>>
@@ -29,6 +39,8 @@ export interface IMapComponent {
   getLandVersion: () => string
   /** Changes only when what the images draw with price or rental overlays changes; equal across replicas for the same data. */
   getOverlayVersion: () => string
+  /** The current tiles with their versions; take it once per request and read everything from it. */
+  getSnapshot: () => MapSnapshot
   getLastUploadedTilesUrl: () => { v1?: string; v2?: string }
 }
 

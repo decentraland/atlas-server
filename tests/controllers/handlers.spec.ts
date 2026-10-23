@@ -9,7 +9,7 @@ import {
   tokenRequestHandler,
 } from '../../src/controllers/handlers'
 import { NFT } from '../../src/modules/api/types'
-import { Tile, TileType } from '../../src/modules/map/types'
+import { MapSnapshot, Tile, TileType } from '../../src/modules/map/types'
 import {
   RenderAbortedError,
   RenderBusyError,
@@ -31,8 +31,6 @@ type PngComponents = Pick<
   AppComponents,
   'image' | 'map' | 'renderPool' | 'imageCache'
 >
-
-const MAP_VERSION = Date.UTC(2026, 0, 1, 12, 0, 0)
 
 const LAND_VERSION = '0123456789abcdef'
 const OVERLAY_VERSION = 'fedcba9876543210'
@@ -77,7 +75,8 @@ describe('when handling the map image requests', () => {
   let components: PngComponents
   let request: { signal: AbortSignal; headers: Headers }
   let isReady: jest.Mock
-  let getTiles: jest.Mock
+  let getSnapshot: jest.Mock
+  let snapshot: MapSnapshot
   let getRenderJob: jest.Mock
   let render: jest.Mock
   let job: RenderJob
@@ -94,8 +93,13 @@ describe('when handling the map image requests', () => {
     }
     request = { signal: new AbortController().signal, headers: new Headers() }
     isReady = jest.fn().mockReturnValue(true)
-    getTiles = jest.fn().mockResolvedValue({})
-    getRenderJob = jest.fn().mockResolvedValue(job)
+    snapshot = {
+      tiles: {},
+      landVersion: LAND_VERSION,
+      overlayVersion: OVERLAY_VERSION,
+    }
+    getSnapshot = jest.fn().mockReturnValue(snapshot)
+    getRenderJob = jest.fn().mockReturnValue(job)
     // builds the job like the pool does once a thread is free
     render = jest.fn(
       async (_kind: string, getJob: () => Promise<RenderJob>) => {
@@ -106,10 +110,7 @@ describe('when handling the map image requests', () => {
     components = {
       map: {
         isReady,
-        getTiles,
-        getLastUpdatedAt: () => MAP_VERSION,
-        getLandVersion: () => LAND_VERSION,
-        getOverlayVersion: () => OVERLAY_VERSION,
+        getSnapshot,
       } as unknown as AppComponents['map'],
       image: { getRenderJob },
       renderPool: { render },
@@ -140,8 +141,9 @@ describe('when handling the map image requests', () => {
         })
       })
 
-      it('should build the render job from the params', () => {
+      it("should build the render job from the params and the snapshot's tiles", () => {
         expect(getRenderJob).toHaveBeenCalledWith(
+          snapshot.tiles,
           1024,
           1024,
           20,
@@ -288,7 +290,7 @@ describe('when handling the map image requests', () => {
     let response: Awaited<ReturnType<typeof handler>>
 
     beforeEach(() => {
-      getMiniMapJob = jest.fn().mockResolvedValue(job)
+      getMiniMapJob = jest.fn().mockReturnValue(job)
       context = {
         request,
         url: new URL(`http://localhost/v1/${kind}.png`),
@@ -313,8 +315,8 @@ describe('when handling the map image requests', () => {
         })
       })
 
-      it("should render the minimap's job", () => {
-        expect(getMiniMapJob).toHaveBeenCalledTimes(1)
+      it("should render the minimap's job from the snapshot's tiles", () => {
+        expect(getMiniMapJob.mock.calls).toEqual([[snapshot.tiles]])
       })
 
       it('should label the render with the image it is for', () => {
@@ -357,6 +359,7 @@ describe('when handling the map image requests', () => {
 
       it('should render the image centered on and selecting the parcel', () => {
         expect(getRenderJob).toHaveBeenCalledWith(
+          snapshot.tiles,
           1024,
           1024,
           20,
@@ -401,14 +404,15 @@ describe('when handling the map image requests', () => {
 
     describe('and the estate has parcels', () => {
       beforeEach(async () => {
-        getTiles.mockResolvedValueOnce(
-          Object.fromEntries(
+        getSnapshot.mockReturnValueOnce({
+          ...snapshot,
+          tiles: Object.fromEntries(
             [-10, -9, 2, 10].map((x) => {
               const tile = buildTile(x, 0, '7')
               return [tile.id, tile]
             })
-          )
-        )
+          ),
+        })
         response = await estateMapPngRequestHandler({
           components,
           request,
@@ -418,7 +422,7 @@ describe('when handling the map image requests', () => {
       })
 
       it('should center the image on the numeric median of the estate parcels', () => {
-        expect(getRenderJob.mock.calls[0][3]).toEqual({ x: 2, y: 0 })
+        expect(getRenderJob.mock.calls[0][4]).toEqual({ x: 2, y: 0 })
       })
 
       it('should respond with a 200 and the encoded PNG', () => {

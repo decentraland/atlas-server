@@ -1,15 +1,15 @@
 import { Coord, Layer, describeMap, getViewport } from '../render'
-import { IMapComponent, Tile, TileType } from '../map/types'
-import { coordsToId, isExpired as isOrderExpired } from '../map/utils'
-import { isExpired as isRentalExpired } from '../../logic/rental'
+import { Tile, TileType } from '../map/types'
+import { coordsToId } from '../map/utils'
 import { MapRenderJob } from '../../adapters/render-pool'
 import { IImageComponent } from './types'
 
-export function createImageComponent(components: {
-  map: IMapComponent
-}): IImageComponent {
-  const { map } = components
-
+/**
+ * Builds the render jobs of the map images. An image is a function of the tiles it is given
+ * and its params only, so it always matches the version of those tiles.
+ * @returns the image component.
+ */
+export function createImageComponent(): IImageComponent {
   function getColor(tile: Tile) {
     switch (tile.type) {
       case TileType.DISTRICT:
@@ -25,7 +25,8 @@ export function createImageComponent(components: {
     }
   }
 
-  async function getRenderJob(
+  function getRenderJob(
+    tiles: Record<string, Tile>,
     width: number,
     height: number,
     size: number,
@@ -33,19 +34,15 @@ export function createImageComponent(components: {
     selected: Coord[],
     showOnSale: boolean,
     showOnRent: boolean
-  ): Promise<MapRenderJob> {
+  ): MapRenderJob {
     const pan = { x: 0, y: 0 }
     const { nw, se } = getViewport({ width, height, center, size, padding: 1 })
-    const tiles = await map.getTiles()
     const layer: Layer = (x, y) => {
       const id = coordsToId(x, y)
       const tile = tiles[id]
-      const isOnSale = showOnSale && tile && tile.price && !isOrderExpired(tile)
-      const isListedForRent =
-        showOnRent &&
-        tile &&
-        tile.rentalListing &&
-        !isRentalExpired(tile.rentalListing)
+      // no clock here: the map drops expired orders and rentals on every refresh
+      const isOnSale = showOnSale && tile && tile.price
+      const isListedForRent = showOnRent && tile && tile.rentalListing
       const result = tile
         ? {
             color: isOnSale || isListedForRent ? '#1FBCFF' : getColor(tile),

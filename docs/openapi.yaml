@@ -24,7 +24,9 @@ info:
     estates and their borders) and follow the land version (`landVersion` in
     `/v2/tiles/info`), which doesn't move on price, order or rental changes. Images with those
     overlays follow the overlay version (`overlayVersion`), which also moves when a listing
-    is created, changes price, expires or ends.
+    is created, changes price, expires or ends. An image is drawn only from the data of its
+    version: expired listings are dropped when the map refreshes (every `REFRESH_INTERVAL`,
+    60s by default), so one may still be highlighted until then.
 
     Every 200 carries a weak `ETag` (`W/"<version>-<request hash>"`) and
     `Cache-Control: public, max-age=60, s-maxage=300, stale-while-revalidate=86400`, so a CDN

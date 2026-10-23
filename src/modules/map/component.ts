@@ -5,7 +5,7 @@ import {
 import { EventEmitter } from 'events'
 import future from 'fp-future'
 import { Cursors, NFT, Result } from '../api/types'
-import { IMapComponent, Tile, MapEvents } from './types'
+import { IMapComponent, MapSnapshot, Tile, MapEvents } from './types'
 import {
   addSpecialTiles,
   computeEstate,
@@ -64,8 +64,8 @@ export async function createMapComponent(
   let lastRentalsSweepAt = 0
   let lastUpdatedAt = 0 // newest change fetched, in ms
   let dataUpdatedAt = 0 // last change to the served data, in ms
-  let landVersion = '' // fingerprint of what the images draw without overlays
-  let overlayVersion = '' // fingerprint of what the images draw with the price and rental overlays
+  // the served tiles and their fingerprints: what the images draw without and with overlays
+  let snapshot: MapSnapshot = { tiles: {}, landVersion: '', overlayVersion: '' }
   let lastUploadedTilesUrl: { v1?: string; v2?: string } = {}
 
   // methods
@@ -369,8 +369,12 @@ export async function createMapComponent(
     lastRentalsSweepAt = Date.now()
     lastUpdatedAt = result.updatedAt
     dataUpdatedAt = result.updatedAt
-    landVersion = getLandVersion(initialBaseTiles)
-    overlayVersion = getOverlayVersion(landVersion, tilesWithTrades)
+    const landVersion = getLandVersion(initialBaseTiles)
+    snapshot = {
+      tiles: tilesWithTrades,
+      landVersion,
+      overlayVersion: getOverlayVersion(landVersion, tilesWithTrades),
+    }
     tiles.resolve(tilesWithTrades)
     parcels.resolve(initialParcels)
     estates.resolve(initialEstates)
@@ -511,11 +515,16 @@ export async function createMapComponent(
             oldTiles,
             tilesWithTrades
           )
-          if (landChanged) {
-            landVersion = getLandVersion(nextBaseTiles)
-          }
-          if (landChanged || servedTilesChanged) {
-            overlayVersion = getOverlayVersion(landVersion, tilesWithTrades)
+          const landVersion = landChanged
+            ? getLandVersion(nextBaseTiles)
+            : snapshot.landVersion
+          snapshot = {
+            tiles: tilesWithTrades,
+            landVersion,
+            overlayVersion:
+              landChanged || servedTilesChanged
+                ? getOverlayVersion(landVersion, tilesWithTrades)
+                : snapshot.overlayVersion,
           }
           baseTiles = nextBaseTiles
           if (result) {
@@ -670,8 +679,9 @@ export async function createMapComponent(
     getToken,
     isReady,
     getLastUpdatedAt,
-    getLandVersion: () => landVersion,
-    getOverlayVersion: () => overlayVersion,
+    getLandVersion: () => snapshot.landVersion,
+    getOverlayVersion: () => snapshot.overlayVersion,
+    getSnapshot: () => snapshot,
     getLastUploadedTilesUrl: () => lastUploadedTilesUrl,
   }
 }

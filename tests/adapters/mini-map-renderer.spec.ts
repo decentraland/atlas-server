@@ -2,7 +2,7 @@ import {
   createEstatesRendererComponent,
   MiniMapRendererComponent,
 } from '../../src/adapters/mini-map-renderer'
-import { IMapComponent, Tile, TileType } from '../../src/modules/map/types'
+import { Tile, TileType } from '../../src/modules/map/types'
 import { decodePng } from '../helpers/png'
 import { startRenderPool, StartedRenderPool } from '../helpers/render-pool'
 
@@ -35,17 +35,12 @@ describe('when rendering the estates minimap', () => {
       buildTile(3, 0, '20'),
       buildTile(4, 0),
     ]
-    renderer = await createEstatesRendererComponent({
-      map: {
-        getTiles: jest
-          .fn()
-          .mockResolvedValue(
-            Object.fromEntries(tiles.map((tile) => [tile.id, tile]))
-          ),
-      } as unknown as IMapComponent,
-    })
+    renderer = await createEstatesRendererComponent()
+    const record = Object.fromEntries(tiles.map((tile) => [tile.id, tile]))
     const pixelAt = await decodePng(
-      await renderPool.pool.render('estatemap', renderer.getRenderJob)
+      await renderPool.pool.render('estatemap', () =>
+        renderer.getRenderJob(record)
+      )
     )
     estateIndexAt = (x, y) => {
       const [r, g, b] = pixelAt(x + 256, 512 - (y + 256))
@@ -86,17 +81,12 @@ describe('when rendering the estates minimap of the same tiles stored in differe
     ]
     pngs = []
     for (const ordered of [tiles, [...tiles].reverse()]) {
-      const renderer = await createEstatesRendererComponent({
-        map: {
-          getTiles: jest
-            .fn()
-            .mockResolvedValue(
-              Object.fromEntries(ordered.map((tile) => [tile.id, tile]))
-            ),
-        } as unknown as IMapComponent,
-      })
+      const renderer = await createEstatesRendererComponent()
+      const record = Object.fromEntries(ordered.map((tile) => [tile.id, tile]))
       pngs.push(
-        await renderPool.pool.render('estatemap', renderer.getRenderJob)
+        await renderPool.pool.render('estatemap', () =>
+          renderer.getRenderJob(record)
+        )
       )
     }
     const pixelAt = await decodePng(pngs[0])
