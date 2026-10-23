@@ -11,6 +11,8 @@ import {
   computeEstate,
   getEstateDependentIds,
   getEstateFlags,
+  getLandVersion,
+  hasLandChanged,
   isExpired,
   isSameTile,
   stableStringify,
@@ -61,6 +63,7 @@ export async function createMapComponent(
   let lastRentalsSweepAt = 0
   let lastUpdatedAt = 0 // newest change fetched, in ms
   let dataUpdatedAt = 0 // last change to the served data, in ms
+  let landVersion = '' // fingerprint of what the images draw without overlays
   let lastUploadedTilesUrl: { v1?: string; v2?: string } = {}
 
   // methods
@@ -364,6 +367,7 @@ export async function createMapComponent(
     lastRentalsSweepAt = Date.now()
     lastUpdatedAt = result.updatedAt
     dataUpdatedAt = result.updatedAt
+    landVersion = getLandVersion(initialBaseTiles)
     tiles.resolve(tilesWithTrades)
     parcels.resolve(initialParcels)
     estates.resolve(initialEstates)
@@ -496,6 +500,13 @@ export async function createMapComponent(
             nextBaseTiles,
             await fetchActiveTrades()
           )
+          if (
+            result &&
+            hasUpdates &&
+            hasLandChanged(baseTiles, nextBaseTiles, result.tiles)
+          ) {
+            landVersion = getLandVersion(nextBaseTiles)
+          }
           baseTiles = nextBaseTiles
           if (result) {
             cursors = result.cursors
@@ -652,6 +663,7 @@ export async function createMapComponent(
     getToken,
     isReady,
     getLastUpdatedAt,
+    getLandVersion: () => landVersion,
     getLastUploadedTilesUrl: () => lastUploadedTilesUrl,
   }
 }

@@ -45,6 +45,7 @@ export type FixtureMapData = {
   /** Keyed by "<contract address>-<token id>". */
   tokens?: Record<string, NFT>
   lastUpdatedAt?: number
+  landVersion?: string
   lastUploadedTilesUrl?: { v1?: string; v2?: string }
   ready?: boolean
 }
@@ -94,6 +95,9 @@ export function createFixtureMap(data: FixtureMapData = {}): FixtureMap {
     getLastUpdatedAt: jest
       .fn()
       .mockImplementation(() => data.lastUpdatedAt ?? 0),
+    getLandVersion: jest
+      .fn()
+      .mockImplementation(() => data.landVersion ?? '0000000000000000'),
     getLastUploadedTilesUrl: jest
       .fn()
       .mockImplementation(() => data.lastUploadedTilesUrl ?? {}),

@@ -10,12 +10,15 @@ import { InvalidRequestError, isErrorWithMessage } from '../logic/error'
 import { getMapBounds, getTilesFilter, MapBounds } from '../logic/tiles-request'
 import { Tile } from '../modules/map/types'
 import { RenderAbortedError, RenderBusyError } from '../adapters/render-pool'
-import { ImageKind } from '../adapters/image-cache'
+import { ImageKind, ImageVersionScope } from '../adapters/image-cache'
 import {
   getImageCacheHeaders,
+  ImageVersion,
   isNotModified,
   REDIRECT_CACHE_CONTROL,
 } from '../logic/image-http-cache'
+import { getEstateTiles } from '../logic/estate-tiles'
+import { getViewport } from '../modules/render'
 import { AppComponents } from '../types'
 import { ApplicationName, Feature } from '../modules/features/types'
 
@@ -115,25 +118,52 @@ type PngRequest = {
 type PngSource = {
   kind: ImageKind
   key: string
+  /** draws prices or rentals, so it changes with every map update rather than with the land */
+  overlays: boolean
   render: (signal: AbortSignal) => Promise<Buffer>
 }
 
 type MapImageParams = ReturnType<typeof extractParams>
 
-// equal keys must render equal images: the selection is a set and the params are already clamped
-function getMapImageKey(params: MapImageParams): string {
-  const { width, height, size, center, selected, showOnSale } = params
-  const selection = Array.from(
-    new Set(selected.map((coords) => `${coords.x},${coords.y}`))
-  ).sort()
+// the params every map image is drawn with; they are already clamped
+function getImageParamsKey(params: MapImageParams): string {
   return [
-    `${width}x${height}`,
-    size,
-    `${center.x},${center.y}`,
-    selection.join(';'),
-    showOnSale ? 1 : 0,
+    `${params.width}x${params.height}`,
+    params.size,
+    params.showOnSale ? 1 : 0,
     params.showListedForRent ? 1 : 0,
   ].join('|')
+}
+
+// the renderer only reads the tiles inside the viewport, so a selection outside it changes nothing
+function clipSelection(params: MapImageParams): MapImageParams {
+  const { width, height, size, center } = params
+  const { nw, se } = getViewport({ width, height, center, size, padding: 1 })
+  const ids = new Set<string>()
+  const selected = params.selected.filter(({ x, y }) => {
+    const id = `${x},${y}`
+    if (x < nw.x || x >= se.x || y < se.y || y >= nw.y || ids.has(id)) {
+      return false
+    }
+    ids.add(id)
+    return true
+  })
+  return { ...params, selected }
+}
+
+// equal keys must render equal images: the selection is a set, clipped to the viewport
+function getMapImageKey(params: MapImageParams): string {
+  const { center, selected } = params
+  const selection = selected.map(({ x, y }) => `${x},${y}`).sort()
+  return [
+    getImageParamsKey(params),
+    `${center.x},${center.y}`,
+    selection.join(';'),
+  ].join('|')
+}
+
+function hasOverlays(params: MapImageParams): boolean {
+  return params.showOnSale || params.showListedForRent
 }
 
 function renderMapImage(
@@ -191,6 +221,18 @@ function toPngErrorResponse(error: unknown): IHttpServerComponent.IResponse {
   }
 }
 
+// images without overlays follow the land version, which is the same on every replica
+function getImageVersion(
+  map: AppComponents['map'],
+  overlays: boolean
+): { scope: ImageVersionScope; version: ImageVersion } {
+  if (!overlays) {
+    return { scope: 'land', version: { value: map.getLandVersion() } }
+  }
+  const updatedAt = map.getLastUpdatedAt()
+  return { scope: 'map', version: { value: String(updatedAt), updatedAt } }
+}
+
 /**
  * Serves a map image: answers conditional requests before anything is rendered, then serves the
  * PNG from the image cache, rendering it once on a miss.
@@ -199,7 +241,7 @@ async function handlePngRequest(
   context: PngRequest & {
     components: Pick<AppComponents, 'map' | 'imageCache'>
   },
-  getSource: () => PngSource
+  getSource: () => PngSource | Promise<PngSource>
 ): Promise<IHttpServerComponent.IResponse> {
   const { components, request, url } = context
   const { map, imageCache } = components
@@ -207,15 +249,15 @@ async function handlePngRequest(
     return { status: 503, body: 'Not ready' }
   }
   try {
-    const { kind, key, render } = getSource()
-    const version = map.getLastUpdatedAt()
+    const { kind, key, overlays, render } = await getSource()
+    const { scope, version } = getImageVersion(map, overlays)
     const headers = getImageCacheHeaders(version, `${kind}|${key}`, url)
     if (isNotModified(request.headers, headers.etag, version)) {
-      imageCache.recordNotModified(kind)
+      imageCache.record(kind, 'not_modified')
       return { status: 304, headers: { ...headers } }
     }
     const png = await imageCache.getOrRender(
-      { kind, key, version, signal: request.signal },
+      { kind, key, scope, version: version.value, signal: request.signal },
       render
     )
     return {
@@ -237,6 +279,7 @@ export async function miniMapHandler(
   return handlePngRequest(context, () => ({
     kind: 'minimap',
     key: '',
+    overlays: false,
     render: (signal) =>
       renderPool.render('minimap', renderMiniMap.getRenderJob, { signal }),
   }))
@@ -251,6 +294,7 @@ export async function estateMapHandler(
   return handlePngRequest(context, () => ({
     kind: 'estatemap',
     key: '',
+    overlays: false,
     render: (signal) =>
       renderPool.render('estatemap', renderEstateMiniMap.getRenderJob, {
         signal,
@@ -265,10 +309,11 @@ export const mapPngRequestHandler = async (
 ) => {
   const { components } = context
   return handlePngRequest(context, () => {
-    const params = extractParams(context.url)
+    const params = clipSelection(extractParams(context.url))
     return {
       kind: 'map',
       key: getMapImageKey(params),
+      overlays: hasOverlays(params),
       render: (signal) => renderMapImage(components, params, signal),
     }
   })
@@ -297,6 +342,7 @@ export const parcelMapPngRequestHandler = async (
     return {
       kind: 'parcel',
       key: getMapImageKey(imageParams),
+      overlays: hasOverlays(imageParams),
       render: (signal) => renderMapImage(components, imageParams, signal),
     }
   })
@@ -309,29 +355,21 @@ export const estateMapPngRequestHandler = async (
   }
 ) => {
   const { components } = context
-  const { map } = components
+  const { map, imageCache } = components
   const { estateId } = context.params
-  return handlePngRequest(context, () => {
+  return handlePngRequest(context, async () => {
     const params = extractParams(context.url)
+    const selected = getEstateTiles(await map.getTiles(), estateId)
+    if (selected.length === 0) {
+      imageCache.record('estate', 'dissolved')
+      throw new DissolvedEstateError(estateId)
+    }
     return {
       kind: 'estate',
       // the center and selection come from the estate, not the query
-      key: [
-        estateId,
-        `${params.width}x${params.height}`,
-        params.size,
-        params.showOnSale ? 1 : 0,
-        params.showListedForRent ? 1 : 0,
-      ].join('|'),
-      // the estate's parcels are only looked up on a miss
-      render: async (signal) => {
-        const tiles = await map.getTiles()
-        const selected = Object.values(tiles).filter(
-          (tile) => tile.estateId && tile.estateId === estateId
-        )
-        if (selected.length === 0) {
-          throw new DissolvedEstateError(estateId)
-        }
+      key: [estateId, getImageParamsKey(params)].join('|'),
+      overlays: hasOverlays(params),
+      render: (signal) => {
         const xs = selected.map((coords) => coords.x).sort((a, b) => a - b)
         const ys = selected.map((coords) => coords.y).sort((a, b) => a - b)
         const x = xs[(xs.length / 2) | 0] || 0
@@ -489,6 +527,6 @@ export async function tilesInfoRequestHandler(context: {
       'cache-control': 'no-cache',
     },
     status: 200,
-    body: { lastUpdatedAt },
+    body: { lastUpdatedAt, landVersion: map.getLandVersion() },
   }
 }

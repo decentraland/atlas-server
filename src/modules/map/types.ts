@@ -25,6 +25,8 @@ export interface IMapComponent {
   getToken: (contractAddress: string, tokenId: string) => Promise<NFT | null>
   isReady: () => boolean
   getLastUpdatedAt: () => number
+  /** Changes only when what the images draw without price or rental overlays changes; equal across replicas for the same data. */
+  getLandVersion: () => string
   getLastUploadedTilesUrl: () => { v1?: string; v2?: string }
 }
 

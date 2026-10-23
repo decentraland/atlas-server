@@ -564,6 +564,63 @@ describe('map component', () => {
       })
     })
 
+    describe('and an update only changes a price', () => {
+      let landVersionAtReady: string
+
+      beforeEach(async () => {
+        fetchData.mockResolvedValueOnce(freshResult)
+        fetchUpdatedData.mockResolvedValueOnce({
+          tiles: [
+            buildTile('1,1', {
+              price: 9,
+              expiresAt: futureExpiration,
+              updatedAt: 6000,
+            }),
+          ],
+          parcels: [],
+          estates: [],
+          updatedAt: 6000,
+          cursors: { land: 6, rentals: 5000 },
+        })
+        await startAndWaitUntilReady()
+        landVersionAtReady = map.getLandVersion()
+        lastUpdatedAtAtReady = map.getLastUpdatedAt()
+        await waitUntil(() => fetchUpdatedData.mock.calls.length >= 2)
+      })
+
+      it('should move the last updated time but keep the land version', () => {
+        expect({
+          movedLastUpdatedAt: map.getLastUpdatedAt() > lastUpdatedAtAtReady,
+          landVersion: map.getLandVersion(),
+        }).toEqual({
+          movedLastUpdatedAt: true,
+          landVersion: landVersionAtReady,
+        })
+      })
+    })
+
+    describe('and an update moves a parcel into an estate', () => {
+      let landVersionAtReady: string
+
+      beforeEach(async () => {
+        fetchData.mockResolvedValueOnce(freshResult)
+        fetchUpdatedData.mockResolvedValueOnce({
+          tiles: [buildTile('1,1', { estateId: '7', updatedAt: 6000 })],
+          parcels: [],
+          estates: [],
+          updatedAt: 6000,
+          cursors: { land: 6, rentals: 5000 },
+        })
+        await startAndWaitUntilReady()
+        landVersionAtReady = map.getLandVersion()
+        await waitUntil(() => fetchUpdatedData.mock.calls.length >= 2)
+      })
+
+      it('should change the land version', () => {
+        expect(map.getLandVersion()).not.toBe(landVersionAtReady)
+      })
+    })
+
     describe('and a parcel leaves an estate', () => {
       beforeEach(async () => {
         freshResult.tiles = [
@@ -733,6 +790,52 @@ describe('map component', () => {
       it('should keep the trade price', async () => {
         expect((await map.getTiles())['1,1'].price).toBe(3)
       })
+    })
+  })
+  describe('when two replicas reach the same tiles by different paths', () => {
+    let landVersions: string[]
+
+    beforeEach(async () => {
+      const estateTiles = [
+        buildTile('1,1', { estateId: '7' }),
+        buildTile('2,1', { estateId: '7' }),
+        buildTile('1,0', { estateId: '7' }),
+        buildTile('2,0', { estateId: '7' }),
+      ]
+      // the first one boots with the final tiles, in reverse order
+      freshResult.tiles = [...estateTiles].reverse()
+      fetchData.mockResolvedValueOnce(freshResult)
+      await startAndWaitUntilReady()
+      const firstLandVersion = map.getLandVersion()
+      await map.stop!()
+      // the second one boots before 2,0 joins the estate and reads it as an update
+      freshResult = {
+        ...freshResult,
+        tiles: [...estateTiles.slice(0, 3), buildTile('2,0')],
+      }
+      fetchData.mockResolvedValueOnce(freshResult)
+      fetchUpdatedData.mockResolvedValueOnce({
+        tiles: [buildTile('2,0', { estateId: '7', updatedAt: 6000 })],
+        parcels: [],
+        estates: [],
+        updatedAt: 6000,
+        cursors: { land: 6, rentals: 5000 },
+      })
+      await startAndWaitUntilReady()
+      const secondLandVersionAtReady = map.getLandVersion()
+      await waitUntil(() => fetchUpdatedData.mock.calls.length >= 2)
+      landVersions = [
+        firstLandVersion,
+        secondLandVersionAtReady,
+        map.getLandVersion(),
+      ]
+    })
+
+    it('should give both the same land version once they hold the same tiles', () => {
+      expect({
+        differedBeforeTheUpdate: landVersions[1] !== landVersions[0],
+        equalAfterIt: landVersions[2] === landVersions[0],
+      }).toEqual({ differedBeforeTheUpdate: true, equalAfterIt: true })
     })
   })
 })

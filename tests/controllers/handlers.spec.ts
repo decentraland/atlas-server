@@ -34,13 +34,17 @@ type PngComponents = Pick<
 
 const MAP_VERSION = Date.UTC(2026, 0, 1, 12, 0, 0)
 
-function buildPngHeaders(cacheControl = IMAGE_CACHE_CONTROL) {
+const LAND_VERSION = '0123456789abcdef'
+
+// images without overlays follow the land version and have no modification time
+function buildPngHeaders(overlays = false) {
+  const version = overlays ? MAP_VERSION : LAND_VERSION
   return {
-    etag: expect.stringMatching(
-      new RegExp(`^W/"${MAP_VERSION}-[0-9a-f]{16}"$`)
-    ),
-    'last-modified': new Date(MAP_VERSION).toUTCString(),
-    'cache-control': cacheControl,
+    etag: expect.stringMatching(new RegExp(`^W/"${version}-[0-9a-f]{16}"$`)),
+    ...(overlays
+      ? { 'last-modified': new Date(MAP_VERSION).toUTCString() }
+      : {}),
+    'cache-control': IMAGE_CACHE_CONTROL,
     'content-type': 'image/png',
   }
 }
@@ -106,6 +110,7 @@ describe('when handling the map image requests', () => {
         isReady,
         getTiles,
         getLastUpdatedAt: () => MAP_VERSION,
+        getLandVersion: () => LAND_VERSION,
       } as unknown as AppComponents['map'],
       image: { getRenderJob },
       renderPool: { render },
@@ -131,7 +136,7 @@ describe('when handling the map image requests', () => {
       it('should respond with a 200 and the encoded PNG', () => {
         expect(response).toEqual({
           status: 200,
-          headers: buildPngHeaders(),
+          headers: buildPngHeaders(true),
           body: png,
         })
       })

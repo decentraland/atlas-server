@@ -1,3 +1,4 @@
+import { createHash } from 'crypto'
 import { LegacyTile, SpecialTile, Tile, TileType } from './types'
 import specialTilesJson from './data/specialTiles.json'
 
@@ -113,4 +114,45 @@ export function isExpired(tile: Tile) {
 
 export async function sleep(ms: number) {
   return new Promise<void>((resolve) => setTimeout(resolve, ms))
+}
+
+// the fields the images read when no price or rental overlay is drawn
+function getLandKey(tile: Tile | undefined): string {
+  return tile
+    ? `${tile.type}|${tile.top ? 1 : 0}${tile.left ? 1 : 0}${
+        tile.topLeft ? 1 : 0
+      }|${tile.estateId ?? ''}`
+    : ''
+}
+
+/**
+ * Fingerprints what the map images draw without overlays: the tiles, their types, estate
+ * flags and estates. It depends only on the data, so every replica holding the same tiles
+ * computes the same version.
+ * @param tiles - the tiles, without trades.
+ * @returns a 16 hex digits version.
+ */
+export function getLandVersion(tiles: Record<string, Tile>): string {
+  const ids = Object.keys(tiles).sort()
+  const parts = ids.map((id) => `${id}|${getLandKey(tiles[id])}`)
+  return createHash('sha1').update(parts.join(';')).digest('hex').slice(0, 16)
+}
+
+/**
+ * Tells whether applying some tiles changed what the images draw without overlays.
+ * @param oldTiles - the tiles before the update.
+ * @param newTiles - the tiles after it, with the estate flags recomputed.
+ * @param updatedTiles - the tiles the update brought.
+ * @returns true when a tile or a neighbour whose flags depend on it changed.
+ */
+export function hasLandChanged(
+  oldTiles: Record<string, Tile>,
+  newTiles: Record<string, Tile>,
+  updatedTiles: Tile[]
+): boolean {
+  return updatedTiles.some((tile) =>
+    getEstateDependentIds(tile.x, tile.y).some(
+      (id) => getLandKey(oldTiles[id]) !== getLandKey(newTiles[id])
+    )
+  )
 }

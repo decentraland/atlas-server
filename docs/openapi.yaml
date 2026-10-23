@@ -19,15 +19,23 @@ info:
     cache-control headers to minimize server load
 
     ### Map image caching
-    The PNG endpoints only change when the map does. Every 200 carries a weak `ETag`
-    (`W/"<map version>-<request hash>"`), `Last-Modified` (the map version) and
-    `Cache-Control: public, max-age=300, s-maxage=86400, stale-while-revalidate=86400`,
-    so a CDN may serve a copy up to a day old. Conditional requests (`If-None-Match`, or
-    `If-Modified-Since` without it) are answered with a 304 before anything is rendered.
-    Equivalent requests (e.g. the same `selected` parcels in another order) share the ETag.
+    Every PNG has a version. Images without `on-sale` or `listed-for-rent` only draw the land
+    (tile types, estates and their borders), so they follow the land version (`landVersion`
+    in `/v2/tiles/info`), a fingerprint of that data that is the same on every replica and
+    doesn't move on price, order or rental changes. Images with those overlays follow the map
+    update time (`lastUpdatedAt`).
 
-    To always get the latest image while caching it forever, add `v=<lastUpdatedAt>` with
-    the value returned by `/v2/tiles/info`: when it equals the current map version the
+    Every 200 carries a weak `ETag` (`W/"<version>-<request hash>"`) and
+    `Cache-Control: public, max-age=60, s-maxage=300, stale-while-revalidate=86400`, so a CDN
+    revalidates after 5 minutes; while the image is unchanged that is a 304 and nothing is
+    rendered. Images with overlays also carry `Last-Modified` (the map update time).
+    Conditional requests (`If-None-Match`, or `If-Modified-Since` without it, for images
+    with overlays) are answered with a 304 before anything is rendered. Equivalent requests
+    (e.g. the same `selected` parcels in another order, or selected parcels outside the image)
+    share the ETag.
+
+    To cache an image for good, add `v=<version>`: `landVersion` for images without overlays,
+    `lastUpdatedAt` for images with them. When it equals the image's current version the
     response is `Cache-Control: public, max-age=31536000, immutable`. Any other `v` is
     ignored and the current image is served with the standard caching headers.
     
@@ -248,8 +256,15 @@ paths:
                   lastUpdatedAt:
                     type: integer
                     format: int64
-                    description: UTC timestamp in milliseconds of last update
+                    description: UTC timestamp in milliseconds of last update; the `v` of map images with overlays
                     example: 1698765432000
+                  landVersion:
+                    type: string
+                    description: |
+                      Fingerprint of the land the map images draw (tile types, estates and their borders),
+                      equal on every replica and unchanged by prices, orders and rentals. Use it as the `v`
+                      of map images without `on-sale` or `listed-for-rent`.
+                    example: "0123456789abcdef"
         '503':
           description: Service not ready
           headers:
@@ -451,7 +466,7 @@ paths:
         - Map Images
       summary: Generate a minimap PNG image
       description: |
-        Generates a minimap view of the entire Decentraland world. It is rendered once per map version.
+        Generates a minimap view of the entire Decentraland world. It is rendered once per land version.
       operationId: getMinimap
       parameters:
         - $ref: '#/components/parameters/ImageVersion'
@@ -489,7 +504,7 @@ paths:
         - Map Images
       summary: Generate an estate-focused minimap PNG image
       description: |
-        Generates a minimap view with emphasis on estate boundaries. It is rendered once per map version.
+        Generates a minimap view with emphasis on estate boundaries. It is rendered once per land version.
       operationId: getEstateMap
       parameters:
         - $ref: '#/components/parameters/ImageVersion'
@@ -1141,12 +1156,13 @@ components:
       in: query
       required: false
       description: |
-        The map version the URL is pinned to: `lastUpdatedAt` from `/v2/tiles/info`, in milliseconds.
-        When it equals the current version the image is served as immutable for a year; otherwise
-        it is ignored. It never changes the image.
+        The version the URL is pinned to, from `/v2/tiles/info`: `landVersion` for images without
+        `on-sale` or `listed-for-rent`, `lastUpdatedAt` for images with them. When it equals the
+        image's current version the image is served as immutable for a year; otherwise it is
+        ignored. It never changes the image.
       schema:
         type: string
-      example: "1767268800000"
+      example: "0123456789abcdef"
     IfNoneMatch:
       name: If-None-Match
       in: header
@@ -1158,27 +1174,27 @@ components:
       name: If-Modified-Since
       in: header
       required: false
-      description: Only evaluated without If-None-Match; a date at or after the map version is answered with a 304.
+      description: Only evaluated without If-None-Match, for images with overlays; a date at or after the map update time is answered with a 304.
       schema:
         type: string
   headers:
     ImageETag:
-      description: Weak validator of the image, from the map version and the normalized request
+      description: Weak validator of the image, from its version and the normalized request
       schema:
         type: string
-        example: 'W/"1767268800000-0123456789abcdef"'
+        example: 'W/"0123456789abcdef-89abcdef01234567"'
     ImageLastModified:
-      description: The map version the image was rendered from
+      description: The map update time, only on images with `on-sale` or `listed-for-rent`
       schema:
         type: string
         example: "Thu, 01 Jan 2026 12:00:00 GMT"
     ImageCacheControl:
       description: |
-        `public, max-age=300, s-maxage=86400, stale-while-revalidate=86400`, or
-        `public, max-age=31536000, immutable` when `v` equals the current map version
+        `public, max-age=60, s-maxage=300, stale-while-revalidate=86400`, or
+        `public, max-age=31536000, immutable` when `v` equals the image's current version
       schema:
         type: string
-        example: "public, max-age=300, s-maxage=86400, stale-while-revalidate=86400"
+        example: "public, max-age=60, s-maxage=300, stale-while-revalidate=86400"
   responses:
     ImageNotModified:
       description: The client's copy is current; nothing is rendered

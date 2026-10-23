@@ -1,4 +1,7 @@
-import { IMetricsComponent } from '@well-known-components/interfaces'
+import {
+  IConfigComponent,
+  IMetricsComponent,
+} from '@well-known-components/interfaces'
 import {
   createImageCache,
   createImageCacheComponent,
@@ -24,6 +27,11 @@ function defer(): Deferred {
   return { promise, resolve, reject }
 }
 
+// "map:1000:" and a sha256 in hex
+const KEY_BYTES = 9 + 64
+const PNG_BYTES = 6
+const ENTRY_BYTES = KEY_BYTES + PNG_BYTES
+
 describe('when serving images through the image cache', () => {
   let cache: IImageCacheComponent
   let increment: jest.Mock
@@ -31,28 +39,35 @@ describe('when serving images through the image cache', () => {
   let render: jest.Mock
   let request: ImageRequest
   let png: Buffer
+  let maxBytes: number
 
-  beforeEach(() => {
-    increment = jest.fn()
-    observe = jest.fn()
-    png = Buffer.alloc(6, 1)
-    render = jest.fn().mockResolvedValue(png)
-    request = { kind: 'map', key: 'a', version: 1000 }
+  function createCache() {
     cache = createImageCache(
       {
         metrics: { increment, observe } as unknown as IMetricsComponent<
           keyof Metrics
         >,
       },
-      { maxBytes: 10 }
+      { maxBytes }
     )
+  }
+
+  beforeEach(() => {
+    increment = jest.fn()
+    observe = jest.fn()
+    png = Buffer.alloc(PNG_BYTES, 1)
+    render = jest.fn().mockResolvedValue(png)
+    request = { kind: 'map', key: 'a', scope: 'map', version: '1000' }
+    // two entries fit
+    maxBytes = ENTRY_BYTES * 2 + 2
+    createCache()
   })
 
   afterEach(() => {
     jest.resetAllMocks()
   })
 
-  describe('and the image was rendered before for the same map version', () => {
+  describe('and the image was rendered before for the same version', () => {
     let result: Buffer
 
     beforeEach(async () => {
@@ -75,11 +90,11 @@ describe('when serving images through the image cache', () => {
       ])
     })
 
-    it('should report the bytes held', () => {
+    it('should report the bytes held, key included', () => {
       expect(observe).toHaveBeenLastCalledWith(
         'dcl_map_image_cache_bytes',
         {},
-        6
+        ENTRY_BYTES
       )
     })
   })
@@ -95,10 +110,10 @@ describe('when serving images through the image cache', () => {
     })
   })
 
-  describe('and the map version changes', () => {
+  describe('and the version changes', () => {
     beforeEach(async () => {
       await cache.getOrRender(request, render)
-      await cache.getOrRender({ ...request, version: 2000 }, render)
+      await cache.getOrRender({ ...request, version: '2000' }, render)
     })
 
     it('should render the image again', () => {
@@ -107,25 +122,46 @@ describe('when serving images through the image cache', () => {
 
     it('should drop the images of the previous version', () => {
       expect(observe.mock.calls.map(([, , bytes]) => bytes)).toEqual([
-        0, 6, 0, 6,
+        ENTRY_BYTES,
+        0,
+        ENTRY_BYTES,
       ])
     })
   })
 
-  describe('and a render of an older map version finishes after the version changed', () => {
+  describe('and the version of another scope changes', () => {
+    beforeEach(async () => {
+      await cache.getOrRender(request, render)
+      await cache.getOrRender(
+        { ...request, key: 'b', scope: 'land', version: 'aaaa' },
+        render
+      )
+      await cache.getOrRender(
+        { ...request, key: 'b', scope: 'land', version: 'bbbb' },
+        render
+      )
+      await cache.getOrRender(request, render)
+    })
+
+    it('should keep the images of the unchanged scope', () => {
+      expect(render).toHaveBeenCalledTimes(3)
+    })
+  })
+
+  describe('and a render of a replaced version finishes after the version changed', () => {
     let pending: Deferred
 
     beforeEach(async () => {
       pending = defer()
       render.mockReturnValueOnce(pending.promise)
       const old = cache.getOrRender(request, render)
-      await cache.getOrRender({ ...request, key: 'b', version: 2000 }, render)
+      await cache.getOrRender({ ...request, key: 'b', version: '2000' }, render)
       pending.resolve(png)
       await old
-      await cache.getOrRender(request, render)
+      await cache.getOrRender({ ...request, version: '2000' }, render)
     })
 
-    it('should not keep it, rendering it again', () => {
+    it('should not keep it', () => {
       expect(render).toHaveBeenCalledTimes(3)
     })
   })
@@ -134,11 +170,30 @@ describe('when serving images through the image cache', () => {
     beforeEach(async () => {
       await cache.getOrRender(request, render)
       await cache.getOrRender({ ...request, key: 'b' }, render)
+      await cache.getOrRender({ ...request, key: 'c' }, render)
       await cache.getOrRender(request, render)
     })
 
     it('should evict the least recently used image and render it again', () => {
-      expect(render).toHaveBeenCalledTimes(3)
+      expect(render).toHaveBeenCalledTimes(4)
+    })
+  })
+
+  describe('and many images with very long keys are requested', () => {
+    let sizes: number[]
+
+    beforeEach(async () => {
+      for (let i = 0; i < 1000; i++) {
+        await cache.getOrRender(
+          { ...request, key: `${i}|${'1,1;'.repeat(4000)}` },
+          render
+        )
+      }
+      sizes = observe.mock.calls.map(([, , bytes]) => bytes)
+    })
+
+    it('should keep the bytes held within the budget', () => {
+      expect(Math.max(...sizes)).toBeLessThanOrEqual(maxBytes)
     })
   })
 
@@ -164,6 +219,32 @@ describe('when serving images through the image cache', () => {
       expect(increment).toHaveBeenLastCalledWith('dcl_map_image_cache_total', {
         kind: 'map',
         result: 'shared',
+      })
+    })
+  })
+
+  describe('and the budget is 0', () => {
+    let pending: Deferred
+    let results: Buffer[]
+
+    beforeEach(async () => {
+      maxBytes = 0
+      createCache()
+      pending = defer()
+      render.mockReturnValueOnce(pending.promise)
+      const concurrent = Promise.all([
+        cache.getOrRender(request, render),
+        cache.getOrRender(request, render),
+      ])
+      pending.resolve(png)
+      results = await concurrent
+      await cache.getOrRender(request, render)
+    })
+
+    it('should share concurrent renders but keep nothing', () => {
+      expect({ results, renders: render.mock.calls.length }).toEqual({
+        results: [png, png],
+        renders: 2,
       })
     })
   })
@@ -260,7 +341,6 @@ describe('when serving images through the image cache', () => {
     let pending: Deferred
     let controller: AbortController
     let renderSignal: AbortSignal
-    let result: Buffer
 
     beforeEach(async () => {
       pending = defer()
@@ -274,18 +354,48 @@ describe('when serving images through the image cache', () => {
         .catch(() => undefined)
       controller.abort()
       await aborted
-      result = await cache.getOrRender(request, render)
-      pending.reject(new RenderAbortedError('The request was aborted'))
+    })
+
+    afterEach(() => {
+      pending.resolve(png)
     })
 
     it('should abort the render', () => {
       expect(renderSignal.aborted).toBe(true)
     })
 
-    it('should start a new render for the next request', () => {
-      expect({ renders: render.mock.calls.length, result }).toEqual({
-        renders: 2,
-        result: png,
+    describe('and the image is requested again while the abandoned render is on a thread', () => {
+      let result: Promise<Buffer>
+
+      beforeEach(async () => {
+        result = cache.getOrRender(request, render)
+        pending.resolve(png)
+        await result
+        await cache.getOrRender(request, render)
+      })
+
+      it('should join it instead of rendering again, and keep its PNG', async () => {
+        expect({
+          result: await result,
+          renders: render.mock.calls.length,
+        }).toEqual({ result: png, renders: 1 })
+      })
+    })
+
+    describe('and the image is requested again after the abandoned render was stopped before a thread', () => {
+      let result: Buffer
+
+      beforeEach(async () => {
+        const next = cache.getOrRender(request, render)
+        pending.reject(new RenderAbortedError('The request was aborted'))
+        result = await next
+      })
+
+      it('should render it again for the new request', () => {
+        expect({ result, renders: render.mock.calls.length }).toEqual({
+          result: png,
+          renders: 2,
+        })
       })
     })
   })
@@ -311,30 +421,33 @@ describe('when serving images through the image cache', () => {
     })
   })
 
-  describe('and a 304 is recorded', () => {
-    beforeEach(() => {
-      cache.recordNotModified('minimap')
-    })
-
-    it('should count it as not modified', () => {
-      expect(increment).toHaveBeenCalledWith('dcl_map_image_cache_total', {
-        kind: 'minimap',
-        result: 'not_modified',
+  describe.each(['not_modified', 'dissolved'] as const)(
+    'and a %s answer is recorded',
+    (result) => {
+      beforeEach(() => {
+        cache.record('estate', result)
       })
-    })
-  })
+
+      it('should count it with its result', () => {
+        expect(increment).toHaveBeenCalledWith('dcl_map_image_cache_total', {
+          kind: 'estate',
+          result,
+        })
+      })
+    }
+  )
 })
 
 describe('when creating the image cache from config', () => {
-  let getString: jest.Mock
+  let getNumber: jest.Mock
   let warn: jest.Mock
   let render: jest.Mock
   let cache: IImageCacheComponent
 
   beforeEach(() => {
-    getString = jest.fn()
+    getNumber = jest.fn()
     warn = jest.fn()
-    render = jest.fn().mockResolvedValue(Buffer.alloc(6))
+    render = jest.fn().mockResolvedValue(Buffer.alloc(PNG_BYTES))
   })
 
   afterEach(() => {
@@ -343,7 +456,7 @@ describe('when creating the image cache from config', () => {
 
   async function create() {
     return createImageCacheComponent({
-      config: { getString } as never,
+      config: { getNumber } as unknown as IConfigComponent,
       logs: {
         getLogger: () => ({
           warn,
@@ -360,13 +473,23 @@ describe('when creating the image cache from config', () => {
     })
   }
 
-  describe('and IMAGE_CACHE_MAX_BYTES is set', () => {
+  async function requestTwiceWithAnotherImageBetween() {
+    const request: ImageRequest = {
+      kind: 'map',
+      key: 'a',
+      scope: 'map',
+      version: '1000',
+    }
+    await cache.getOrRender(request, render)
+    await cache.getOrRender({ ...request, key: 'b' }, render)
+    await cache.getOrRender(request, render)
+  }
+
+  describe('and IMAGE_CACHE_MAX_BYTES fits a single image', () => {
     beforeEach(async () => {
-      getString.mockResolvedValueOnce('10')
+      getNumber.mockResolvedValueOnce(ENTRY_BYTES)
       cache = await create()
-      await cache.getOrRender({ kind: 'map', key: 'a', version: 1 }, render)
-      await cache.getOrRender({ kind: 'map', key: 'b', version: 1 }, render)
-      await cache.getOrRender({ kind: 'map', key: 'a', version: 1 }, render)
+      await requestTwiceWithAnotherImageBetween()
     })
 
     it('should bound the cache by it', () => {
@@ -374,16 +497,50 @@ describe('when creating the image cache from config', () => {
     })
   })
 
-  describe('and IMAGE_CACHE_MAX_BYTES is not a positive integer', () => {
+  describe('and IMAGE_CACHE_MAX_BYTES is not set', () => {
     beforeEach(async () => {
-      getString.mockResolvedValueOnce('64MB')
+      getNumber.mockResolvedValueOnce(undefined)
+      cache = await create()
+      await requestTwiceWithAnotherImageBetween()
+    })
+
+    it('should use the default budget', () => {
+      expect(render).toHaveBeenCalledTimes(2)
+    })
+  })
+
+  describe('and IMAGE_CACHE_MAX_BYTES is 0', () => {
+    beforeEach(async () => {
+      getNumber.mockResolvedValueOnce(0)
+      cache = await create()
+      await requestTwiceWithAnotherImageBetween()
+    })
+
+    it('should keep nothing', () => {
+      expect(render).toHaveBeenCalledTimes(3)
+    })
+  })
+
+  describe.each([
+    ['negative', async () => -1, '-1'],
+    ['not an integer', async () => 1.5, '1.5'],
+    [
+      'not a number',
+      async () => {
+        throw new Error('should be a number')
+      },
+      'NaN',
+    ],
+  ])('and IMAGE_CACHE_MAX_BYTES is %s', (_name, read, logged) => {
+    beforeEach(async () => {
+      getNumber.mockImplementationOnce(read)
       cache = await create()
     })
 
     it('should warn and use the default', () => {
       expect(warn).toHaveBeenCalledWith(
         'Invalid IMAGE_CACHE_MAX_BYTES, using the default',
-        { value: '64MB', defaultValue: 64 * 1024 * 1024 }
+        { value: logged, defaultValue: 64 * 1024 * 1024 }
       )
     })
   })
