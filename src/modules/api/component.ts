@@ -105,17 +105,36 @@ const estateFields = `{
 
 // keeps the id_in list of a query short
 const ESTATE_IDS_PER_QUERY = 100
-// land queries re-read this window before the cursor, covering the lag and reorgs; re-applying is idempotent
+// land queries re-read this window before the cursor, covering rows indexed late; re-applying is idempotent
 const LAND_OVERLAP_SECONDS = 300
 
 /**
- * The timestamp (seconds) of the block the subgraph had indexed when a fetch started. It is the
- * fetch's land cursor: every row updated up to it was already indexed, so the fetch reads it, and a
- * row that changes while the fetch pages has a later `updatedAt`, so the next fetch reads it again.
- * The queries are not pinned to that block: the squid that answers them only serves the latest
- * block. A fetch may then see rows newer than the cursor, which only means reading them twice.
+ * A fetch's land cursor: the timestamp (seconds) of the lowest head the subgraph reported while the
+ * fetch ran. Each land page asks for `_meta` in the same request, so the backend that answers the page
+ * also reports how far it has indexed, and the cursor never passes a row a page could not see yet,
+ * even when the gateway answers pages from backends at different heights. A row that changes while
+ * the fetch pages gets a later `updatedAt`, so the next fetch reads it again. The queries are not
+ * pinned to a block: the squid that answers them only serves the latest one. A fetch may see rows
+ * newer than the cursor, which only means reading them twice.
+ *
+ * Not covered: a row a reorg rolls back to an older `updatedAt` keeps the orphaned update until the
+ * next full load.
  */
 type Snapshot = { timestamp: number }
+
+type Head = { _meta: { block: { number: number; timestamp: number | null } } }
+
+const HEAD_FIELDS = '_meta { block { number timestamp } }'
+
+function headTimestamp({ _meta }: Head): number {
+  const { number, timestamp } = _meta.block
+  if (!timestamp) {
+    throw new Error(
+      `The subgraph did not report the timestamp of block ${number}`
+    )
+  }
+  return timestamp
+}
 
 type FetchedBatch = {
   tiles: Tile[]
@@ -149,38 +168,40 @@ export async function createApiComponent(components: {
   const events = new EventEmitter()
 
   // methods
-  // reads the timestamp of the subgraph's head, the fetch's land cursor
+  // reads the timestamp of the subgraph's head, where the fetch's land cursor starts
   async function getSnapshot(): Promise<Snapshot> {
-    const { _meta } = await subgraph.query<{
-      _meta: { block: { number: number; timestamp: number | null } }
-    }>(`{ _meta { block { number timestamp } } }`)
-    const { number, timestamp } = _meta.block
-    if (!timestamp) {
-      throw new Error(
-        `The subgraph did not report the timestamp of block ${number}`
-      )
+    return {
+      timestamp: headTimestamp(
+        await subgraph.query<Head>(`{ ${HEAD_FIELDS} }`)
+      ),
     }
-    return { timestamp }
+  }
+
+  // reads a land page with the head of the backend that answers it, and lowers the cursor to it
+  async function queryLand<T>(snapshot: Snapshot, body: string): Promise<T> {
+    const result = await subgraph.query<T & Head>(`{ ${HEAD_FIELDS} ${body} }`)
+    snapshot.timestamp = Math.min(snapshot.timestamp, headTimestamp(result))
+    return result
   }
 
   // pages a query by id so a full page never truncates it
   async function queryAllById<T extends { id: string }>(
     entity: string,
     where: string,
-    fields: string
+    fields: string,
+    snapshot: Snapshot
   ): Promise<T[]> {
     const items: T[] = []
     let lastId = ''
     while (true) {
-      const { nfts } = await subgraph.query<{ nfts: T[] }>(
-        `{
-          nfts: ${entity}(
-            first: ${batchSize},
-            orderBy: id,
-            orderDirection: asc,
-            where: { ${where}, id_gt: "${lastId}" }
-          ) ${fields}
-        }`
+      const { nfts } = await queryLand<{ nfts: T[] }>(
+        snapshot,
+        `nfts: ${entity}(
+          first: ${batchSize},
+          orderBy: id,
+          orderDirection: asc,
+          where: { ${where}, id_gt: "${lastId}" }
+        ) ${fields}`
       )
       items.push(...nfts)
       if (nfts.length < batchSize) {
@@ -191,7 +212,8 @@ export async function createApiComponent(components: {
   }
 
   async function fetchParcelsOfEstates(
-    estateNftIds: string[]
+    estateNftIds: string[],
+    snapshot: Snapshot
   ): Promise<ParcelFragment[]> {
     const parcels: ParcelFragment[] = []
     for (let i = 0; i < estateNftIds.length; i += ESTATE_IDS_PER_QUERY) {
@@ -200,7 +222,8 @@ export async function createApiComponent(components: {
         ...(await queryAllById<ParcelFragment>(
           'nfts',
           `category: parcel, searchParcelEstateId_in: ${JSON.stringify(ids)}`,
-          parcelFields
+          parcelFields,
+          snapshot
         ))
       )
     }
@@ -277,6 +300,7 @@ export async function createApiComponent(components: {
     while (!complete) {
       // fetch batch
       const batch = fetchBatch(
+        snapshot,
         rentalListingsByNftId,
         lastTokenId,
         batches.length
@@ -340,23 +364,23 @@ export async function createApiComponent(components: {
   }
 
   async function fetchBatch(
+    snapshot: Snapshot,
     rentalListingsByNftId: Record<string, TileRentalListing>,
     lastTokenId = '',
     page = 0
   ) {
-    const { nfts } = await subgraph.query<{ nfts: ParcelFragment[] }>(
-      `{
-        nfts(
-          first: ${batchSize},
-          skip: ${batchSize * page},
-          orderBy: tokenId,
-          orderDirection: asc,
-          where: {
-            ${lastTokenId ? `tokenId_gt: "${lastTokenId}",` : ''}
-            category: parcel
-          }
-        ) ${parcelFields}
-      }`
+    const { nfts } = await queryLand<{ nfts: ParcelFragment[] }>(
+      snapshot,
+      `nfts(
+        first: ${batchSize},
+        skip: ${batchSize * page},
+        orderBy: tokenId,
+        orderDirection: asc,
+        where: {
+          ${lastTokenId ? `tokenId_gt: "${lastTokenId}",` : ''}
+          category: parcel
+        }
+      ) ${parcelFields}`
     )
     return nfts.reduce<FetchedBatch>(
       (batch, nft) => {
@@ -431,12 +455,14 @@ export async function createApiComponent(components: {
       queryAllById<ParcelFragment>(
         'nfts',
         `category: parcel, ${updatedAfter}`,
-        parcelFields
+        parcelFields,
+        snapshot
       ),
       queryAllById<EstateFragment>(
         'nfts',
         `category: estate, ${updatedAfter}`,
-        estateFields
+        estateFields,
+        snapshot
       ),
     ])
 
@@ -458,7 +484,8 @@ export async function createApiComponent(components: {
       }
     }
     const estateParcels = await fetchParcelsOfEstates(
-      Array.from(affectedEstateIds)
+      Array.from(affectedEstateIds),
+      snapshot
     )
 
     // removing a parcel doesn't touch the estate's updatedAt, so an emptied estate is read by id
@@ -476,7 +503,8 @@ export async function createApiComponent(components: {
         ...(await queryAllById<EstateFragment>(
           'nfts',
           `category: estate, id_in: ${JSON.stringify(ids)}`,
-          estateFields
+          estateFields,
+          snapshot
         ))
       )
     }
@@ -567,7 +595,7 @@ export async function createApiComponent(components: {
     }
 
     const newCursors: Cursors = {
-      // the next fetch re-reads LAND_OVERLAP_SECONDS before it, covering the lag behind the head
+      // the lowest head the fetch's pages reported; the next fetch re-reads LAND_OVERLAP_SECONDS before it
       land: Math.max(cursors.land, snapshot.timestamp),
       rentals: rentalListings.reduce(
         (cursor, rentalListing) => Math.max(cursor, rentalListing.updatedAt),

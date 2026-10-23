@@ -43,20 +43,26 @@ type SubgraphWorld = {
   // estates only returned when asked for by id
   estatesById?: EstateFragment[]
   timestamp?: number
+  // the head the backend answering the land pages reports, when it is behind the snapshot's
+  pageTimestamp?: number
 }
 
 // answers the snapshot and id-paged queries the api makes, like the subgraph would
 function mockLandUpdates(world: SubgraphWorld): jest.Mock {
   return jest.fn((query: string) => {
-    if (query.includes('_meta')) {
-      return Promise.resolve({
-        _meta: {
-          block: {
-            number: SNAPSHOT_BLOCK,
-            timestamp: world.timestamp ?? SNAPSHOT_TIMESTAMP,
-          },
+    // every land page reports the head of the backend that answers it, as the snapshot does
+    const head = {
+      _meta: {
+        block: {
+          number: SNAPSHOT_BLOCK,
+          timestamp: query.includes('nfts')
+            ? world.pageTimestamp ?? world.timestamp ?? SNAPSHOT_TIMESTAMP
+            : world.timestamp ?? SNAPSHOT_TIMESTAMP,
         },
-      })
+      },
+    }
+    if (!query.includes('nfts')) {
+      return Promise.resolve(head)
     }
     const first = Number(/first: (\d+)/.exec(query)![1])
     const lastId = /id_gt: "([^"]*)"/.exec(query)![1]
@@ -76,6 +82,7 @@ function mockLandUpdates(world: SubgraphWorld): jest.Mock {
       ? world.estates ?? []
       : world.parcels ?? []
     return Promise.resolve({
+      ...head,
       nfts: [...items]
         .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
         .filter((item) => item.id > lastId)
@@ -433,11 +440,12 @@ describe('when fetching data', () => {
         .fn()
         .mockResolvedValueOnce(headResponse)
         .mockResolvedValueOnce({
+          ...headResponse,
           nfts: [
             { ...defaultParcel, updatedAt: (HEAD_TIMESTAMP + 90).toString() },
           ],
         })
-        .mockResolvedValueOnce({ nfts: [] })
+        .mockResolvedValueOnce({ ...headResponse, nfts: [] })
       rentalsComponentMock.getOpenRentalListings = jest
         .fn()
         .mockResolvedValue([])
@@ -461,8 +469,8 @@ describe('when fetching data', () => {
       subgraphComponentMock.query = jest
         .fn()
         .mockResolvedValueOnce(headResponse)
-        .mockResolvedValueOnce({ nfts: nftFragments })
-        .mockResolvedValueOnce({ nfts: [] })
+        .mockResolvedValueOnce({ ...headResponse, nfts: nftFragments })
+        .mockResolvedValueOnce({ ...headResponse, nfts: [] })
       rentalsComponentMock.getOpenRentalListings = jest
         .fn()
         .mockResolvedValueOnce([])
@@ -596,9 +604,15 @@ describe('when fetching data', () => {
       subgraphComponentMock.query = jest
         .fn()
         .mockResolvedValueOnce(headResponse)
-        .mockResolvedValueOnce({ nfts: nftFragments.splice(0, 3) })
-        .mockResolvedValueOnce({ nfts: nftFragments.splice(0, 6) })
-        .mockResolvedValueOnce({ nfts: [] })
+        .mockResolvedValueOnce({
+          ...headResponse,
+          nfts: nftFragments.splice(0, 3),
+        })
+        .mockResolvedValueOnce({
+          ...headResponse,
+          nfts: nftFragments.splice(0, 6),
+        })
+        .mockResolvedValueOnce({ ...headResponse, nfts: [] })
       rentalsComponentMock.getOpenRentalListings = jest
         .fn()
         .mockResolvedValueOnce([
@@ -1991,13 +2005,36 @@ describe('when fetching update data', () => {
     })
   })
 
+  describe('and a land page is answered by a backend behind the snapshot', () => {
+    let result: Result
+
+    beforeEach(async () => {
+      subgraphComponentMock.query = mockLandUpdates({
+        parcels: [defaultParcel],
+        timestamp: SNAPSHOT_TIMESTAMP,
+        pageTimestamp: SNAPSHOT_TIMESTAMP - 600,
+      })
+      rentalsComponentMock.getUpdatedRentalListings = jest
+        .fn()
+        .mockResolvedValueOnce([])
+      result = await apiComponent.fetchUpdatedData(
+        { land: SNAPSHOT_TIMESTAMP - 1000, rentals: 0 },
+        {}
+      )
+    })
+
+    it("should move the land cursor only to that backend's head, so the next fetch reads what it could not see", () => {
+      expect(result.cursors.land).toBe(SNAPSHOT_TIMESTAMP - 600)
+    })
+  })
+
   describe('and a land query fails', () => {
     beforeEach(() => {
       const land = mockLandUpdates({ parcels: [defaultParcel] })
       subgraphComponentMock.query = jest.fn((query: string) =>
-        query.includes('_meta')
-          ? land(query)
-          : Promise.reject(new Error('Unexpected `}`'))
+        query.includes('nfts')
+          ? Promise.reject(new Error('Unexpected `}`'))
+          : land(query)
       ) as jest.Mock
       rentalsComponentMock.getUpdatedRentalListings = jest
         .fn()
