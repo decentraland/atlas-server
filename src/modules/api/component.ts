@@ -105,31 +105,22 @@ const estateFields = `{
 
 // keeps the id_in list of a query short
 const ESTATE_IDS_PER_QUERY = 100
-// pin a few blocks behind the head so every indexer behind the gateway has the block
-const SNAPSHOT_LAG_BLOCKS = 5
 // land queries re-read this window before the cursor, covering the lag and reorgs; re-applying is idempotent
 const LAND_OVERLAP_SECONDS = 300
-// waits before retrying a query whose pinned block an indexer has not reached yet
-const BLOCK_RETRY_DELAYS_MS = [500, 1000, 2000]
 
-/** The block every query of a fetch is pinned to, and the head's timestamp (seconds) when it was read. */
-type Snapshot = { block: number; timestamp: number }
+/**
+ * The timestamp (seconds) of the block the subgraph had indexed when a fetch started. It is the
+ * fetch's land cursor: every row updated up to it was already indexed, so the fetch reads it, and a
+ * row that changes while the fetch pages has a later `updatedAt`, so the next fetch reads it again.
+ * The queries are not pinned to that block: the squid that answers them only serves the latest
+ * block. A fetch may then see rows newer than the cursor, which only means reading them twice.
+ */
+type Snapshot = { timestamp: number }
 
 type FetchedBatch = {
   tiles: Tile[]
   parcels: NFT[]
   fragments: ParcelFragment[]
-}
-
-function isBlockNotAvailableError(error: unknown): boolean {
-  return (
-    isErrorWithMessage(error) &&
-    error.message.includes('Failed to decode `block.number`')
-  )
-}
-
-function sleep(ms: number) {
-  return new Promise<void>((resolve) => setTimeout(resolve, ms))
 }
 
 export async function createApiComponent(components: {
@@ -158,7 +149,7 @@ export async function createApiComponent(components: {
   const events = new EventEmitter()
 
   // methods
-  // reads the subgraph's head so every query of a fetch sees the same block
+  // reads the timestamp of the subgraph's head, the fetch's land cursor
   async function getSnapshot(): Promise<Snapshot> {
     const { _meta } = await subgraph.query<{
       _meta: { block: { number: number; timestamp: number | null } }
@@ -169,46 +160,24 @@ export async function createApiComponent(components: {
         `The subgraph did not report the timestamp of block ${number}`
       )
     }
-    return { block: Math.max(number - SNAPSHOT_LAG_BLOCKS, 0), timestamp }
-  }
-
-  // retries a pinned query an indexer behind the gateway can't serve yet
-  async function queryPinned<T>(query: string): Promise<T> {
-    for (let attempt = 0; ; attempt++) {
-      try {
-        return await subgraph.query<T>(query)
-      } catch (error) {
-        if (
-          attempt >= BLOCK_RETRY_DELAYS_MS.length ||
-          !isBlockNotAvailableError(error)
-        ) {
-          throw error
-        }
-        componentLogger.warn(
-          `The pinned block is not available yet, retrying in ${BLOCK_RETRY_DELAYS_MS[attempt]}ms`
-        )
-        await sleep(BLOCK_RETRY_DELAYS_MS[attempt])
-      }
-    }
+    return { timestamp }
   }
 
   // pages a query by id so a full page never truncates it
   async function queryAllById<T extends { id: string }>(
     entity: string,
     where: string,
-    fields: string,
-    snapshot: Snapshot
+    fields: string
   ): Promise<T[]> {
     const items: T[] = []
     let lastId = ''
     while (true) {
-      const { nfts } = await queryPinned<{ nfts: T[] }>(
+      const { nfts } = await subgraph.query<{ nfts: T[] }>(
         `{
           nfts: ${entity}(
             first: ${batchSize},
             orderBy: id,
             orderDirection: asc,
-            block: { number: ${snapshot.block} },
             where: { ${where}, id_gt: "${lastId}" }
           ) ${fields}
         }`
@@ -222,8 +191,7 @@ export async function createApiComponent(components: {
   }
 
   async function fetchParcelsOfEstates(
-    estateNftIds: string[],
-    snapshot: Snapshot
+    estateNftIds: string[]
   ): Promise<ParcelFragment[]> {
     const parcels: ParcelFragment[] = []
     for (let i = 0; i < estateNftIds.length; i += ESTATE_IDS_PER_QUERY) {
@@ -232,8 +200,7 @@ export async function createApiComponent(components: {
         ...(await queryAllById<ParcelFragment>(
           'nfts',
           `category: parcel, searchParcelEstateId_in: ${JSON.stringify(ids)}`,
-          parcelFields,
-          snapshot
+          parcelFields
         ))
       )
     }
@@ -310,7 +277,6 @@ export async function createApiComponent(components: {
     while (!complete) {
       // fetch batch
       const batch = fetchBatch(
-        snapshot,
         rentalListingsByNftId,
         lastTokenId,
         batches.length
@@ -374,19 +340,17 @@ export async function createApiComponent(components: {
   }
 
   async function fetchBatch(
-    snapshot: Snapshot,
     rentalListingsByNftId: Record<string, TileRentalListing>,
     lastTokenId = '',
     page = 0
   ) {
-    const { nfts } = await queryPinned<{ nfts: ParcelFragment[] }>(
+    const { nfts } = await subgraph.query<{ nfts: ParcelFragment[] }>(
       `{
         nfts(
           first: ${batchSize},
           skip: ${batchSize * page},
           orderBy: tokenId,
           orderDirection: asc,
-          block: { number: ${snapshot.block} },
           where: {
             ${lastTokenId ? `tokenId_gt: "${lastTokenId}",` : ''}
             category: parcel
@@ -467,14 +431,12 @@ export async function createApiComponent(components: {
       queryAllById<ParcelFragment>(
         'nfts',
         `category: parcel, ${updatedAfter}`,
-        parcelFields,
-        snapshot
+        parcelFields
       ),
       queryAllById<EstateFragment>(
         'nfts',
         `category: estate, ${updatedAfter}`,
-        estateFields,
-        snapshot
+        estateFields
       ),
     ])
 
@@ -496,8 +458,7 @@ export async function createApiComponent(components: {
       }
     }
     const estateParcels = await fetchParcelsOfEstates(
-      Array.from(affectedEstateIds),
-      snapshot
+      Array.from(affectedEstateIds)
     )
 
     // removing a parcel doesn't touch the estate's updatedAt, so an emptied estate is read by id
@@ -515,8 +476,7 @@ export async function createApiComponent(components: {
         ...(await queryAllById<EstateFragment>(
           'nfts',
           `category: estate, id_in: ${JSON.stringify(ids)}`,
-          estateFields,
-          snapshot
+          estateFields
         ))
       )
     }
@@ -724,7 +684,7 @@ export async function createApiComponent(components: {
       )
 
     componentLogger.info(
-      `Last updates | block: ${snapshot.block} - land: ${newCursors.land} - rentals: ${newCursors.rentals}`
+      `Last updates | land: ${newCursors.land} - rentals: ${newCursors.rentals}`
     )
 
     return {

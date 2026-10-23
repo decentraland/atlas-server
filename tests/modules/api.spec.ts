@@ -30,8 +30,6 @@ const LAND_CONTRACT_ADDRESS = '0x1'
 const ESTATE_CONTRACT_ADDRESS = '0x2'
 const date = Date.now()
 const SNAPSHOT_BLOCK = 10
-// the snapshot is pinned 5 blocks behind the head
-const PINNED_BLOCK = SNAPSHOT_BLOCK - 5
 const HEAD_TIMESTAMP = 1234
 const headResponse = {
   _meta: { block: { number: SNAPSHOT_BLOCK, timestamp: HEAD_TIMESTAMP } },
@@ -470,11 +468,11 @@ describe('when fetching data', () => {
         .mockResolvedValueOnce([])
     })
 
-    it("should read the batches at the snapshot's block", async () => {
+    it('should read the batches at the latest block', async () => {
       await apiComponent.fetchData()
       expect(
         (subgraphComponentMock.query as jest.Mock).mock.calls[1][0]
-      ).toContain(`block: { number: ${PINNED_BLOCK} }`)
+      ).not.toContain('block:')
     })
 
     it('should return the tiles, the parcels and the estates', () => {
@@ -1750,14 +1748,12 @@ describe('when fetching update data', () => {
       )
     })
 
-    it("should read every page at the snapshot's block", () => {
+    it('should read every page at the latest block', () => {
       expect(
         queries
           .filter((query) => !query.includes('_meta'))
-          .every((query) =>
-            query.includes(`block: { number: ${PINNED_BLOCK} }`)
-          )
-      ).toBe(true)
+          .some((query) => query.includes('block:'))
+      ).toBe(false)
     })
 
     it('should read the snapshot first', () => {
@@ -1995,35 +1991,7 @@ describe('when fetching update data', () => {
     })
   })
 
-  describe('and the pinned block is not available yet on the first try', () => {
-    let result: Result
-
-    beforeEach(async () => {
-      const land = mockLandUpdates({ parcels: [defaultParcel] })
-      let failed = false
-      subgraphComponentMock.query = jest.fn((query: string) => {
-        if (!failed && !query.includes('_meta')) {
-          failed = true
-          return Promise.reject(
-            new Error(
-              'Failed to decode `block.number` value: `subgraph has only indexed up to block number 4 and data for block number 5 is therefore not yet available`'
-            )
-          )
-        }
-        return land(query)
-      }) as jest.Mock
-      rentalsComponentMock.getUpdatedRentalListings = jest
-        .fn()
-        .mockResolvedValueOnce([])
-      result = await apiComponent.fetchUpdatedData(cursors, {})
-    })
-
-    it('should retry the query and return the changes', () => {
-      expect(result.tiles).toEqual([defaultParcelTile])
-    })
-  })
-
-  describe('and a pinned query fails for another reason', () => {
+  describe('and a land query fails', () => {
     beforeEach(() => {
       const land = mockLandUpdates({ parcels: [defaultParcel] })
       subgraphComponentMock.query = jest.fn((query: string) =>
