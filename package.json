@@ -25,7 +25,7 @@
     "@dcl/core-commons": "^0.10.1",
     "@dcl/features-component": "^1.0.2",
     "@dcl/http-requests-logger-component": "^1.0.0",
-    "@dcl/http-server": "^2.1.0",
+    "@dcl/http-server": "^2.3.0",
     "@dcl/http-tracer-component": "^2.0.1",
     "@dcl/metrics": "^1.0.1",
     "@dcl/pg-component": "^0.2.0",
@@ -39,6 +39,7 @@
     "canvas": "^3.2.3",
     "cli-progress": "^3.9.0",
     "fp-future": "^1.0.1",
+    "piscina": "5.3.2",
     "sql-template-strings": "^2.2.2"
   },
   "devDependencies": {

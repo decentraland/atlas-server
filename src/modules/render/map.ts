@@ -2,7 +2,7 @@ import { CanvasRenderingContext2D } from 'canvas'
 import { renderTile } from './tile'
 import { Coord, Layer } from './types'
 
-export function renderMap(args: {
+export type RenderMapArgs = {
   ctx: CanvasRenderingContext2D
   width: number
   height: number
@@ -12,7 +12,9 @@ export function renderMap(args: {
   se: Coord
   center: Coord
   layers: Layer[]
-}) {
+}
+
+export function renderMap(args: RenderMapArgs) {
   const { ctx, width, height, size, pan, nw, se, center, layers } = args
 
   ctx.fillStyle = '#18141a'

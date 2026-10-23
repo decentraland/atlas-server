@@ -120,18 +120,21 @@ describe('when requesting map images', () => {
       })
     })
 
-    describe('and the mini map is requested', () => {
-      beforeEach(async () => {
-        response = await server.fetch('/v1/minimap.png')
-      })
-
-      it('should respond with a 200 and a PNG image', async () => {
-        expect(await readPng(response)).toEqual({
-          status: 200,
-          contentType: 'image/png',
-          signature: PNG_SIGNATURE,
+    describe.each(['/v1/minimap.png', '/v1/estatemap.png'])(
+      'and %s is requested',
+      (path) => {
+        beforeEach(async () => {
+          response = await server.fetch(path)
         })
-      })
-    })
+
+        it('should respond with a 200 and a PNG image', async () => {
+          expect(await readPng(response)).toEqual({
+            status: 200,
+            contentType: 'image/png',
+            signature: PNG_SIGNATURE,
+          })
+        })
+      }
+    )
   })
 })

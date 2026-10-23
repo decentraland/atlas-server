@@ -20,7 +20,7 @@
 - HTTP Framework: @well-known-components/http-server
 - Database: PostgreSQL (via @well-known-components/pg-component)
 - Storage: AWS S3 (map tile cache)
-- Image Generation: node-canvas (PNG rendering)
+- Image Generation: node-canvas (PNG rendering on a piscina worker thread pool)
 - Component Architecture: @well-known-components (logger, metrics, http-server, thegraph-component)
 
 **External Dependencies:**

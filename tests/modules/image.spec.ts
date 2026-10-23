@@ -1,7 +1,7 @@
 import { createImageComponent } from '../../src/modules/image/component'
 import { IImageComponent } from '../../src/modules/image/types'
 import { IMapComponent, Tile, TileType } from '../../src/modules/map/types'
-import { readStream } from '../helpers/png'
+import { startRenderPool, StartedRenderPool } from '../helpers/render-pool'
 
 describe('when rendering a map image', () => {
   let image: IImageComponent
@@ -9,8 +9,10 @@ describe('when rendering a map image', () => {
   let showOnSale: boolean
   let showListedForRent: boolean
   let render: () => Promise<Buffer>
+  let renderPool: StartedRenderPool
 
-  beforeEach(() => {
+  beforeEach(async () => {
+    renderPool = await startRenderPool()
     tiles = {
       '0,0': {
         id: '0,0',
@@ -30,9 +32,9 @@ describe('when rendering a map image', () => {
         getTiles: jest.fn().mockResolvedValue(tiles),
       } as unknown as IMapComponent,
     })
-    render = async () =>
-      readStream(
-        await image.getStream(
+    render = () =>
+      renderPool.pool.render('map', () =>
+        image.getRenderJob(
           200,
           200,
           20,
@@ -42,6 +44,10 @@ describe('when rendering a map image', () => {
           showListedForRent
         )
       )
+  })
+
+  afterEach(async () => {
+    await renderPool.stop()
   })
 
   describe('and the viewport goes past the edge of the map', () => {

@@ -1,4 +1,3 @@
-import { Readable } from 'stream'
 import {
   estateMapHandler,
   estateMapPngRequestHandler,
@@ -11,19 +10,20 @@ import {
 } from '../../src/controllers/handlers'
 import { NFT } from '../../src/modules/api/types'
 import { Tile, TileType } from '../../src/modules/map/types'
-import { createRenderLimiter } from '../../src/modules/render-limiter/component'
-import { RenderBusyError } from '../../src/modules/render-limiter/errors'
-import { AppComponents, Context } from '../../src/types'
+import {
+  RenderAbortedError,
+  RenderBusyError,
+  RenderFailedError,
+  RenderJob,
+} from '../../src/adapters/render-pool'
+import { AppComponents } from '../../src/types'
 
 const LAND_CONTRACT_ADDRESS = '0xf87e31492faf9a91b02ee0deaad50d51d56d5d4d'
 const CHECKSUMMED_LAND_CONTRACT_ADDRESS =
   '0xF87E31492Faf9A91B02Ee0dEAAd50d51d56D5d4d'
 const ESTATE_CONTRACT_ADDRESS = '0x959e104e1a4db6317fa58f8295f586e1a978c297'
 
-type PngComponents = Pick<
-  AppComponents,
-  'image' | 'map' | 'metrics' | 'renderLimiter'
->
+type PngComponents = Pick<AppComponents, 'image' | 'map' | 'renderPool'>
 
 function buildTile(x: number, y: number, estateId?: string): Tile {
   return {
@@ -53,36 +53,38 @@ function buildNft(id: string): NFT {
 
 describe('when handling the map image requests', () => {
   let components: PngComponents
+  let request: { signal: AbortSignal }
   let isReady: jest.Mock
   let getTiles: jest.Mock
-  let getStream: jest.Mock
-  let startTimer: jest.Mock
-  let endTimer: jest.Mock
-  let endWaitTimer: jest.Mock
-  let renderLimiterRun: jest.Mock
+  let getRenderJob: jest.Mock
+  let render: jest.Mock
+  let job: RenderJob
   let png: Buffer
 
   beforeEach(() => {
     png = Buffer.from('a png')
+    job = {
+      kind: 'pixels',
+      width: 1,
+      height: 1,
+      data: new Uint8ClampedArray(4),
+      compressionLevel: 5,
+    }
+    request = { signal: new AbortController().signal }
     isReady = jest.fn().mockReturnValue(true)
     getTiles = jest.fn().mockResolvedValue({})
-    getStream = jest.fn(async () => Readable.from([png]))
-    endTimer = jest.fn()
-    endWaitTimer = jest.fn()
-    startTimer = jest.fn((name: string) => ({
-      end: name === 'dcl_map_render_wait_seconds' ? endWaitTimer : endTimer,
-    }))
-    const renderLimiter = createRenderLimiter({
-      maxConcurrent: 1,
-      maxQueued: 1,
-      maxWaitMs: 1000,
-    })
-    renderLimiterRun = jest.fn((task) => renderLimiter.run(task))
+    getRenderJob = jest.fn().mockResolvedValue(job)
+    // builds the job like the pool does once a thread is free
+    render = jest.fn(
+      async (_kind: string, getJob: () => Promise<RenderJob>) => {
+        await getJob()
+        return png
+      }
+    )
     components = {
       map: { isReady, getTiles } as unknown as AppComponents['map'],
-      image: { getStream },
-      metrics: { startTimer } as unknown as AppComponents['metrics'],
-      renderLimiter: { run: renderLimiterRun },
+      image: { getRenderJob },
+      renderPool: { render },
     }
   })
 
@@ -92,8 +94,10 @@ describe('when handling the map image requests', () => {
 
     describe('and the params are valid', () => {
       beforeEach(async () => {
-        url = new URL('http://localhost/v1/map.png?center=10,-10&size=20')
-        response = await mapPngRequestHandler({ components, url })
+        url = new URL(
+          'http://localhost/v1/map.png?center=10,-10&size=20&selected=1,2&on-sale=true'
+        )
+        response = await mapPngRequestHandler({ components, request, url })
       })
 
       it('should respond with a 200 and the encoded PNG', () => {
@@ -104,27 +108,29 @@ describe('when handling the map image requests', () => {
         })
       })
 
-      it('should render it through the render limiter', () => {
-        expect(renderLimiterRun).toHaveBeenCalledTimes(1)
+      it('should build the render job from the params', () => {
+        expect(getRenderJob).toHaveBeenCalledWith(
+          1024,
+          1024,
+          20,
+          { x: 10, y: -10 },
+          [{ x: 1, y: 2 }],
+          true,
+          false
+        )
       })
 
-      it('should time the render with the map render metric', () => {
-        expect(startTimer).toHaveBeenCalledWith('dcl_map_render_time')
-      })
-
-      it('should end the render timer with a 200 status', () => {
-        expect(endTimer).toHaveBeenCalledWith({ status: 200 })
-      })
-
-      it('should record the wait for the render slot as acquired', () => {
-        expect(endWaitTimer).toHaveBeenCalledWith({ result: 'acquired' })
+      it("should render it in the pool, cancelled by the request's signal", () => {
+        expect(render).toHaveBeenCalledWith('map', expect.any(Function), {
+          signal: request.signal,
+        })
       })
     })
 
     describe('and the center is not a pair of integers', () => {
       beforeEach(async () => {
         url = new URL('http://localhost/v1/map.png?center=foo')
-        response = await mapPngRequestHandler({ components, url })
+        response = await mapPngRequestHandler({ components, request, url })
       })
 
       it('should respond with a 400 and the validation error', () => {
@@ -135,18 +141,14 @@ describe('when handling the map image requests', () => {
       })
 
       it('should not render the image', () => {
-        expect(getStream).not.toHaveBeenCalled()
-      })
-
-      it('should not time a render', () => {
-        expect(startTimer).not.toHaveBeenCalled()
+        expect(render).not.toHaveBeenCalled()
       })
     })
 
     describe('and the image exceeds the render budget', () => {
       beforeEach(async () => {
         url = new URL('http://localhost/v1/map.png?width=4096&height=4096')
-        response = await mapPngRequestHandler({ components, url })
+        response = await mapPngRequestHandler({ components, request, url })
       })
 
       it('should respond with a 400 explaining the limit', () => {
@@ -165,25 +167,25 @@ describe('when handling the map image requests', () => {
       beforeEach(async () => {
         isReady.mockReturnValueOnce(false)
         url = new URL('http://localhost/v1/map.png')
-        response = await mapPngRequestHandler({ components, url })
+        response = await mapPngRequestHandler({ components, request, url })
       })
 
       it('should respond with a 503', () => {
         expect(response).toEqual({ status: 503, body: 'Not ready' })
       })
 
-      it('should not time a render', () => {
-        expect(startTimer).not.toHaveBeenCalled()
+      it('should not render the image', () => {
+        expect(render).not.toHaveBeenCalled()
       })
     })
 
     describe('and the render queue is full', () => {
       beforeEach(async () => {
-        renderLimiterRun.mockRejectedValueOnce(
+        render.mockRejectedValueOnce(
           new RenderBusyError('Too many map renders queued')
         )
         url = new URL('http://localhost/v1/map.png')
-        response = await mapPngRequestHandler({ components, url })
+        response = await mapPngRequestHandler({ components, request, url })
       })
 
       it('should respond with a non cacheable 503 that asks to retry later', () => {
@@ -193,21 +195,31 @@ describe('when handling the map image requests', () => {
           body: { ok: false, error: 'Too many map renders queued' },
         })
       })
+    })
 
-      it('should record the wait for the render slot as rejected', () => {
-        expect(endWaitTimer).toHaveBeenCalledWith({ result: 'rejected' })
+    describe('and the request is aborted while the render waits for a thread', () => {
+      beforeEach(async () => {
+        render.mockRejectedValueOnce(
+          new RenderAbortedError('The request was aborted')
+        )
+        url = new URL('http://localhost/v1/map.png')
+        response = await mapPngRequestHandler({ components, request, url })
       })
 
-      it('should not time a render', () => {
-        expect(startTimer).not.toHaveBeenCalledWith('dcl_map_render_time')
+      it('should respond with a non cacheable 503', () => {
+        expect(response).toEqual({
+          status: 503,
+          headers: { 'retry-after': '5', 'cache-control': 'no-store' },
+          body: { ok: false, error: 'The request was aborted' },
+        })
       })
     })
 
-    describe('and the render fails', () => {
+    describe('and the worker fails to draw or encode the image', () => {
       beforeEach(async () => {
-        getStream.mockRejectedValueOnce(new Error('Canvas failure'))
+        render.mockRejectedValueOnce(new RenderFailedError('Canvas failure'))
         url = new URL('http://localhost/v1/map.png')
-        response = await mapPngRequestHandler({ components, url })
+        response = await mapPngRequestHandler({ components, request, url })
       })
 
       it('should respond with a 500 and the error', () => {
@@ -216,32 +228,46 @@ describe('when handling the map image requests', () => {
           body: { ok: false, error: 'Canvas failure' },
         })
       })
+    })
 
-      it('should end the render timer with a 500 status', () => {
-        expect(endTimer).toHaveBeenCalledWith({ status: 500 })
+    describe('and the render fails', () => {
+      beforeEach(async () => {
+        render.mockRejectedValueOnce(new Error('Canvas failure'))
+        url = new URL('http://localhost/v1/map.png')
+        response = await mapPngRequestHandler({ components, request, url })
+      })
+
+      it('should respond with a 500 and the error', () => {
+        expect(response).toEqual({
+          status: 500,
+          body: { ok: false, error: 'Canvas failure' },
+        })
       })
     })
   })
 
   describe.each([
     ['minimap', miniMapHandler],
-    ['estates minimap', estateMapHandler],
-  ])('and the %s is requested', (_, handler) => {
-    let context: Context
+    ['estatemap', estateMapHandler],
+  ])('and the %s is requested', (kind, handler) => {
+    let context: Parameters<typeof miniMapHandler>[0] &
+      Parameters<typeof estateMapHandler>[0]
+    let getMiniMapJob: jest.Mock
     let response: Awaited<ReturnType<typeof handler>>
 
     beforeEach(() => {
-      const getMiniMapStream = jest.fn(async () => Readable.from([png]))
+      getMiniMapJob = jest.fn().mockResolvedValue(job)
       context = {
+        request,
         components: {
           ...components,
-          renderMiniMap: { getStream: getMiniMapStream },
-          renderEstateMiniMap: { getStream: getMiniMapStream },
+          renderMiniMap: { getRenderJob: getMiniMapJob },
+          renderEstateMiniMap: { getRenderJob: getMiniMapJob },
         },
-      } as unknown as Context
+      }
     })
 
-    describe('and a render slot is available', () => {
+    describe('and a render thread is available', () => {
       beforeEach(async () => {
         response = await handler(context)
       })
@@ -254,17 +280,18 @@ describe('when handling the map image requests', () => {
         })
       })
 
-      it('should time the slot wait and then the minimap render', () => {
-        expect(startTimer.mock.calls.map(([name]) => name)).toEqual([
-          'dcl_map_render_wait_seconds',
-          'dcl_mini_map_render_time',
-        ])
+      it("should render the minimap's job", () => {
+        expect(getMiniMapJob).toHaveBeenCalledTimes(1)
+      })
+
+      it('should label the render with the image it is for', () => {
+        expect(render.mock.calls[0][0]).toBe(kind)
       })
     })
 
     describe('and the render queue is full', () => {
       beforeEach(async () => {
-        renderLimiterRun.mockRejectedValueOnce(
+        render.mockRejectedValueOnce(
           new RenderBusyError('Too many map renders queued')
         )
         response = await handler(context)
@@ -289,13 +316,14 @@ describe('when handling the map image requests', () => {
         params = { x: '01', y: '-2' }
         response = await parcelMapPngRequestHandler({
           components,
+          request,
           params,
           url: new URL('http://localhost/v2/parcels/01/-2/map.png'),
         })
       })
 
       it('should render the image centered on and selecting the parcel', () => {
-        expect(getStream).toHaveBeenCalledWith(
+        expect(getRenderJob).toHaveBeenCalledWith(
           1024,
           1024,
           20,
@@ -306,12 +334,12 @@ describe('when handling the map image requests', () => {
         )
       })
 
-      it('should time the render with the map render metric', () => {
-        expect(startTimer).toHaveBeenCalledWith('dcl_map_render_time')
-      })
-
-      it('should end the render timer with a 200 status', () => {
-        expect(endTimer).toHaveBeenCalledWith({ status: 200 })
+      it('should respond with a 200 and the encoded PNG', () => {
+        expect(response).toEqual({
+          status: 200,
+          headers: { 'content-type': 'image/png' },
+          body: png,
+        })
       })
     })
 
@@ -320,6 +348,7 @@ describe('when handling the map image requests', () => {
         params = { x: 'abc', y: '1' }
         response = await parcelMapPngRequestHandler({
           components,
+          request,
           params,
           url: new URL('http://localhost/v2/parcels/abc/1/map.png'),
         })
@@ -335,28 +364,61 @@ describe('when handling the map image requests', () => {
   })
 
   describe('and an estate image is requested', () => {
-    beforeEach(async () => {
-      getTiles.mockResolvedValueOnce(
-        Object.fromEntries(
-          [-10, -9, 2, 10].map((x) => {
-            const tile = buildTile(x, 0, '7')
-            return [tile.id, tile]
-          })
+    let response: Awaited<ReturnType<typeof estateMapPngRequestHandler>>
+
+    describe('and the estate has parcels', () => {
+      beforeEach(async () => {
+        getTiles.mockResolvedValueOnce(
+          Object.fromEntries(
+            [-10, -9, 2, 10].map((x) => {
+              const tile = buildTile(x, 0, '7')
+              return [tile.id, tile]
+            })
+          )
         )
-      )
-      await estateMapPngRequestHandler({
-        components,
-        params: { estateId: '7' },
-        url: new URL('http://localhost/v2/estates/7/map.png'),
+        response = await estateMapPngRequestHandler({
+          components,
+          request,
+          params: { estateId: '7' },
+          url: new URL('http://localhost/v2/estates/7/map.png'),
+        })
+      })
+
+      it('should center the image on the numeric median of the estate parcels', () => {
+        expect(getRenderJob.mock.calls[0][3]).toEqual({ x: 2, y: 0 })
+      })
+
+      it('should respond with a 200 and the encoded PNG', () => {
+        expect(response).toEqual({
+          status: 200,
+          headers: { 'content-type': 'image/png' },
+          body: png,
+        })
       })
     })
 
-    it('should center the image on the numeric median of the estate parcels', () => {
-      expect(getStream.mock.calls[0][3]).toEqual({ x: 2, y: 0 })
-    })
+    describe('and the estate has no parcels', () => {
+      beforeEach(async () => {
+        response = await estateMapPngRequestHandler({
+          components,
+          request,
+          params: { estateId: '7' },
+          url: new URL('http://localhost/v2/estates/7/map.png'),
+        })
+      })
 
-    it('should end the render timer with a 200 status', () => {
-      expect(endTimer).toHaveBeenCalledWith({ status: 200 })
+      it('should redirect to the dissolved estate image', () => {
+        expect(response).toEqual({
+          status: 302,
+          headers: {
+            location: 'https://ui.decentraland.org/dissolved_estate.png',
+          },
+        })
+      })
+
+      it('should not render the image', () => {
+        expect(render).not.toHaveBeenCalled()
+      })
     })
   })
 })

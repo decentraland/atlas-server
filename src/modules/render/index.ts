@@ -1,4 +1,5 @@
 export * from './map'
+export * from './scene'
 export * from './tile'
 export * from './types'
 export * from './viewport'
