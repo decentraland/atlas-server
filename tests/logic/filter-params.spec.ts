@@ -77,6 +77,11 @@ describe('when parsing a coordinate', () => {
     ' 1',
     '1e3',
     '99999999999999999999',
+    '9007199254740991',
+    '9007199254740992',
+    '-9007199254740991',
+    '1000001',
+    '-1000001',
   ])('and it is %p', (invalid) => {
     beforeEach(() => {
       value = invalid
@@ -85,6 +90,15 @@ describe('when parsing a coordinate', () => {
     it('should throw an invalid request error', () => {
       expect(() => parseCoordinate(value, 'x')).toThrow(InvalidRequestError)
     })
+  })
+})
+
+describe('when parsing a coordinate at the edge of the accepted range', () => {
+  it.each([
+    ['1000000', 1000000],
+    ['-1000000', -1000000],
+  ])('should accept %p', (value, expected) => {
+    expect(parseCoordinate(value, 'x')).toBe(expected)
   })
 })
 

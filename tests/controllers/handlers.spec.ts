@@ -397,6 +397,30 @@ describe('when handling the map image requests', () => {
         })
       })
     })
+
+    describe('and a coordinate is beyond the range the map can be drawn in', () => {
+      beforeEach(async () => {
+        params = { x: '9007199254740991', y: '1' }
+        response = await parcelMapPngRequestHandler({
+          components,
+          request,
+          params,
+          url: new URL(
+            'http://localhost/v2/parcels/9007199254740991/1/map.png'
+          ),
+        })
+      })
+
+      it('should respond with a 400 without rendering', () => {
+        expect(response).toEqual({
+          status: 400,
+          body: {
+            ok: false,
+            error: 'Invalid x: must be between -1000000 and 1000000',
+          },
+        })
+      })
+    })
   })
 
   describe('and an estate image is requested', () => {

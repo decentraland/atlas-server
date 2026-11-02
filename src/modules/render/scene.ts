@@ -1,5 +1,6 @@
 import { RenderMapArgs } from './map'
 import { Layer } from './types'
+import { assertIterableViewport } from './viewport'
 
 const TOP = 1
 const LEFT = 2
@@ -40,6 +41,7 @@ function getSceneSize(scene: Pick<MapScene, 'nw' | 'se'>) {
 export function describeMap(args: Omit<RenderMapArgs, 'ctx'>): MapScene {
   const { layers, ...viewport } = args
   const { nw, se } = viewport
+  assertIterableViewport({ nw, se })
   const { columns, rows } = getSceneSize(viewport)
   const cells = Math.max(columns, 0) * Math.max(rows, 0)
   const palette: MapStyle[] = []
@@ -60,8 +62,11 @@ export function describeMap(args: Omit<RenderMapArgs, 'ctx'>): MapScene {
     const styles = new Uint16Array(cells)
     const flags = new Uint8Array(cells)
     let cell = 0
-    for (let x = nw.x; x < se.x; x++) {
-      for (let y = se.y; y < nw.y; y++, cell++) {
+    // counted rather than compared against se, so the loops end whatever the corners
+    for (let column = 0; column < columns; column++) {
+      const x = nw.x + column
+      for (let row = 0; row < rows; row++, cell++) {
+        const y = se.y + row
         const tile = layer(x, y)
         if (!tile) {
           continue

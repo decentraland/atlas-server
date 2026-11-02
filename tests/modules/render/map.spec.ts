@@ -110,3 +110,30 @@ describe('when rendering the map', () => {
     })
   })
 })
+
+describe('when rendering a map whose corners cannot be iterated', () => {
+  let canvas: Canvas
+  let layer: jest.Mock
+
+  beforeEach(() => {
+    canvas = createCanvas(100, 100)
+    layer = jest.fn().mockReturnValue(null)
+  })
+
+  it('should throw a range error without reading any tile', () => {
+    expect(() =>
+      renderMap({
+        ctx: canvas.getContext('2d'),
+        width: 100,
+        height: 100,
+        size: 10,
+        pan: { x: 0, y: 0 },
+        center: { x: 9007199254740991, y: 0 },
+        nw: { x: 9007199254740986, y: 6 },
+        se: { x: 9007199254740996, y: -6 },
+        layers: [layer],
+      })
+    ).toThrow(RangeError)
+    expect(layer).not.toHaveBeenCalled()
+  })
+})

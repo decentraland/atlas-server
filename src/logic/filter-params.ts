@@ -85,16 +85,24 @@ export function getFilterFromUrl(
 export const MAX_IMAGE_PIXELS = 2048 * 2048
 export const MAX_IMAGE_TILES = 45000
 
+// far beyond the map (about +-150), yet small enough that the viewport math stays exact
+export const MAX_COORDINATE = 1_000_000
+
 const INTEGER_PATTERN = /^-?\d+$/
 
 /**
  * Parses a coordinate strictly: only an optionally signed run of digits is accepted.
- * @throws InvalidRequestError when the value is not a safe integer.
+ * @throws InvalidRequestError when the value is not an integer within +-MAX_COORDINATE.
  */
 export function parseCoordinate(value: string, name: string): number {
   const coordinate = Number(value)
   if (!INTEGER_PATTERN.test(value) || !Number.isSafeInteger(coordinate)) {
     throw new InvalidRequestError(`Invalid ${name}: expected an integer`)
+  }
+  if (Math.abs(coordinate) > MAX_COORDINATE) {
+    throw new InvalidRequestError(
+      `Invalid ${name}: must be between -${MAX_COORDINATE} and ${MAX_COORDINATE}`
+    )
   }
   return coordinate
 }
