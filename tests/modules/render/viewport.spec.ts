@@ -83,3 +83,41 @@ describe('when computing the viewport of a map image', () => {
     })
   })
 })
+
+describe('when computing the viewport of a map image around a coordinate that cannot be iterated', () => {
+  describe.each([
+    [9007199254740991, 0],
+    [9007199254740992, 0],
+    [-9007199254740991, 0],
+    [0, 9007199254740991],
+    [0, -9007199254740991],
+    [Infinity, 0],
+    [NaN, 0],
+  ])('and the center is (%p, %p)', (x, y) => {
+    it('should throw a range error instead of returning corners that loops cannot reach', () => {
+      expect(() =>
+        getViewport({
+          width: 100,
+          height: 100,
+          size: 10,
+          padding: 1,
+          center: { x, y },
+        })
+      ).toThrow(RangeError)
+    })
+  })
+
+  describe('and the center is far from the origin but still exactly representable', () => {
+    it('should return the viewport', () => {
+      expect(
+        getViewport({
+          width: 100,
+          height: 100,
+          size: 10,
+          padding: 1,
+          center: { x: 1000000, y: -1000000 },
+        }).nw
+      ).toEqual({ x: 999994, y: -999994 })
+    })
+  })
+})
