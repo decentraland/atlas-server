@@ -30,8 +30,6 @@ const LAND_CONTRACT_ADDRESS = '0x1'
 const ESTATE_CONTRACT_ADDRESS = '0x2'
 const date = Date.now()
 const SNAPSHOT_BLOCK = 10
-// the snapshot is pinned 5 blocks behind the head
-const PINNED_BLOCK = SNAPSHOT_BLOCK - 5
 const HEAD_TIMESTAMP = 1234
 const headResponse = {
   _meta: { block: { number: SNAPSHOT_BLOCK, timestamp: HEAD_TIMESTAMP } },
@@ -45,20 +43,26 @@ type SubgraphWorld = {
   // estates only returned when asked for by id
   estatesById?: EstateFragment[]
   timestamp?: number
+  // the head the backend answering the land pages reports, when it is behind the snapshot's
+  pageTimestamp?: number
 }
 
 // answers the snapshot and id-paged queries the api makes, like the subgraph would
 function mockLandUpdates(world: SubgraphWorld): jest.Mock {
   return jest.fn((query: string) => {
-    if (query.includes('_meta')) {
-      return Promise.resolve({
-        _meta: {
-          block: {
-            number: SNAPSHOT_BLOCK,
-            timestamp: world.timestamp ?? SNAPSHOT_TIMESTAMP,
-          },
+    // every land page reports the head of the backend that answers it, as the snapshot does
+    const head = {
+      _meta: {
+        block: {
+          number: SNAPSHOT_BLOCK,
+          timestamp: query.includes('nfts')
+            ? world.pageTimestamp ?? world.timestamp ?? SNAPSHOT_TIMESTAMP
+            : world.timestamp ?? SNAPSHOT_TIMESTAMP,
         },
-      })
+      },
+    }
+    if (!query.includes('nfts')) {
+      return Promise.resolve(head)
     }
     const first = Number(/first: (\d+)/.exec(query)![1])
     const lastId = /id_gt: "([^"]*)"/.exec(query)![1]
@@ -78,6 +82,7 @@ function mockLandUpdates(world: SubgraphWorld): jest.Mock {
       ? world.estates ?? []
       : world.parcels ?? []
     return Promise.resolve({
+      ...head,
       nfts: [...items]
         .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
         .filter((item) => item.id > lastId)
@@ -435,11 +440,12 @@ describe('when fetching data', () => {
         .fn()
         .mockResolvedValueOnce(headResponse)
         .mockResolvedValueOnce({
+          ...headResponse,
           nfts: [
             { ...defaultParcel, updatedAt: (HEAD_TIMESTAMP + 90).toString() },
           ],
         })
-        .mockResolvedValueOnce({ nfts: [] })
+        .mockResolvedValueOnce({ ...headResponse, nfts: [] })
       rentalsComponentMock.getOpenRentalListings = jest
         .fn()
         .mockResolvedValue([])
@@ -463,18 +469,18 @@ describe('when fetching data', () => {
       subgraphComponentMock.query = jest
         .fn()
         .mockResolvedValueOnce(headResponse)
-        .mockResolvedValueOnce({ nfts: nftFragments })
-        .mockResolvedValueOnce({ nfts: [] })
+        .mockResolvedValueOnce({ ...headResponse, nfts: nftFragments })
+        .mockResolvedValueOnce({ ...headResponse, nfts: [] })
       rentalsComponentMock.getOpenRentalListings = jest
         .fn()
         .mockResolvedValueOnce([])
     })
 
-    it("should read the batches at the snapshot's block", async () => {
+    it('should read the batches at the latest block', async () => {
       await apiComponent.fetchData()
       expect(
         (subgraphComponentMock.query as jest.Mock).mock.calls[1][0]
-      ).toContain(`block: { number: ${PINNED_BLOCK} }`)
+      ).not.toContain('block:')
     })
 
     it('should return the tiles, the parcels and the estates', () => {
@@ -598,9 +604,15 @@ describe('when fetching data', () => {
       subgraphComponentMock.query = jest
         .fn()
         .mockResolvedValueOnce(headResponse)
-        .mockResolvedValueOnce({ nfts: nftFragments.splice(0, 3) })
-        .mockResolvedValueOnce({ nfts: nftFragments.splice(0, 6) })
-        .mockResolvedValueOnce({ nfts: [] })
+        .mockResolvedValueOnce({
+          ...headResponse,
+          nfts: nftFragments.splice(0, 3),
+        })
+        .mockResolvedValueOnce({
+          ...headResponse,
+          nfts: nftFragments.splice(0, 6),
+        })
+        .mockResolvedValueOnce({ ...headResponse, nfts: [] })
       rentalsComponentMock.getOpenRentalListings = jest
         .fn()
         .mockResolvedValueOnce([
@@ -1750,14 +1762,12 @@ describe('when fetching update data', () => {
       )
     })
 
-    it("should read every page at the snapshot's block", () => {
+    it('should read every page at the latest block', () => {
       expect(
         queries
           .filter((query) => !query.includes('_meta'))
-          .every((query) =>
-            query.includes(`block: { number: ${PINNED_BLOCK} }`)
-          )
-      ).toBe(true)
+          .some((query) => query.includes('block:'))
+      ).toBe(false)
     })
 
     it('should read the snapshot first', () => {
@@ -1995,41 +2005,36 @@ describe('when fetching update data', () => {
     })
   })
 
-  describe('and the pinned block is not available yet on the first try', () => {
+  describe('and a land page is answered by a backend behind the snapshot', () => {
     let result: Result
 
     beforeEach(async () => {
-      const land = mockLandUpdates({ parcels: [defaultParcel] })
-      let failed = false
-      subgraphComponentMock.query = jest.fn((query: string) => {
-        if (!failed && !query.includes('_meta')) {
-          failed = true
-          return Promise.reject(
-            new Error(
-              'Failed to decode `block.number` value: `subgraph has only indexed up to block number 4 and data for block number 5 is therefore not yet available`'
-            )
-          )
-        }
-        return land(query)
-      }) as jest.Mock
+      subgraphComponentMock.query = mockLandUpdates({
+        parcels: [defaultParcel],
+        timestamp: SNAPSHOT_TIMESTAMP,
+        pageTimestamp: SNAPSHOT_TIMESTAMP - 600,
+      })
       rentalsComponentMock.getUpdatedRentalListings = jest
         .fn()
         .mockResolvedValueOnce([])
-      result = await apiComponent.fetchUpdatedData(cursors, {})
+      result = await apiComponent.fetchUpdatedData(
+        { land: SNAPSHOT_TIMESTAMP - 1000, rentals: 0 },
+        {}
+      )
     })
 
-    it('should retry the query and return the changes', () => {
-      expect(result.tiles).toEqual([defaultParcelTile])
+    it("should move the land cursor only to that backend's head, so the next fetch reads what it could not see", () => {
+      expect(result.cursors.land).toBe(SNAPSHOT_TIMESTAMP - 600)
     })
   })
 
-  describe('and a pinned query fails for another reason', () => {
+  describe('and a land query fails', () => {
     beforeEach(() => {
       const land = mockLandUpdates({ parcels: [defaultParcel] })
       subgraphComponentMock.query = jest.fn((query: string) =>
-        query.includes('_meta')
-          ? land(query)
-          : Promise.reject(new Error('Unexpected `}`'))
+        query.includes('nfts')
+          ? Promise.reject(new Error('Unexpected `}`'))
+          : land(query)
       ) as jest.Mock
       rentalsComponentMock.getUpdatedRentalListings = jest
         .fn()

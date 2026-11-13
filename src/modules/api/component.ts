@@ -105,31 +105,41 @@ const estateFields = `{
 
 // keeps the id_in list of a query short
 const ESTATE_IDS_PER_QUERY = 100
-// pin a few blocks behind the head so every indexer behind the gateway has the block
-const SNAPSHOT_LAG_BLOCKS = 5
-// land queries re-read this window before the cursor, covering the lag and reorgs; re-applying is idempotent
+// land queries re-read this window before the cursor, covering rows indexed late; re-applying is idempotent
 const LAND_OVERLAP_SECONDS = 300
-// waits before retrying a query whose pinned block an indexer has not reached yet
-const BLOCK_RETRY_DELAYS_MS = [500, 1000, 2000]
 
-/** The block every query of a fetch is pinned to, and the head's timestamp (seconds) when it was read. */
-type Snapshot = { block: number; timestamp: number }
+/**
+ * A fetch's land cursor: the timestamp (seconds) of the lowest head the subgraph reported while the
+ * fetch ran. Each land page asks for `_meta` in the same request, so the backend that answers the page
+ * also reports how far it has indexed, and the cursor never passes a row a page could not see yet,
+ * even when the gateway answers pages from backends at different heights. A row that changes while
+ * the fetch pages gets a later `updatedAt`, so the next fetch reads it again. The queries are not
+ * pinned to a block: the squid that answers them only serves the latest one. A fetch may see rows
+ * newer than the cursor, which only means reading them twice.
+ *
+ * Not covered: a row a reorg rolls back to an older `updatedAt` keeps the orphaned update until the
+ * next full load.
+ */
+type Snapshot = { timestamp: number }
+
+type Head = { _meta: { block: { number: number; timestamp: number | null } } }
+
+const HEAD_FIELDS = '_meta { block { number timestamp } }'
+
+function headTimestamp({ _meta }: Head): number {
+  const { number, timestamp } = _meta.block
+  if (!timestamp) {
+    throw new Error(
+      `The subgraph did not report the timestamp of block ${number}`
+    )
+  }
+  return timestamp
+}
 
 type FetchedBatch = {
   tiles: Tile[]
   parcels: NFT[]
   fragments: ParcelFragment[]
-}
-
-function isBlockNotAvailableError(error: unknown): boolean {
-  return (
-    isErrorWithMessage(error) &&
-    error.message.includes('Failed to decode `block.number`')
-  )
-}
-
-function sleep(ms: number) {
-  return new Promise<void>((resolve) => setTimeout(resolve, ms))
 }
 
 export async function createApiComponent(components: {
@@ -158,38 +168,20 @@ export async function createApiComponent(components: {
   const events = new EventEmitter()
 
   // methods
-  // reads the subgraph's head so every query of a fetch sees the same block
+  // reads the timestamp of the subgraph's head, where the fetch's land cursor starts
   async function getSnapshot(): Promise<Snapshot> {
-    const { _meta } = await subgraph.query<{
-      _meta: { block: { number: number; timestamp: number | null } }
-    }>(`{ _meta { block { number timestamp } } }`)
-    const { number, timestamp } = _meta.block
-    if (!timestamp) {
-      throw new Error(
-        `The subgraph did not report the timestamp of block ${number}`
-      )
+    return {
+      timestamp: headTimestamp(
+        await subgraph.query<Head>(`{ ${HEAD_FIELDS} }`)
+      ),
     }
-    return { block: Math.max(number - SNAPSHOT_LAG_BLOCKS, 0), timestamp }
   }
 
-  // retries a pinned query an indexer behind the gateway can't serve yet
-  async function queryPinned<T>(query: string): Promise<T> {
-    for (let attempt = 0; ; attempt++) {
-      try {
-        return await subgraph.query<T>(query)
-      } catch (error) {
-        if (
-          attempt >= BLOCK_RETRY_DELAYS_MS.length ||
-          !isBlockNotAvailableError(error)
-        ) {
-          throw error
-        }
-        componentLogger.warn(
-          `The pinned block is not available yet, retrying in ${BLOCK_RETRY_DELAYS_MS[attempt]}ms`
-        )
-        await sleep(BLOCK_RETRY_DELAYS_MS[attempt])
-      }
-    }
+  // reads a land page with the head of the backend that answers it, and lowers the cursor to it
+  async function queryLand<T>(snapshot: Snapshot, body: string): Promise<T> {
+    const result = await subgraph.query<T & Head>(`{ ${HEAD_FIELDS} ${body} }`)
+    snapshot.timestamp = Math.min(snapshot.timestamp, headTimestamp(result))
+    return result
   }
 
   // pages a query by id so a full page never truncates it
@@ -202,16 +194,14 @@ export async function createApiComponent(components: {
     const items: T[] = []
     let lastId = ''
     while (true) {
-      const { nfts } = await queryPinned<{ nfts: T[] }>(
-        `{
-          nfts: ${entity}(
-            first: ${batchSize},
-            orderBy: id,
-            orderDirection: asc,
-            block: { number: ${snapshot.block} },
-            where: { ${where}, id_gt: "${lastId}" }
-          ) ${fields}
-        }`
+      const { nfts } = await queryLand<{ nfts: T[] }>(
+        snapshot,
+        `nfts: ${entity}(
+          first: ${batchSize},
+          orderBy: id,
+          orderDirection: asc,
+          where: { ${where}, id_gt: "${lastId}" }
+        ) ${fields}`
       )
       items.push(...nfts)
       if (nfts.length < batchSize) {
@@ -379,20 +369,18 @@ export async function createApiComponent(components: {
     lastTokenId = '',
     page = 0
   ) {
-    const { nfts } = await queryPinned<{ nfts: ParcelFragment[] }>(
-      `{
-        nfts(
-          first: ${batchSize},
-          skip: ${batchSize * page},
-          orderBy: tokenId,
-          orderDirection: asc,
-          block: { number: ${snapshot.block} },
-          where: {
-            ${lastTokenId ? `tokenId_gt: "${lastTokenId}",` : ''}
-            category: parcel
-          }
-        ) ${parcelFields}
-      }`
+    const { nfts } = await queryLand<{ nfts: ParcelFragment[] }>(
+      snapshot,
+      `nfts(
+        first: ${batchSize},
+        skip: ${batchSize * page},
+        orderBy: tokenId,
+        orderDirection: asc,
+        where: {
+          ${lastTokenId ? `tokenId_gt: "${lastTokenId}",` : ''}
+          category: parcel
+        }
+      ) ${parcelFields}`
     )
     return nfts.reduce<FetchedBatch>(
       (batch, nft) => {
@@ -607,7 +595,7 @@ export async function createApiComponent(components: {
     }
 
     const newCursors: Cursors = {
-      // the next fetch re-reads LAND_OVERLAP_SECONDS before it, covering the lag behind the head
+      // the lowest head the fetch's pages reported; the next fetch re-reads LAND_OVERLAP_SECONDS before it
       land: Math.max(cursors.land, snapshot.timestamp),
       rentals: rentalListings.reduce(
         (cursor, rentalListing) => Math.max(cursor, rentalListing.updatedAt),
@@ -724,7 +712,7 @@ export async function createApiComponent(components: {
       )
 
     componentLogger.info(
-      `Last updates | block: ${snapshot.block} - land: ${newCursors.land} - rentals: ${newCursors.rentals}`
+      `Last updates | land: ${newCursors.land} - rentals: ${newCursors.rentals}`
     )
 
     return {
